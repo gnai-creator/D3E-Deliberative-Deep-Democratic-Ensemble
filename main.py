@@ -104,7 +104,7 @@ for i in range(NUMBER_OF_MODELS):
         validation_data=(X_val, y_val),
         epochs=EPOCHS,
         batch_size=BATCH_SIZE,
-        verbose=0,
+        verbose=1,
         callbacks=callbacks
     )
 
@@ -144,7 +144,7 @@ for task_id, task in train_tasks:
             target_tensor,
             batch_size=1,
             epochs=1,
-            verbose=0
+            verbose=1
         )
         pred_logits = model(input_tensor, training=False)
         pred_output = tf.argmax(pred_logits[0], axis=-1).numpy()

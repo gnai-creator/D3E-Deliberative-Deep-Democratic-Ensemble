@@ -1,4 +1,4 @@
-# modules.py
+# neural_blocks.py
 
 import tensorflow as tf
 

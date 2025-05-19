@@ -72,8 +72,9 @@ class SageAxiom(tf.keras.Model):
 
         xt = self.token_embedding(x_seq)
         xt = self.pos_enc(xt)
-        xt = self.rotation(xt)
-        xt = self.early_proj(xt)
+        xt = self.early_proj(xt)         # <--- projeta o canal antes
+        xt = self.rotation(xt)           # <--- agora tem shape definido
+
         xt = self.encoder(xt, training=training)
         xt = self.norm(xt, training=training)
 

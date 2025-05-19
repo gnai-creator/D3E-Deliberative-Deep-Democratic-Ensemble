@@ -12,7 +12,14 @@ def compute_aggressive_class_weights(y_train, agressiveness=1.0):
     # Penaliza menos agressivamente a classe 0
     weights[0] *= agressiveness # em vez de obliterar
 
-    class_weight_array = np.ones(VOCAB_SIZE)
+
+    class_weight_array = compute_aggressive_class_weights(y_train, 0.4)
+    class_weight_array = tf.convert_to_tensor(class_weight_array, dtype=tf.float32)
+    class_weight_array = tf.tensor_scatter_nd_update(
+        class_weight_array,
+        indices=[[0]],
+        updates=[0.0]  # sem recompensa pra prever "0"
+    )
     for cls, weight in zip(classes, weights):
         class_weight_array[cls] = weight
 

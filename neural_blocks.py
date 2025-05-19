@@ -65,7 +65,10 @@ class MultiHeadAttentionWrapper(tf.keras.layers.Layer):
         self.attn = tf.keras.layers.MultiHeadAttention(num_heads=heads, key_dim=dim // heads)
 
     def call(self, x):
-        return self.attn(query=x, value=x, key=x)
+        out = self.attn(query=x, value=x, key=x)
+        tf.debugging.assert_all_finite(out, "Attention output has NaNs or Infs")
+        return out
+
 
 
 class LearnedRotation(tf.keras.layers.Layer):

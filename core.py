@@ -26,7 +26,11 @@ class SageAxiom(tf.keras.Model):
         self.agent = layers.GRUCell(hidden_dim, dtype="float32")
         self.memory_attention = AttentionOverMemory(hidden_dim)
 
-        self.projector = layers.Conv2D(hidden_dim, 1)
+        self.projector = tf.keras.Sequential([
+            layers.Conv2D(hidden_dim, 1),
+            layers.ReLU()
+        ])
+
         self.decoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
             layers.BatchNormalization(),

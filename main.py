@@ -139,8 +139,9 @@ for i in range(NUMBER_OF_MODELS):
     pred_output = tf.argmax(pred_logits[0], axis=-1).numpy()
     plot_prediction_debug(sample_input[0], sample_target[0], pred_output, f"val_sample_model_{i}")
 
-    if hasattr(model, 'last_attention_output') and model.last_attention_output is not None:
-        visualize_attention_map(model.last_attention_output, i, title=f"Attention Map - Model {i}")
+    if hasattr(model, 'attention_scores') and model.attention_scores:
+        visualize_attention_map(model.attention_scores[-1], i, title=f"Attention Map - Model {i}")
+
 
 elapsed_train_time = profile_time(train_start, "[INFO] Tempo total de treinamento")
 

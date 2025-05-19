@@ -28,8 +28,13 @@ class SageAxiom(tf.keras.Model):
             key_dim=self.hidden_dim // 8,
             dropout=0.2
         )
+        self.attn_norm = layers.LayerNormalization()
 
-        self.agent = layers.GRUCell(hidden_dim, dtype="float32")
+        self.agent_dense = tf.keras.Sequential([
+            layers.Dense(hidden_dim, activation='relu'),
+            layers.Dropout(0.3)
+        ])
+
         self.memory_attention = AttentionOverMemory(hidden_dim)
 
         self.projector = tf.keras.Sequential([
@@ -63,7 +68,7 @@ class SageAxiom(tf.keras.Model):
             layers.Dropout(0.3)
         ])
 
-        self.last_attention_output = None
+        self.attention_scores = []
 
     def call(self, x_seq, training=False):
         if x_seq.shape.rank != 4:
@@ -71,20 +76,19 @@ class SageAxiom(tf.keras.Model):
 
         batch = tf.shape(x_seq)[0]
 
-        xt = self.pos_enc(x_seq)
-        xt = self.early_proj(xt)
-        xt = self.rotation(xt)
-        xt = self.encoder(xt, training=training)
-        xt = self.norm(xt, training=training)
+        x = self.pos_enc(x_seq)
+        x = self.early_proj(x)
+        x = self.rotation(x)
+        x_encoded = self.encoder(x, training=training)
+        x_encoded = self.norm(x_encoded, training=training)
 
-        x_flat = tf.keras.layers.GlobalAveragePooling2D()(xt)
+        x_flat = tf.keras.layers.GlobalAveragePooling2D()(x_encoded)
         x_flat = self.pool_dense1(x_flat)
         x_flat = tf.cast(x_flat, tf.float32)
 
-        state = tf.zeros([batch, self.hidden_dim], dtype=tf.float32)
-        out, [state] = self.agent(x_flat, [state])
+        state = self.agent_dense(x_flat)  # Replace GRUCell with dense processing
 
-        memory_tensor = tf.expand_dims(out, axis=0)
+        memory_tensor = tf.expand_dims(state, axis=0)
         memory_context = self.memory_attention(memory_tensor, state)
         memory_context = tf.cast(memory_context, tf.float32)
         full_context = tf.concat([state, memory_context], axis=-1)
@@ -100,12 +104,14 @@ class SageAxiom(tf.keras.Model):
             training=training,
             return_attention_scores=True
         )
-        self.last_attention_output = attn_scores
+        attended = self.attn_norm(attended + projected)
+        self.attention_scores.append(attn_scores)
 
-        fused = tf.nn.relu(attended + xt)
+        fused = tf.nn.relu(attended + x_encoded)
 
         for _ in range(2):
             refined = self.attn(query=fused, value=fused, key=fused, training=training)
+            refined = self.attn_norm(refined + fused)
             fused = tf.nn.relu(fused + refined)
 
         logits = self.decoder(fused, training=training)

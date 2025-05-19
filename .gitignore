@@ -1,5 +1,6 @@
 .venv/
 **/__pycache__/
+images/
 sage_model*
 checkpoint*
 history*

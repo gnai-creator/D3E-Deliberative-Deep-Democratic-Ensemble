@@ -1,5 +1,7 @@
 # core.py
 
+# core.py
+
 import tensorflow as tf
 from neural_blocks import TokenEmbedding, EnhancedEncoder, PositionalEncoding2D, LearnedRotation
 from neural_blocks import MultiHeadAttentionWrapper, ChoiceHypothesisModule, AttentionOverMemory, OutputRefinement
@@ -52,6 +54,9 @@ class SageAxiom(tf.keras.Model):
             tf.keras.layers.Dropout(0.3)
         ])
 
+        # Atributo para salvar atenção
+        self.last_attention_output = None
+
     def call(self, x_seq, training=False):
         if x_seq.shape.rank != 4:
             raise ValueError(f"Esperado input de shape [batch, height, width, {NUM_CLASSES}]")
@@ -84,6 +89,10 @@ class SageAxiom(tf.keras.Model):
 
         projected = self.projector(context)
         attended = self.attn(projected)
+
+        # Salva atenção para debug externo
+        self.last_attention_output = attended
+
         chosen = self.chooser(attended, hard=self.use_hard_choice)
 
         last_xt = self.token_embedding(x_seq)

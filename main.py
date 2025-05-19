@@ -1,13 +1,17 @@
-# main.py adaptado para compatibilidade total com vocab_size = 15
-
 import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # Remove tudo exceto erros
+import tensorflow as tf
+import logging
+
+# Silencia logging interno do TensorFlow
+logging.getLogger("tensorflow").setLevel(logging.ERROR)
+
 import json
 import time
-import logging
-import tensorflow as tf
 import numpy as np
 from collections import defaultdict, Counter
 from sklearn.model_selection import train_test_split
+from sklearn.utils.class_weight import compute_class_weight
 from core import SageAxiom
 from metrics_utils import plot_history, plot_confusion, plot_attempts_stats
 from sage_dabate_loop import conversational_loop
@@ -51,7 +55,6 @@ for task in tasks.values():
 X_all = tf.stack(X_train_all)
 y_all = tf.stack(y_train_all)
 
-# Verifica se algum valor está fora do vocabulário
 max_value = tf.reduce_max(tf.maximum(tf.reduce_max(X_all), tf.reduce_max(y_all))).numpy()
 assert max_value < VOCAB_SIZE, f"[ERRO] Valor fora do vocabulário detectado: {max_value} >= {VOCAB_SIZE}"
 
@@ -66,6 +69,14 @@ X_val = tf.convert_to_tensor(X_val, dtype=tf.float32)
 y_train = tf.convert_to_tensor(y_train, dtype=tf.int32)
 y_val = tf.convert_to_tensor(y_val, dtype=tf.int32)
 
+# Calcular class weights
+y_train_flat = y_train.numpy().flatten()
+classes = np.unique(y_train_flat)
+class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train_flat)
+class_weight_array = np.ones(VOCAB_SIZE)
+for cls, weight in zip(classes, class_weights):
+    class_weight_array[cls] = weight
+
 # Treinamento
 models = []
 for i in range(NUMBER_OF_MODELS):
@@ -73,7 +84,7 @@ for i in range(NUMBER_OF_MODELS):
     model = SageAxiom(hidden_dim=128, use_hard_choice=False)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
-        loss=SparseFocalLoss(gamma=2.0, alpha=0.25),
+        loss=SparseFocalLoss(gamma=2.0, alpha=class_weight_array),
         metrics=["accuracy"]
     )
 
@@ -105,3 +116,98 @@ for i in range(NUMBER_OF_MODELS):
     models.append(model)
 
 profile_time(train_start, "[INFO] Tempo total de treinamento")
+
+
+# === Avaliação ===
+submission_dict = defaultdict(list)
+correct_tasks = 0
+total_tasks = 0
+task_times = {}
+attempts_per_task = {}
+scores = []
+task_ids = []
+model_vote_stats = {"model_1": 0, "model_2": 0, "model_3": 0}
+model_wins = Counter()
+
+os.makedirs("history_prompts", exist_ok=True)
+
+evaluation_start = time.time()
+end_time = evaluation_start + (TIME_LIMIT_MINUTES * 60) - elapsed_train_time
+
+task_iter = iter(tasks.items())
+while time.time() < end_time:
+    try:
+        task_id, task = next(task_iter)
+    except StopIteration:
+        log("[INFO] Todas as tasks foram avaliadas.")
+        break
+
+    task_start = time.time()
+    input_grid = task["train"][0]["input"]
+    log(f"[INFO] Avaliando task {task_id} ({total_tasks + 1})")
+
+    result = conversational_loop(models, input_grid, max_rounds=10000)
+
+    if result["success"]:
+        log(f"[INFO] Task {task_id} avaliada com sucesso.")
+        log(f"[INFO] Saída correta para a task {task_id}: {result['output']}")
+        correct_tasks += 1
+    submission_dict[task_id] = [result["output"]] if result["output"] else []
+
+    with open(f"history_prompts/{task_id}.json", "w") as f:
+        json.dump(result["history"], f, indent=2)
+
+    with open(f"history_prompts/{task_id}.md", "w", encoding="utf-8") as md:
+        md.write(f"# Histórico da Task {task_id}\n\n")
+        for round_num, entry in enumerate(result["history"], 1):
+            md.write(f"## Rodada {round_num}\n")
+            md.write(f"\n**Entradas**\n\n")
+            for model_idx, candidate in enumerate(entry["candidates"]):
+                md.write(f"### Modelo {model_idx+1}\n\n")
+                md.write("```python\n")
+                md.write(json.dumps(candidate) + "\n")
+                md.write("```\n\n")
+            md.write(f"**Votos**: {entry['votes']}\n\n")
+            md.write(f"**Ganhador**: Modelo {entry['winner']}\n\n")
+            model_vote_stats[f"model_{entry['winner']}"] += 1
+            model_wins[f"model_{entry['winner']}"] += 1
+
+    elapsed = profile_time(task_start, f"Task {task_id}")
+    task_times[task_id] = elapsed
+    attempts_per_task[task_id] = result["rounds"]
+    total_tasks += 1
+    task_ids.append(task_id)
+    scores.append(int(result["success"]))
+
+    if time.time() > end_time:
+        log("[INFO] Tempo total atingido. Encerrando avaliação.")
+        break
+
+# === Resultados finais ===
+with open("submission.json", "w") as f:
+    json.dump(submission_dict, f, ensure_ascii=False)
+
+with open("per_task_times.json", "w") as f:
+    json.dump(task_times, f, indent=2)
+
+plot_attempts_stats(task_times, attempts_per_task)
+log(f"[INFO] Matches corretos: {correct_tasks}/{total_tasks}")
+score = (correct_tasks / total_tasks) * 100 if total_tasks > 0 else 0
+log(f"[INFO] Score estimado: {score:.2f}%")
+projection = (correct_tasks / 250) * 100
+log(f"[INFO] Projeção final aproximada: {projection:.2f}%")
+log(f"[INFO] Votos por modelo: {dict(model_vote_stats)}")
+log(f"[INFO] Vitórias por modelo: {dict(model_wins)}")
+
+# Top tasks mais demoradas e mais tentativas
+hardest_tasks = sorted(task_times.items(), key=lambda x: x[1], reverse=True)[:5]
+most_attempts = sorted(attempts_per_task.items(), key=lambda x: x[1], reverse=True)[:5]
+log("[INFO] Tasks mais demoradas:")
+for tid, duration in hardest_tasks:
+    log(f" - {tid}: {duration:.2f} segundos")
+log("[INFO] Tasks com mais tentativas:")
+for tid, rounds in most_attempts:
+    log(f" - {tid}: {rounds} rodadas")
+
+log(f"[INFO] Log completo salvo em {log_file}")
+log("[INFO] Pipeline encerrado.")

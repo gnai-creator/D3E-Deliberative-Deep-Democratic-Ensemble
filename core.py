@@ -1,10 +1,11 @@
+# core.py
+
 import tensorflow as tf
 from tensorflow.keras import layers
 from neural_blocks import (
     EnhancedEncoder,
     PositionalEncoding2D,
     LearnedRotation,
-    MultiHeadAttentionWrapper,
     AttentionOverMemory,
     OutputRefinement
 )
@@ -25,7 +26,7 @@ class SageAxiom(tf.keras.Model):
         self.attn = tf.keras.layers.MultiHeadAttention(
             num_heads=8,
             key_dim=self.hidden_dim // 8,
-            dropout=0.1  # força o modelo a usar atenção
+            dropout=0.2
         )
 
         self.agent = layers.GRUCell(hidden_dim, dtype="float32")
@@ -46,6 +47,7 @@ class SageAxiom(tf.keras.Model):
             layers.Conv2D(hidden_dim, 1, activation='relu'),
             layers.Conv2D(NUM_CLASSES, 1)
         ])
+
         self.refiner = OutputRefinement(hidden_dim, num_classes=NUM_CLASSES)
         self.fallback = layers.Conv2D(NUM_CLASSES, 1)
 
@@ -91,23 +93,20 @@ class SageAxiom(tf.keras.Model):
         context = tf.tile(context, [1, 30, 30, 1])
 
         projected = self.projector(context)
-        attended = self.attn(
+        attended, attn_scores = self.attn(
             query=projected,
             value=projected,
             key=projected,
-            training=training  # <- isso é importante!
+            training=training,
+            return_attention_scores=True
         )
+        self.last_attention_output = attn_scores
 
-
-        self.last_attention_output = attended
-
-        # Skip blend, use attended directly
         fused = tf.nn.relu(attended + xt)
 
         for _ in range(2):
             refined = self.attn(query=fused, value=fused, key=fused, training=training)
             fused = tf.nn.relu(fused + refined)
-
 
         logits = self.decoder(fused, training=training)
         refined_logits = self.refiner(logits, training=training)
@@ -116,5 +115,4 @@ class SageAxiom(tf.keras.Model):
         w = tf.clip_by_value(self.refine_weight, 0.0, 1.0)
         final_logits = w * refined_logits + (1.0 - w) * conservative_logits
 
-        return conservative_logits
-        # return final_logits
+        return final_logits

@@ -159,19 +159,39 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
     log(f"[INFO] Debug visual salvo: {filename}")
 
 def visualize_attention_map(attn_tensor, model_index, title="Attention Output"):
-    if isinstance(attn_tensor, tf.Tensor):
-        attn_map = tf.reduce_mean(attn_tensor, axis=-1).numpy()[0]
-    else:
+    """
+    Visualiza mapa de atenção médio a partir dos scores da camada MultiHeadAttention.
+    Espera tensor de shape [1, heads, query_len, key_len], geralmente [1, 8, 900, 900].
+    """
+    if not isinstance(attn_tensor, tf.Tensor):
         log("[WARN] Atenção não é Tensor")
         return
-    plt.figure(figsize=(6, 6))
-    plt.imshow(attn_map, cmap='magma')
-    plt.title(title)
-    plt.axis('off')
-    filename = f"images/attention_map_model_{model_index}.png"
-    plt.savefig(filename, dpi=150)
-    plt.close()
-    log(f"[INFO] Attention map salvo: {filename}")
+
+    try:
+        if len(attn_tensor.shape) == 4:
+            # Média sobre os heads: [1, query_len, key_len]
+            mean_heads = tf.reduce_mean(attn_tensor, axis=1)
+            # Média sobre as posições de query: [1, key_len]
+            mean_attention = tf.reduce_mean(mean_heads, axis=1)
+            # Reshape para 30x30 se possível
+            spatial_size = int(np.sqrt(mean_attention.shape[-1]))
+            attn_map = tf.reshape(mean_attention[0], (spatial_size, spatial_size)).numpy()
+        else:
+            log(f"[WARN] Attention tensor com shape inesperado: {attn_tensor.shape}")
+            return
+
+        plt.figure(figsize=(6, 6))
+        plt.imshow(attn_map, cmap='magma')
+        plt.title(title)
+        plt.axis('off')
+        filename = f"images/attention_map_model_{model_index}.png"
+        plt.savefig(filename, dpi=150)
+        plt.close()
+        log(f"[INFO] Attention map salvo: {filename}")
+
+    except Exception as e:
+        log(f"[ERRO] Falha ao visualizar attention map: {e}")
+
 
 def plot_logit_distribution(logits, model_index="model"):
     # logits: Tensor com shape [1, H, W, num_classes]

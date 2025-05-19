@@ -1,3 +1,4 @@
+# main.py
 import os
 import json
 import time
@@ -5,6 +6,7 @@ import logging
 import tensorflow as tf
 import numpy as np
 from collections import defaultdict, Counter
+from sklearn.utils.class_weight import compute_class_weight
 from sklearn.model_selection import train_test_split
 from core import SageAxiom
 from metrics_utils import plot_history, plot_confusion, plot_attempts_stats
@@ -64,6 +66,14 @@ X_val = tf.convert_to_tensor(X_val, dtype=tf.float32)
 y_train = tf.convert_to_tensor(y_train, dtype=tf.int32)
 y_val = tf.convert_to_tensor(y_val, dtype=tf.int32)
 
+# ====== Novo bloco: calcular class_weight ======
+print("[INFO] Calculando class_weight...")
+y_train_flat = y_train.numpy().flatten()
+classes = np.unique(y_train_flat)
+class_weights = compute_class_weight(class_weight="balanced", classes=classes, y=y_train_flat)
+class_weight_dict = {i: float(w) for i, w in enumerate(class_weights)}
+print("[INFO] class_weight:", class_weight_dict)
+
 # Treinamento
 models = []
 for i in range(NUMBER_OF_MODELS):
@@ -75,12 +85,6 @@ for i in range(NUMBER_OF_MODELS):
         metrics=["accuracy"]
     )
 
-    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
-    logits = model(X_val[:8], training=False)
-    loss_val = loss_fn(y_val[:8], logits)
-
-    print("Loss (sanity check):", loss_val.numpy())
-
     os.makedirs(f"checkpoints/sage_axiom_{i+1}", exist_ok=True)
     callbacks = [
         ModelCheckpoint(f"checkpoints/sage_axiom_{i+1}/model", monitor="val_loss", save_best_only=True, save_format="tf", verbose=1),
@@ -88,22 +92,16 @@ for i in range(NUMBER_OF_MODELS):
         ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=1e-5, verbose=1)
     ]
 
-    print("logits shape:", model(X_val[:1]).shape)
-    print("y_val shape:", y_val[:1].shape)
-    print("y_val dtype:", y_val.dtype)
-    print("y_val unique values:", np.unique(y_val.numpy()))
-
     history = model.fit(
         X_train, y_train,
         validation_data=(X_val, y_val),
         epochs=EPOCHS,
         batch_size=BATCH_SIZE,
         verbose=1,
-        callbacks=callbacks
+        callbacks=callbacks,
+        class_weight=class_weight_dict
     )
 
-    # Força build antes de salvar para evitar warnings de camadas não construídas
-    # dummy embed com o shape certo
     dummy_input = tf.random.uniform((1, 30, 30, 10))
     dummy_text_embed = tf.random.uniform((1, 128))
     _ = model(dummy_input, text_embed=dummy_text_embed)
@@ -117,7 +115,7 @@ for i in range(NUMBER_OF_MODELS):
 
 elapsed_train_time = profile_time(train_start, "[INFO] Tempo total de treinamento")
 
-# === Avaliação ===
+# Avaliação
 submission_dict = defaultdict(list)
 correct_tasks = 0
 total_tasks = 0
@@ -182,7 +180,7 @@ while time.time() < end_time:
         log("[INFO] Tempo total atingido. Encerrando avaliação.")
         break
 
-# === Resultados finais ===
+# Resultados finais
 with open("submission.json", "w") as f:
     json.dump(submission_dict, f, ensure_ascii=False)
 

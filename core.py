@@ -1,5 +1,3 @@
-# Ajustes no modelo SageAxiom para melhorar foco da atenção e lidar com classes minoritárias
-
 import tensorflow as tf
 from tensorflow.keras import layers
 from neural_blocks import (
@@ -7,7 +5,6 @@ from neural_blocks import (
     PositionalEncoding2D,
     LearnedRotation,
     MultiHeadAttentionWrapper,
-    ChoiceHypothesisModule,
     AttentionOverMemory,
     OutputRefinement
 )
@@ -15,10 +12,9 @@ from neural_blocks import (
 NUM_CLASSES = 10
 
 class SageAxiom(tf.keras.Model):
-    def __init__(self, hidden_dim=64, use_hard_choice=False):
+    def __init__(self, hidden_dim=64):
         super().__init__()
         self.hidden_dim = hidden_dim
-        self.use_hard_choice = use_hard_choice
 
         self.pos_enc = PositionalEncoding2D(hidden_dim)
         self.early_proj = layers.Conv2D(hidden_dim, 1, activation='relu')
@@ -26,11 +22,9 @@ class SageAxiom(tf.keras.Model):
         self.encoder = EnhancedEncoder(hidden_dim)
         self.norm = layers.LayerNormalization()
 
-        self.attn_pre = MultiHeadAttentionWrapper(hidden_dim, heads=8)
-        self.attn_post = MultiHeadAttentionWrapper(hidden_dim, heads=8)
+        self.attn = MultiHeadAttentionWrapper(hidden_dim, heads=8)
         self.agent = layers.GRUCell(hidden_dim, dtype="float32")
         self.memory_attention = AttentionOverMemory(hidden_dim)
-        self.hypothesis_selector = ChoiceHypothesisModule(hidden_dim)
 
         self.projector = layers.Conv2D(hidden_dim, 1)
         self.decoder = tf.keras.Sequential([
@@ -43,14 +37,8 @@ class SageAxiom(tf.keras.Model):
             layers.Conv2D(hidden_dim, 1, activation='relu'),
             layers.Conv2D(NUM_CLASSES, 1)
         ])
-
         self.refiner = OutputRefinement(hidden_dim, num_classes=NUM_CLASSES)
         self.fallback = layers.Conv2D(NUM_CLASSES, 1)
-
-        self.channel_gate = tf.keras.Sequential([
-            layers.Dense(hidden_dim, activation='tanh'),
-            layers.Reshape((1, 1, hidden_dim))
-        ])
 
         self.refine_weight = self.add_weight(
             name="refine_weight",
@@ -72,11 +60,9 @@ class SageAxiom(tf.keras.Model):
 
         batch = tf.shape(x_seq)[0]
 
-        # === Feature Extraction ===
         xt = self.pos_enc(x_seq)
         xt = self.early_proj(xt)
         xt = self.rotation(xt)
-        xt = self.attn_pre(xt)  # Aplica atenção já aqui
         xt = self.encoder(xt, training=training)
         xt = self.norm(xt, training=training)
 
@@ -90,29 +76,25 @@ class SageAxiom(tf.keras.Model):
         memory_tensor = tf.expand_dims(out, axis=0)
         memory_context = self.memory_attention(memory_tensor, state)
         memory_context = tf.cast(memory_context, tf.float32)
-
         full_context = tf.concat([state, memory_context], axis=-1)
+
         context = tf.reshape(full_context, [batch, 1, 1, 2 * self.hidden_dim])
         context = tf.tile(context, [1, 30, 30, 1])
 
         projected = self.projector(context)
-        attended = self.attn_post(projected)
+        attended = self.attn(projected)
         self.last_attention_output = attended
 
-        chosen = self.hypothesis_selector(attended, hard=self.use_hard_choice)
-
-        channel_gate = self.channel_gate(full_context)
-        channel_gate = tf.tile(channel_gate, [1, 30, 30, 1])
-
-        blended = channel_gate * chosen + (1 - channel_gate) * xt
+        # Skip blend, use attended directly
+        fused = tf.nn.relu(attended + xt)
 
         for _ in range(2):
-            refined = self.attn_post(blended)
-            blended = tf.nn.relu(blended + refined)
+            refined = self.attn(fused)
+            fused = tf.nn.relu(fused + refined)
 
-        logits = self.decoder(blended, training=training)
+        logits = self.decoder(fused, training=training)
         refined_logits = self.refiner(logits, training=training)
-        conservative_logits = self.fallback(blended)
+        conservative_logits = self.fallback(fused)
 
         w = tf.clip_by_value(self.refine_weight, 0.0, 1.0)
         final_logits = w * refined_logits + (1.0 - w) * conservative_logits

@@ -9,14 +9,15 @@ def compute_aggressive_class_weights(y_train):
     classes = np.unique(y_train_flat)
     weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train_flat)
 
-    # Penaliza a classe 0 mais ainda
-    weights[0] *= 1.5  # agressivo mas razoável
+    # Penaliza menos agressivamente a classe 0
+    weights[0] *= 0.8  # em vez de obliterar
 
     class_weight_array = np.ones(VOCAB_SIZE)
     for cls, weight in zip(classes, weights):
         class_weight_array[cls] = weight
 
     return class_weight_array
+
 
 
 def spatial_augmentations(image_tensor, label_tensor):

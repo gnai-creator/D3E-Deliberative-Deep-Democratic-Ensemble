@@ -2,15 +2,18 @@
 
 import tensorflow as tf
 
-def masked_focal_loss_wrapper(gamma=2.0, alpha=None):
+def masked_focal_loss_wrapper(gamma=2.0, alpha=None, ignore_class=None):
     def loss_fn(y_true, y_pred):
-        # Máscara: 1 onde y_true != 0
-        mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
+        mask = tf.ones_like(y_true, dtype=tf.float32)
+        if ignore_class is not None:
+            mask = tf.cast(tf.not_equal(y_true, ignore_class), tf.float32)
+
         loss_obj = SparseFocalLoss(gamma=gamma, alpha=alpha)
         raw_loss = loss_obj(y_true, y_pred)
         masked_loss = raw_loss * mask
         return tf.reduce_sum(masked_loss) / (tf.reduce_sum(mask) + 1e-6)
     return loss_fn
+
 
 
 class SparseFocalLoss(tf.keras.losses.Loss):

@@ -172,3 +172,17 @@ def visualize_attention_map(attn_tensor, model_index, title="Attention Output"):
     plt.savefig(filename, dpi=150)
     plt.close()
     log(f"[INFO] Attention map salvo: {filename}")
+
+def plot_logit_distribution(logits, model_index="model"):
+    # logits: Tensor com shape [1, H, W, num_classes]
+    logits_np = logits.numpy().reshape(-1, logits.shape[-1])  # [H*W, num_classes]
+    plt.figure(figsize=(12, 6))
+    sns.violinplot(data=logits_np, inner='point')
+    plt.title(f"Distribuição dos logits por classe - {model_index}")
+    plt.xlabel("Classe")
+    plt.ylabel("Valor do Logit")
+    plt.tight_layout()
+    filename = f"images/logit_distribution_{model_index}.png"
+    plt.savefig(filename)
+    plt.close()
+    print(f"[INFO] Logit distribution salva em {filename}")

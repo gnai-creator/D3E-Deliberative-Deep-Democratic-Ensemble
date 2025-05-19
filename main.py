@@ -1,4 +1,4 @@
-# main.py (com data augmentation aplicado)
+# main.py (com data augmentation e avaliação completa)
 
 import os
 import warnings
@@ -16,7 +16,6 @@ import time
 import numpy as np
 from collections import defaultdict, Counter
 from sklearn.model_selection import train_test_split
-from sklearn.utils.class_weight import compute_class_weight
 
 from core import SageAxiom
 from metrics_utils import (
@@ -25,7 +24,8 @@ from metrics_utils import (
     plot_attempts_stats,
     plot_prediction_debug,
     visualize_attention_map,
-    MaskedIoU
+    MaskedIoU,
+    plot_logit_distribution
 )
 from sage_debate_loop import conversational_loop
 from runtime_utils import log, pad_to_shape, profile_time
@@ -35,7 +35,7 @@ from model_improvements import compute_aggressive_class_weights, spatial_augment
 
 VOCAB_SIZE = 10
 NUMBER_OF_MODELS = 5
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.01
 PATIENCE = 15
 RL_PATIENCE = 5
 FACTOR = 0.5
@@ -77,7 +77,6 @@ X_train_np, X_val_np, y_train_np, y_val_np = train_test_split(
     X_all_onehot.numpy(), y_all.numpy(), test_size=0.2, random_state=42
 )
 
-# === Aumento de dados (após o split) ===
 aug_X, aug_y = [], []
 for x, y in zip(X_train_np, y_train_np):
     ax, ay = spatial_augmentations(tf.convert_to_tensor(x), tf.convert_to_tensor(y))
@@ -94,14 +93,14 @@ class_weight_array = compute_aggressive_class_weights(y_train)
 models = []
 for i in range(NUMBER_OF_MODELS):
     log(f"[INFO] Iniciando treino do modelo SageAxiom_{i+1}...")
-    model = SageAxiom(hidden_dim=128, use_hard_choice=False)
+    model = SageAxiom(hidden_dim=128)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
         loss=masked_focal_loss_wrapper(gamma=2.0, alpha=class_weight_array),
-        metrics=["accuracy",MaskedIoU(num_classes=VOCAB_SIZE, ignore_class=0)]
+        metrics=["accuracy", MaskedIoU(num_classes=VOCAB_SIZE, ignore_class=0)]
     )
 
-    os.makedirs(f"checkpoints/sage_axiom_{i+1}", exist_ok=True)
+    os.makedirs(f"checkpoints/sage_axiom_{i}", exist_ok=True)
     callbacks = [
         ModelCheckpoint(f"checkpoints/sage_axiom_{i+1}/model", monitor="val_loss", save_best_only=True, save_format="tf", verbose=0),
         EarlyStopping(monitor="val_loss", patience=PATIENCE, restore_best_weights=True),
@@ -117,7 +116,7 @@ for i in range(NUMBER_OF_MODELS):
         callbacks=callbacks
     )
 
-    model.save(f"sage_model_{i+1}", save_format="tf", save_traces=False)
+    model.save(f"sage_model_{i}", save_format="tf", save_traces=False)
     plot_history(history, i)
     y_val_pred = tf.argmax(model(X_val, training=False), axis=-1).numpy()
     plot_confusion(y_val.numpy(), y_val_pred, i)
@@ -126,48 +125,37 @@ for i in range(NUMBER_OF_MODELS):
     sample_input = X_val[0:1]
     sample_target = y_val[0:1]
     pred_logits = model(sample_input, training=False)
+    plot_logit_distribution(pred_logits[0], model_index=i)
     pred_output = tf.argmax(pred_logits[0], axis=-1).numpy()
-    plot_prediction_debug(sample_input[0], sample_target[0], pred_output, f"val_sample_model_{i+1}")
+    plot_prediction_debug(sample_input[0], sample_target[0], pred_output, f"val_sample_model_{i}")
 
-    # === Visualiza attention map se disponível ===
     if hasattr(model, 'last_attention_output') and model.last_attention_output is not None:
-        visualize_attention_map(model.last_attention_output, i + 1, title=f"Attention Map - Model {i+1}")
+        visualize_attention_map(model.last_attention_output, i, title=f"Attention Map - Model {i}")
 
 elapsed_train_time = profile_time(train_start, "[INFO] Tempo total de treinamento")
 
-# Avaliação
+# === Avaliação ===
 submission_dict = defaultdict(list)
-correct_tasks = 0
-total_tasks = 0
-task_times = {}
-attempts_per_task = {}
-scores = []
-task_ids = []
+correct_tasks, total_tasks = 0, 0
+scores, task_ids = [], []
+task_times, attempts_per_task = {}, {}
 model_vote_stats = {f"model_{i+1}": 0 for i in range(NUMBER_OF_MODELS)}
 model_wins = Counter()
 
 os.makedirs("history_prompts", exist_ok=True)
-
 evaluation_start = time.time()
 end_time = evaluation_start + (TIME_LIMIT_MINUTES * 60) - elapsed_train_time
-
 task_iter = iter(tasks.items())
 while time.time() < end_time:
     try:
         task_id, task = next(task_iter)
     except StopIteration:
-        log("[INFO] Todas as tasks foram avaliadas.")
         break
 
-    task_start = time.time()
     input_grid = task["train"][0]["input"]
-    log(f"[INFO] Avaliando task {task_id} ({total_tasks + 1})")
-
     result = conversational_loop(models, input_grid, max_rounds=10000)
 
     if result["success"]:
-        log(f"[INFO] Task {task_id} avaliada com sucesso.")
-        log(f"[INFO] Saída correta para a task {task_id}: {result['output']}")
         correct_tasks += 1
     submission_dict[task_id] = [result["output"]] if result["output"] else []
 
@@ -175,42 +163,34 @@ while time.time() < end_time:
         json.dump(result["history"], f, indent=2)
 
     with open(f"history_prompts/{task_id}.md", "w", encoding="utf-8") as md:
-        md.write(f"# Histórico da Task {task_id}\n\n")
+        md.write(f"# Task {task_id}\n")
         for round_num, entry in enumerate(result["history"], 1):
-            md.write(f"## Rodada {round_num}\n")
-            md.write(f"\n**Entradas**\n\n")
+            md.write(f"## Round {round_num}\n")
             for model_idx, candidate in enumerate(entry["candidates"]):
-                md.write(f"### Modelo {model_idx+1}\n\n")
-                md.write("```python\n")
-                md.write(json.dumps(candidate) + "\n")
-                md.write("```\n\n")
-            md.write(f"**Votos**: {entry['votes']}\n\n")
-            md.write(f"**Ganhador**: Modelo {entry['winner']}\n\n")
+                md.write(f"### Modelo {model_idx+1}\n\n```python\n{json.dumps(candidate)}\n```\n")
+            md.write(f"**Votos**: {entry['votes']}\n\n**Ganhador**: Modelo {entry['winner']}\n")
             model_vote_stats[f"model_{entry['winner']+1}"] += 1
             model_wins[f"model_{entry['winner']+1}"] += 1
 
-    elapsed = profile_time(task_start, f"Task {task_id}")
-    task_times[task_id] = elapsed
+    task_times[task_id] = profile_time(time.time(), f"Task {task_id}")
     attempts_per_task[task_id] = result["rounds"]
     total_tasks += 1
     task_ids.append(task_id)
     scores.append(int(result["success"]))
 
     if time.time() > end_time:
-        log("[INFO] Tempo total atingido. Encerrando avaliação.")
         break
 
 with open("submission.json", "w") as f:
-    json.dump(submission_dict, f, ensure_ascii=False)
-
+    json.dump(submission_dict, f)
 with open("per_task_times.json", "w") as f:
     json.dump(task_times, f, indent=2)
 
 plot_attempts_stats(task_times, attempts_per_task)
-log(f"[INFO] Matches corretos: {correct_tasks}/{total_tasks}")
 score = (correct_tasks / total_tasks) * 100 if total_tasks > 0 else 0
-log(f"[INFO] Score estimado: {score:.2f}%")
 projection = (correct_tasks / 250) * 100
+
+log(f"[INFO] Score estimado: {score:.2f}%")
 log(f"[INFO] Projeção final aproximada: {projection:.2f}%")
 log(f"[INFO] Votos por modelo: {dict(model_vote_stats)}")
 log(f"[INFO] Vitórias por modelo: {dict(model_wins)}")

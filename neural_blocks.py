@@ -77,31 +77,7 @@ class LearnedRotation(tf.keras.layers.Layer):
         weights = tf.reshape(self.selector(tf.reduce_mean(x, axis=[1, 2])), [b, 4, 1, 1, 1])
         rotations = tf.stack([tf.image.rot90(x, k=i) for i in range(4)], axis=1)
         return tf.reduce_sum(rotations * weights, axis=1)
-
-
-class ChoiceHypothesisModule(tf.keras.layers.Layer):
-    def __init__(self, dim):
-        super().__init__()
-        self.input_proj = tf.keras.layers.Conv2D(dim, 1, activation='relu')
-        self.h_layers = [tf.keras.layers.Conv2D(dim, 1, activation='relu') for _ in range(4)]
-        self.meander = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(dim, 1, activation='relu'),
-            tf.keras.layers.Conv2D(dim, 1)
-        ])
-        self.selector = tf.keras.layers.Dense(5, activation='softmax')
-
-    def call(self, x, hard=False):
-        x = self.input_proj(x)
-        candidates = [layer(x) for layer in self.h_layers] + [self.meander(x)]
-        stacked = tf.stack(candidates, axis=1)
-        weights = tf.reshape(self.selector(tf.reduce_mean(x, axis=[1, 2])), [-1, 5, 1, 1, 1])
-
-        if hard:
-            idx = tf.argmax(tf.squeeze(weights, axis=[2, 3, 4]), axis=-1)
-            one_hot = tf.one_hot(idx, depth=5)[:, :, None, None, None]
-            return tf.reduce_sum(stacked * one_hot, axis=1)
-        return tf.reduce_sum(stacked * weights, axis=1)
-
+    
 
 class AttentionOverMemory(tf.keras.layers.Layer):
     def __init__(self, dim):

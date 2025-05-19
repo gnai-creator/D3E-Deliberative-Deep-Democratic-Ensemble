@@ -73,7 +73,7 @@ for i in range(NUMBER_OF_MODELS):
     model = SageAxiom(hidden_dim=128, use_hard_choice=False)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
-        loss=SparseFocalLoss,
+        loss=SparseFocalLoss(gamma=2.0, alpha=0.25),
         metrics=["accuracy"]
     )
 

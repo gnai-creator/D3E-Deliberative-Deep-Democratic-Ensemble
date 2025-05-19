@@ -2,43 +2,39 @@
 
 import tensorflow as tf
 
-def masked_focal_loss_wrapper(gamma=2.0, alpha=None, ignore_class=None):
-    def loss_fn(y_true, y_pred):
-        mask = tf.ones_like(y_true, dtype=tf.float32)
-        if ignore_class is not None:
-            mask = tf.cast(tf.not_equal(y_true, ignore_class), tf.float32)
+VOCAB_SIZE = 10
+    
 
-        loss_obj = SparseFocalLoss(gamma=gamma, alpha=alpha)
-        raw_loss = loss_obj(y_true, y_pred)
-        masked_loss = raw_loss * mask
-        return tf.reduce_sum(masked_loss) / (tf.reduce_sum(mask) + 1e-6)
-    return loss_fn
+def dynamic_focal_loss_wrapper(alpha_var, gamma=2.0):
+    def focal_loss(y_true, y_pred):
+        y_true = tf.cast(y_true, tf.int32)                         # [B, H, W]
+        y_pred = tf.clip_by_value(y_pred, 1e-8, 1.0)               # [B, H, W, C]
+        
+        # One-hot com broadcast implícito
+        y_true_onehot = tf.one_hot(y_true, depth=tf.shape(y_pred)[-1])  # [B, H, W, C]
+
+        # Pega prob da classe correta
+        p_t = tf.reduce_sum(y_pred * y_true_onehot, axis=-1)       # [B, H, W]
+        alpha_t = tf.gather(alpha_var, y_true)                     # [B, H, W]
+
+        focal_weight = tf.pow(1.0 - p_t, gamma)
+        loss = -alpha_t * focal_weight * tf.math.log(tf.clip_by_value(p_t, 1e-5, 1.0))
+
+        return tf.reduce_mean(loss)
+    
+    return focal_loss
 
 
+class AlphaWarmupCallback(tf.keras.callbacks.Callback):
+    def __init__(self, alpha_var, initial_alpha, target_alpha, warmup_epochs):
+        super().__init__()
+        self.alpha_var = alpha_var
+        self.initial_alpha = initial_alpha
+        self.target_alpha = target_alpha
+        self.warmup_epochs = warmup_epochs
 
-class SparseFocalLoss(tf.keras.losses.Loss):
-    def __init__(self, gamma=2.0, alpha=None, name="sparse_focal_loss"):
-        super().__init__(name=name)
-        self.gamma = gamma
-        self.alpha = alpha  # alpha pode ser dict ou lista
-
-    def call(self, y_true, y_pred):
-        y_true = tf.cast(y_true, tf.int32)
-        y_pred = tf.nn.softmax(y_pred, axis=-1)
-        y_true_onehot = tf.one_hot(y_true, depth=tf.shape(y_pred)[-1])
-
-        cross_entropy = -tf.math.log(tf.reduce_sum(y_pred * y_true_onehot, axis=-1) + 1e-8)
-        probs = tf.reduce_sum(y_pred * y_true_onehot, axis=-1)
-
-        if self.alpha is not None:
-            if isinstance(self.alpha, dict):
-                alpha_weights = tf.constant([self.alpha.get(i, 1.0) for i in range(tf.shape(y_pred)[-1])], dtype=tf.float32)
-            else:
-                alpha_weights = tf.constant(self.alpha, dtype=tf.float32)
-            class_alphas = tf.gather(alpha_weights, y_true)
-            focal_loss = class_alphas * tf.pow(1.0 - probs, self.gamma) * cross_entropy
-        else:
-            focal_loss = tf.pow(1.0 - probs, self.gamma) * cross_entropy
-
-        return tf.reduce_mean(focal_loss)
+    def on_epoch_begin(self, epoch, logs=None):
+        progress = min(epoch / self.warmup_epochs, 1.0)
+        new_alpha = self.initial_alpha + (self.target_alpha - self.initial_alpha) * progress
+        self.alpha_var.assign(new_alpha)
 

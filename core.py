@@ -99,4 +99,5 @@ class SageAxiom(tf.keras.Model):
         w = tf.clip_by_value(self.refine_weight, 0.0, 1.0)
         final_logits = w * refined_logits + (1.0 - w) * conservative_logits
 
-        return final_logits
+        return conservative_logits
+        # return final_logits

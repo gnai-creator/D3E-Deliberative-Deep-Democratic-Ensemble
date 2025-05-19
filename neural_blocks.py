@@ -2,9 +2,10 @@
 
 import tensorflow as tf
 
+NUM_CLASSES = 10
 
 class OutputRefinement(tf.keras.layers.Layer):
-    def __init__(self, hidden_dim, num_classes=15):
+    def __init__(self, hidden_dim, num_classes=NUM_CLASSES):
         super().__init__()
         self.conv = tf.keras.Sequential([
             tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),

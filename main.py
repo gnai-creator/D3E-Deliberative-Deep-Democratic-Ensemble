@@ -1,5 +1,3 @@
-# main.py (com data augmentation e avaliação completa)
-
 import os
 import warnings
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -30,12 +28,12 @@ from metrics_utils import (
 from sage_debate_loop import conversational_loop
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-from losses import masked_focal_loss_wrapper
+from losses import dynamic_focal_loss_wrapper, AlphaWarmupCallback
 from model_improvements import compute_aggressive_class_weights, spatial_augmentations
 
 VOCAB_SIZE = 10
 NUMBER_OF_MODELS = 5
-LEARNING_RATE = 0.01
+LEARNING_RATE = 0.001
 PATIENCE = 15
 RL_PATIENCE = 5
 FACTOR = 0.5
@@ -88,23 +86,34 @@ y_train = tf.stack(aug_y)
 X_val = tf.convert_to_tensor(X_val_np, dtype=tf.float32)
 y_val = tf.convert_to_tensor(y_val_np, dtype=tf.int32)
 
-class_weight_array = compute_aggressive_class_weights(y_train)
+class_weight_array = compute_aggressive_class_weights(y_train, 0.4)
 
 models = []
 for i in range(NUMBER_OF_MODELS):
     log(f"[INFO] Iniciando treino do modelo SageAxiom_{i+1}...")
+    alpha_var = tf.Variable(initial_value=class_weight_array, dtype=tf.float32, trainable=False)
+    warmup_cb = AlphaWarmupCallback(
+        alpha_var=alpha_var,
+        initial_alpha=class_weight_array,
+        target_alpha=class_weight_array,
+        warmup_epochs=10
+    )
+
     model = SageAxiom(hidden_dim=128)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
-        loss=masked_focal_loss_wrapper(gamma=2.0, alpha=class_weight_array),
-        metrics=["accuracy", MaskedIoU(num_classes=VOCAB_SIZE, ignore_class=0)]
+        # loss=dynamic_focal_loss_wrapper(alpha_var=alpha_var, gamma=0.25),
+        # metrics=["accuracy", MaskedIoU(num_classes=VOCAB_SIZE, ignore_class=0)]
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        metrics=["accuracy"]
     )
 
-    os.makedirs(f"checkpoints/sage_axiom_{i}", exist_ok=True)
+    os.makedirs(f"checkpoints/sage_axiom_{i+1}", exist_ok=True)
     callbacks = [
         ModelCheckpoint(f"checkpoints/sage_axiom_{i+1}/model", monitor="val_loss", save_best_only=True, save_format="tf", verbose=0),
         EarlyStopping(monitor="val_loss", patience=PATIENCE, restore_best_weights=True),
-        ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=1e-5, verbose=0)
+        ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=1e-5, verbose=0),
+        # warmup_cb
     ]
 
     history = model.fit(
@@ -133,6 +142,7 @@ for i in range(NUMBER_OF_MODELS):
         visualize_attention_map(model.last_attention_output, i, title=f"Attention Map - Model {i}")
 
 elapsed_train_time = profile_time(train_start, "[INFO] Tempo total de treinamento")
+
 
 # === Avaliação ===
 submission_dict = defaultdict(list)

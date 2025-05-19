@@ -4,13 +4,13 @@ import tensorflow as tf
 
 VOCAB_SIZE = 10
 
-def compute_aggressive_class_weights(y_train):
+def compute_aggressive_class_weights(y_train, agressiveness=1.0):
     y_train_flat = y_train.numpy().flatten()
     classes = np.unique(y_train_flat)
     weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train_flat)
 
     # Penaliza menos agressivamente a classe 0
-    weights[0] *= 0.8  # em vez de obliterar
+    weights[0] *= agressiveness # em vez de obliterar
 
     class_weight_array = np.ones(VOCAB_SIZE)
     for cls, weight in zip(classes, weights):

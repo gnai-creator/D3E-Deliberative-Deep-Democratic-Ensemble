@@ -70,3 +70,30 @@ def plot_attempts_stats(task_times, attempts_per_task):
     plt.savefig("task_performance_overview.png")
     log("[INFO] Gráfico de performance salvo: task_performance_overview.png")
 
+def plot_prediction_debug(input_tensor, expected_output, prediction, model_index):
+    """
+    Gera uma visualização lado-a-lado do input, output esperado, previsão do modelo,
+    e um heatmap de acertos para facilitar debugging visual.
+    """
+    input_argmax = input_tensor.numpy().argmax(axis=-1) if hasattr(input_tensor, 'numpy') else np.argmax(input_tensor, axis=-1)
+    expected_output = expected_output.numpy() if hasattr(expected_output, 'numpy') else expected_output
+    prediction = prediction.numpy() if hasattr(prediction, 'numpy') else prediction
+
+    fig, axs = plt.subplots(1, 4, figsize=(16, 4))
+    axs[0].imshow(input_argmax, cmap='viridis')
+    axs[0].set_title("Input")
+    axs[1].imshow(expected_output, cmap='viridis')
+    axs[1].set_title("Expected Output")
+    axs[2].imshow(prediction, cmap='viridis')
+    axs[2].set_title("Prediction")
+    axs[3].imshow((prediction == expected_output).astype(int), cmap='gray')
+    axs[3].set_title("Heatmap (Correct = 1)")
+
+    for ax in axs:
+        ax.axis('off')
+
+    plt.tight_layout()
+    filename = f"prediction_debug_{model_index}.png"
+    plt.savefig(filename)
+    plt.close()
+    log(f"[INFO] Gráfico de previsão salvo: {filename}")

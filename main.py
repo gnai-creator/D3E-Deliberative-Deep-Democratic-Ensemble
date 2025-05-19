@@ -12,8 +12,11 @@ import numpy as np
 from collections import defaultdict, Counter
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+import seaborn as sns
 from core import SageAxiom
-from metrics_utils import plot_history, plot_confusion, plot_attempts_stats
+from metrics_utils import plot_history, plot_attempts_stats, plot_prediction_debug
 from sage_dabate_loop import conversational_loop
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
@@ -23,6 +26,9 @@ from losses import SparseFocalLoss
 VOCAB_SIZE = 15
 NUMBER_OF_MODELS = 5
 LEARNING_RATE = 0.001
+PATIENCE = 15
+RL_PATIENCE = 5
+FACTOR = 0.5
 BATCH_SIZE = 16
 EPOCHS = 140
 EXPECTED_HOURS = 2.5
@@ -91,8 +97,8 @@ for i in range(NUMBER_OF_MODELS):
     os.makedirs(f"checkpoints/sage_axiom_{i+1}", exist_ok=True)
     callbacks = [
         ModelCheckpoint(f"checkpoints/sage_axiom_{i+1}/model", monitor="val_loss", save_best_only=True, save_format="tf", verbose=1),
-        EarlyStopping(monitor="val_loss", patience=15, restore_best_weights=True),
-        ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=1e-5, verbose=1)
+        EarlyStopping(monitor="val_loss", patience=PATIENCE, restore_best_weights=True),
+        ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=1e-5, verbose=1)
     ]
 
     history = model.fit(
@@ -112,10 +118,24 @@ for i in range(NUMBER_OF_MODELS):
 
     plot_history(history, i)
     y_val_pred = tf.argmax(model(X_val, training=False), axis=-1).numpy()
-    plot_confusion(y_val.numpy(), y_val_pred, i)
+
+    # Confusion matrix normalizada
+    flat_true = y_val.numpy().flatten()
+    flat_pred = y_val_pred.flatten()
+    cm = confusion_matrix(flat_true, flat_pred, labels=range(VOCAB_SIZE), normalize='true')
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=range(VOCAB_SIZE))
+    disp.plot(cmap='Blues')
+    plt.title(f"SageAxiom Confusion Matrix {i+1} (normalized)")
+    plt.savefig(f"confusion_matrix_{i+1}.png")
+    plt.close()
+
+    # Novo gráfico: previsão detalhada
+    plot_prediction_debug(X_val[0], y_val[0], y_val_pred[0], i)
+
     models.append(model)
 
 profile_time(train_start, "[INFO] Tempo total de treinamento")
+
 
 
 # === Avaliação ===

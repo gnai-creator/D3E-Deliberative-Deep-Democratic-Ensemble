@@ -1,0 +1,21 @@
+{
+  "name": "SageAxiom",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "USER_UID": "1000",
+      "USER_GID": "1000"
+    }
+  },
+  "runArgs": [
+    "--gpus", "all"
+  ],
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspace,type=bind"
+  ],
+  "containerEnv": {
+    "TF_USE_LEGACY_KERAS": "False"
+  },
+  "remoteUser": "vscode"
+}

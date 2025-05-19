@@ -1,0 +1,8 @@
+scikit-learn
+pandas
+matplotlib
+llama-cpp-python
+seaborn
+numpy
+transformers
+tensorflow==2.15.0

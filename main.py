@@ -104,7 +104,7 @@ for i in range(NUMBER_OF_MODELS):
         validation_data=(X_val, y_val),
         epochs=EPOCHS,
         batch_size=BATCH_SIZE,
-        verbose=1,
+        verbose=0,
         callbacks=callbacks
     )
 
@@ -118,6 +118,13 @@ for i in range(NUMBER_OF_MODELS):
     y_val_pred = tf.argmax(model(X_val, training=False), axis=-1).numpy()
     plot_confusion(y_val.numpy(), y_val_pred, i)
     models.append(model)
+
+    # Extra: plot debug predictions no final do treino geral
+    sample_input = X_val[0:1]
+    sample_target = y_val[0:1]
+    pred_logits = model(sample_input, training=False)
+    pred_output = tf.argmax(pred_logits[0], axis=-1).numpy()
+    plot_prediction_debug(sample_input[0], sample_target[0], pred_output, f"val_sample_model_{i+1}")
 
 train_tasks = [(task_id, task) for task_id, task in tasks.items() if "train" in task]
 for task_id, task in train_tasks:
@@ -137,7 +144,7 @@ for task_id, task in train_tasks:
             target_tensor,
             batch_size=1,
             epochs=1,
-            verbose=1
+            verbose=0
         )
         pred_logits = model(input_tensor, training=False)
         pred_output = tf.argmax(pred_logits[0], axis=-1).numpy()

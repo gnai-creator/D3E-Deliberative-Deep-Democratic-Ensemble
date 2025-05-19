@@ -3,6 +3,7 @@
 import tensorflow as tf
 from neural_blocks import TokenEmbedding, EnhancedEncoder, PositionalEncoding2D, LearnedRotation
 from neural_blocks import MultiHeadAttentionWrapper, ChoiceHypothesisModule, AttentionOverMemory, OutputRefinement
+from tensorflow.keras import layers
 
 NUM_CLASSES = 10
 
@@ -26,13 +27,18 @@ class SageAxiom(tf.keras.Model):
         self.attend_memory = AttentionOverMemory(hidden_dim)
 
         self.projector = tf.keras.layers.Conv2D(hidden_dim, 1)
+        
         self.decoder = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
-            tf.keras.layers.BatchNormalization(),
-            tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
-            tf.keras.layers.BatchNormalization(),
-            tf.keras.layers.Conv2D(NUM_CLASSES, 1)
+            layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
+            layers.BatchNormalization(),
+            layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
+            layers.BatchNormalization(),
+            layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
+            layers.BatchNormalization(),
+            layers.Conv2D(hidden_dim, 1, activation='relu'),
+            layers.Conv2D(NUM_CLASSES, 1)
         ])
+        
         self.refiner = OutputRefinement(hidden_dim, num_classes=NUM_CLASSES)
         self.fallback = tf.keras.layers.Conv2D(NUM_CLASSES, 1)
         self.gate_scale = tf.keras.layers.Dense(hidden_dim, activation='tanh', name="gate_scale")

@@ -11,6 +11,24 @@ from runtime_utils import log
 
 sns.set(style="whitegrid", font_scale=1.2)
 
+from tensorflow.keras.metrics import MeanIoU
+
+class CustomMeanIoU(tf.keras.metrics.Metric):
+    def __init__(self, num_classes=15, name='mean_iou', **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.num_classes = num_classes
+        self.iou = MeanIoU(num_classes=num_classes)
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_pred = tf.argmax(y_pred, axis=-1)
+        self.iou.update_state(y_true, y_pred)
+
+    def result(self):
+        return self.iou.result()
+
+    def reset_states(self):
+        self.iou.reset_states()
+
 
 def plot_history(history, model_name):
     plt.figure(figsize=(12, 6))
@@ -110,3 +128,17 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
     plt.savefig(filename, dpi=200)
     plt.close()
     log(f"[INFO] Debug visual salvo: {filename}")
+
+
+def visualize_attention_map(attention_tensor, model_index, title="Attention Map"):
+    # Assume [batch, height, width, channels]
+    attention_map = tf.reduce_mean(attention_tensor, axis=-1)[0]  # sample one
+    plt.figure(figsize=(6, 6))
+    plt.imshow(attention_map.numpy(), cmap='viridis')
+    plt.title(title)
+    plt.axis('off')
+    plt.tight_layout()
+    filename = f"attention_map_model_{model_index}.png"
+    plt.savefig(filename, dpi=150)
+    plt.close()
+    print(f"[INFO] Attention map salvo: {filename}")

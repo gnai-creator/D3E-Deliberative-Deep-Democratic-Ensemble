@@ -1,4 +1,4 @@
-# main.py
+# main.py (com data augmentation aplicado)
 
 import os
 import warnings
@@ -23,12 +23,15 @@ from metrics_utils import (
     plot_history,
     plot_confusion,
     plot_attempts_stats,
-    plot_prediction_debug
+    plot_prediction_debug,
+    CustomMeanIoU,
+    visualize_attention_map
 )
 from sage_debate_loop import conversational_loop
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from losses import SparseFocalLoss
+from model_improvements import compute_aggressive_class_weights, spatial_augmentations
 
 VOCAB_SIZE = 10
 NUMBER_OF_MODELS = 5
@@ -70,22 +73,23 @@ max_value = tf.reduce_max(tf.maximum(tf.reduce_max(X_all), tf.reduce_max(y_all))
 assert max_value < VOCAB_SIZE, f"[ERRO] Valor fora do vocabulário detectado: {max_value} >= {VOCAB_SIZE}"
 
 X_all_onehot = tf.one_hot(X_all, depth=VOCAB_SIZE)
-
-X_train, X_val, y_train, y_val = train_test_split(
+X_train_np, X_val_np, y_train_np, y_val_np = train_test_split(
     X_all_onehot.numpy(), y_all.numpy(), test_size=0.2, random_state=42
 )
 
-X_train = tf.convert_to_tensor(X_train, dtype=tf.float32)
-X_val = tf.convert_to_tensor(X_val, dtype=tf.float32)
-y_train = tf.convert_to_tensor(y_train, dtype=tf.int32)
-y_val = tf.convert_to_tensor(y_val, dtype=tf.int32)
+# === Aumento de dados (após o split) ===
+aug_X, aug_y = [], []
+for x, y in zip(X_train_np, y_train_np):
+    ax, ay = spatial_augmentations(tf.convert_to_tensor(x), tf.convert_to_tensor(y))
+    aug_X.append(ax)
+    aug_y.append(ay)
+X_train = tf.stack(aug_X)
+y_train = tf.stack(aug_y)
 
-y_train_flat = y_train.numpy().flatten()
-classes = np.unique(y_train_flat)
-class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train_flat)
-class_weight_array = np.ones(VOCAB_SIZE)
-for cls, weight in zip(classes, class_weights):
-    class_weight_array[cls] = weight
+X_val = tf.convert_to_tensor(X_val_np, dtype=tf.float32)
+y_val = tf.convert_to_tensor(y_val_np, dtype=tf.int32)
+
+class_weight_array = compute_aggressive_class_weights(y_train)
 
 models = []
 for i in range(NUMBER_OF_MODELS):
@@ -94,7 +98,7 @@ for i in range(NUMBER_OF_MODELS):
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
         loss=SparseFocalLoss(gamma=2.0, alpha=class_weight_array),
-        metrics=["accuracy"]
+        metrics=["accuracy",CustomMeanIoU(num_classes=VOCAB_SIZE)]
     )
 
     os.makedirs(f"checkpoints/sage_axiom_{i+1}", exist_ok=True)
@@ -125,24 +129,9 @@ for i in range(NUMBER_OF_MODELS):
     pred_output = tf.argmax(pred_logits[0], axis=-1).numpy()
     plot_prediction_debug(sample_input[0], sample_target[0], pred_output, f"val_sample_model_{i+1}")
 
-train_tasks = [(task_id, task) for task_id, task in tasks.items() if "train" in task]
-for task_id, task in train_tasks:
-    example = task["train"][0]
-    input_grid = pad_to_shape(tf.convert_to_tensor(example["input"], dtype=tf.int32))
-    target_grid = pad_to_shape(tf.convert_to_tensor(example["output"], dtype=tf.int32))
-    input_tensor = tf.one_hot(input_grid, depth=VOCAB_SIZE)[None, ...]
-    target_tensor = target_grid[None, ...]
-    for idx, model in enumerate(models):
-        model.fit(
-            input_tensor,
-            target_tensor,
-            batch_size=1,
-            epochs=1,
-            verbose=1
-        )
-        pred_logits = model(input_tensor, training=False)
-        pred_output = tf.argmax(pred_logits[0], axis=-1).numpy()
-        plot_prediction_debug(input_tensor[0], target_tensor[0], pred_output, f"task_{task_id}_model_{idx+1}")
+    # === Visualiza attention map se disponível ===
+    if hasattr(model, 'last_attention_output') and model.last_attention_output is not None:
+        visualize_attention_map(model.last_attention_output, i + 1, title=f"Attention Map - Model {i+1}")
 
 elapsed_train_time = profile_time(train_start, "[INFO] Tempo total de treinamento")
 

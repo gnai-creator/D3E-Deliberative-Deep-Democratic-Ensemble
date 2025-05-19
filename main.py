@@ -1,8 +1,16 @@
 # main.py
 
 import os
+import warnings
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
+
+# Silenciar TensorFlow e warnings
+warnings.filterwarnings('ignore')
+tf.get_logger().setLevel('ERROR')
+for handler in tf.get_logger().handlers:
+    tf.get_logger().removeHandler(handler)
+
 import logging
 import json
 import time
@@ -86,9 +94,9 @@ for i in range(NUMBER_OF_MODELS):
 
     os.makedirs(f"checkpoints/sage_axiom_{i+1}", exist_ok=True)
     callbacks = [
-        ModelCheckpoint(f"checkpoints/sage_axiom_{i+1}/model", monitor="val_loss", save_best_only=True, save_format="tf", verbose=1),
+        ModelCheckpoint(f"checkpoints/sage_axiom_{i+1}/model", monitor="val_loss", save_best_only=True, save_format="tf", verbose=0),
         EarlyStopping(monitor="val_loss", patience=PATIENCE, restore_best_weights=True),
-        ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=1e-5, verbose=1)
+        ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=1e-5, verbose=0)
     ]
 
     history = model.fit(
@@ -129,7 +137,7 @@ for task_id, task in train_tasks:
             target_tensor,
             batch_size=1,
             epochs=1,
-            verbose=0
+            verbose=1
         )
         pred_logits = model(input_tensor, training=False)
         pred_output = tf.argmax(pred_logits[0], axis=-1).numpy()

@@ -30,7 +30,7 @@ from metrics_utils import (
 from sage_debate_loop import conversational_loop
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-from losses import SparseFocalLoss
+from losses import masked_focal_loss_wrapper
 from model_improvements import compute_aggressive_class_weights, spatial_augmentations
 
 VOCAB_SIZE = 10
@@ -97,7 +97,7 @@ for i in range(NUMBER_OF_MODELS):
     model = SageAxiom(hidden_dim=128, use_hard_choice=False)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
-        loss=SparseFocalLoss(gamma=2.0, alpha=class_weight_array),
+        loss=masked_focal_loss_wrapper(gamma=2.0, alpha=class_weight_array),
         metrics=["accuracy",CustomMeanIoU(num_classes=VOCAB_SIZE)]
     )
 

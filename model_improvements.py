@@ -31,3 +31,5 @@ def spatial_augmentations(image_tensor, label_tensor):
     label_tensor = tf.squeeze(label_tensor, axis=-1)
 
     return image_tensor, label_tensor
+
+

@@ -1,28 +1,22 @@
+# main.py
+
 import os
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # Remove tudo exceto erros
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
 import logging
-
-# Silencia logging interno do TensorFlow
-logging.getLogger("tensorflow").setLevel(logging.ERROR)
-
 import json
 import time
 import numpy as np
 from collections import defaultdict, Counter
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-import matplotlib.pyplot as plt
-import seaborn as sns
 from core import SageAxiom
-from metrics_utils import plot_history, plot_attempts_stats, plot_prediction_debug
+from metrics_utils import plot_history, plot_confusion, plot_attempts_stats, plot_prediction_debug
 from sage_dabate_loop import conversational_loop
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from losses import SparseFocalLoss
 
-# Hiperparâmetros
 VOCAB_SIZE = 15
 NUMBER_OF_MODELS = 5
 LEARNING_RATE = 0.001
@@ -34,7 +28,6 @@ EPOCHS = 140
 EXPECTED_HOURS = 2.5
 TIME_LIMIT_MINUTES = EXPECTED_HOURS * 60
 
-# Setup do log
 log_file = f"full_log_{time.strftime('%Y%m%d_%H%M%S')}.txt"
 logging.basicConfig(
     filename=log_file,
@@ -44,7 +37,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Carregamento de dados
 with open("arc-agi_test_challenges.json") as f:
     tasks = json.load(f)
 
@@ -75,7 +67,6 @@ X_val = tf.convert_to_tensor(X_val, dtype=tf.float32)
 y_train = tf.convert_to_tensor(y_train, dtype=tf.int32)
 y_val = tf.convert_to_tensor(y_val, dtype=tf.int32)
 
-# Calcular class weights
 y_train_flat = y_train.numpy().flatten()
 classes = np.unique(y_train_flat)
 class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train_flat)
@@ -83,7 +74,6 @@ class_weight_array = np.ones(VOCAB_SIZE)
 for cls, weight in zip(classes, class_weights):
     class_weight_array[cls] = weight
 
-# Treinamento
 models = []
 for i in range(NUMBER_OF_MODELS):
     log(f"[INFO] Iniciando treino do modelo SageAxiom_{i+1}...")
@@ -118,25 +108,34 @@ for i in range(NUMBER_OF_MODELS):
 
     plot_history(history, i)
     y_val_pred = tf.argmax(model(X_val, training=False), axis=-1).numpy()
-
-    # Confusion matrix normalizada
-    flat_true = y_val.numpy().flatten()
-    flat_pred = y_val_pred.flatten()
-    cm = confusion_matrix(flat_true, flat_pred, labels=range(VOCAB_SIZE), normalize='true')
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=range(VOCAB_SIZE))
-    disp.plot(cmap='Blues')
-    plt.title(f"SageAxiom Confusion Matrix {i+1} (normalized)")
-    plt.savefig(f"confusion_matrix_{i+1}.png")
-    plt.close()
-
-    # Novo gráfico: previsão detalhada
-    plot_prediction_debug(X_val[0], y_val[0], y_val_pred[0], i)
-
+    plot_confusion(y_val.numpy(), y_val_pred, i)
     models.append(model)
 
-profile_time(train_start, "[INFO] Tempo total de treinamento")
+train_tasks = [(task_id, task) for task_id, task in tasks.items() if "train" in task]
+for task_id, task in train_tasks:
+    example = task["train"][0]
+    input_grid = pad_to_shape(tf.convert_to_tensor(example["input"], dtype=tf.int32))
+    target_grid = pad_to_shape(tf.convert_to_tensor(example["output"], dtype=tf.int32))
+    result = conversational_loop(models, example["input"], max_rounds=1)
+    if not result["output"]:
+        continue
+    prediction = tf.convert_to_tensor(result["output"], dtype=tf.int32)
+    input_tensor = tf.one_hot(tf.convert_to_tensor(example["input"], dtype=tf.int32), depth=VOCAB_SIZE)
+    input_tensor = tf.expand_dims(input_tensor, 0)
+    target_tensor = tf.expand_dims(target_grid, 0)
+    for idx, model in enumerate(models):
+        model.fit(
+            input_tensor,
+            target_tensor,
+            batch_size=1,
+            epochs=1,
+            verbose=0
+        )
+        pred_logits = model(input_tensor, training=False)
+        pred_output = tf.argmax(pred_logits[0], axis=-1).numpy()
+        plot_prediction_debug(input_tensor[0], target_tensor[0], pred_output, f"task_{task_id}_model_{idx+1}")
 
-
+elapsed_train_time = profile_time(train_start, "[INFO] Tempo total de treinamento")
 
 # === Avaliação ===
 submission_dict = defaultdict(list)
@@ -229,5 +228,4 @@ log("[INFO] Tasks com mais tentativas:")
 for tid, rounds in most_attempts:
     log(f" - {tid}: {rounds} rodadas")
 
-log(f"[INFO] Log completo salvo em {log_file}")
 log("[INFO] Pipeline encerrado.")

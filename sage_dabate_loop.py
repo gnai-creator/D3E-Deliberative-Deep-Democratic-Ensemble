@@ -1,3 +1,8 @@
+# sage_debate_loop.py
+
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
 import json
 import tensorflow as tf
 from runtime_utils import log, pad_to_shape

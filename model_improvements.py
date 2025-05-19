@@ -20,19 +20,14 @@ def compute_aggressive_class_weights(y_train):
 
 
 def spatial_augmentations(image_tensor, label_tensor):
-    # Rotação 90 graus
     k = tf.random.uniform([], minval=0, maxval=4, dtype=tf.int32)
+
+    # Garante que o rótulo tenha shape (H, W, 1) para rotação
+    label_tensor = tf.expand_dims(label_tensor, axis=-1)
     image_tensor = tf.image.rot90(image_tensor, k)
     label_tensor = tf.image.rot90(label_tensor, k)
 
-    # Flip horizontal
-    if tf.random.uniform([]) > 0.5:
-        image_tensor = tf.image.flip_left_right(image_tensor)
-        label_tensor = tf.image.flip_left_right(label_tensor)
-
-    # Flip vertical
-    if tf.random.uniform([]) > 0.5:
-        image_tensor = tf.image.flip_up_down(image_tensor)
-        label_tensor = tf.image.flip_up_down(label_tensor)
+    # Remove canal extra para voltar ao shape (H, W)
+    label_tensor = tf.squeeze(label_tensor, axis=-1)
 
     return image_tensor, label_tensor

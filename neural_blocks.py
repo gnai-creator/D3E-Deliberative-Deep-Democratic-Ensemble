@@ -1,9 +1,7 @@
-# neural_blocks.py
-
 import tensorflow as tf
 
 class TokenEmbedding(tf.keras.layers.Layer):
-    def __init__(self, vocab_size=10, dim=64):
+    def __init__(self, vocab_size=15, dim=64):
         super().__init__()
         self.embedding = tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=dim, name="token_embedding")
 
@@ -21,11 +19,11 @@ class TokenEmbedding(tf.keras.layers.Layer):
 
 
 class OutputRefinement(tf.keras.layers.Layer):
-    def __init__(self, hidden_dim):
+    def __init__(self, hidden_dim, num_classes=15):
         super().__init__()
         self.conv1 = tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu')
         self.conv2 = tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu')
-        self.output_layer = tf.keras.layers.Conv2D(10, 1)
+        self.output_layer = tf.keras.layers.Conv2D(num_classes, 1)
 
     def call(self, x):
         x = self.conv1(x)

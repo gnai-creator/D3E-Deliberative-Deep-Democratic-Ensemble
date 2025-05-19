@@ -1,10 +1,7 @@
-# core.py
-
 import tensorflow as tf
 from transformers import BertTokenizer, TFBertModel
-from neural_blocks import TokenEmbedding, EnhancedEncoder,PositionalEncoding2D, LearnedRotation
-from neural_blocks import MultiHeadAttentionWrapper, ChoiceHypothesisModule, AttentionOverMemory
-from neural_blocks import OutputRefinement
+from neural_blocks import TokenEmbedding, EnhancedEncoder, PositionalEncoding2D, LearnedRotation
+from neural_blocks import MultiHeadAttentionWrapper, ChoiceHypothesisModule, AttentionOverMemory, OutputRefinement
 
 # Carrega e congela o modelo BERT
 bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -12,13 +9,15 @@ bert_model = TFBertModel.from_pretrained("bert-base-uncased")
 for layer in bert_model.layers:
     layer.trainable = False
 
+NUM_CLASSES = 15
+
 class SageAxiom(tf.keras.Model):
     def __init__(self, hidden_dim=64, use_hard_choice=False):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.use_hard_choice = use_hard_choice
 
-        self.token_embedding = TokenEmbedding(vocab_size=10, dim=hidden_dim)
+        self.token_embedding = TokenEmbedding(vocab_size=NUM_CLASSES, dim=hidden_dim)
         self.early_proj = tf.keras.layers.Conv2D(hidden_dim, 1, activation='relu')
         self.text_proj = tf.keras.layers.Dense(self.hidden_dim)
         self.encoder = EnhancedEncoder(hidden_dim)
@@ -38,10 +37,10 @@ class SageAxiom(tf.keras.Model):
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
             tf.keras.layers.BatchNormalization(),
-            tf.keras.layers.Conv2D(10, 1)
+            tf.keras.layers.Conv2D(NUM_CLASSES, 1)
         ])
-        self.refiner = OutputRefinement(hidden_dim)
-        self.fallback = tf.keras.layers.Conv2D(10, 1)
+        self.refiner = OutputRefinement(hidden_dim, num_classes=NUM_CLASSES)
+        self.fallback = tf.keras.layers.Conv2D(NUM_CLASSES, 1)
         self.gate_scale = tf.keras.layers.Dense(hidden_dim, activation='tanh', name="gate_scale")
 
         self.refine_weight = self.add_weight(
@@ -59,22 +58,21 @@ class SageAxiom(tf.keras.Model):
         cls_token = outputs.last_hidden_state[:, 0, :]
         return tf.cast(self.text_proj(cls_token), tf.float32)
 
-
     def from_prompt_and_grid(self, text_prompt, x_seq):
         text_embed = self.embed_text(text_prompt)
         return self(x_seq, text_embed=text_embed, training=False)
 
     def call(self, x_seq, training=False, text_embed=None):
         if x_seq.shape.rank != 4:
-            raise ValueError("Esperado input de shape [batch, height, width, 10]")
+            raise ValueError(f"Esperado input de shape [batch, height, width, {NUM_CLASSES}]")
 
         batch = x_seq.shape[0] or tf.shape(x_seq)[0]
 
         xt = self.token_embedding(x_seq)
+        xt = tf.ensure_shape(xt, [None, 30, 30, self.hidden_dim])
         xt = self.pos_enc(xt)
-        xt = self.early_proj(xt)         # <--- projeta o canal antes
-        xt = self.rotation(xt)           # <--- agora tem shape definido
-
+        xt = self.early_proj(xt)
+        xt = self.rotation(xt)
         xt = self.encoder(xt, training=training)
         xt = self.norm(xt, training=training)
 
@@ -90,24 +88,26 @@ class SageAxiom(tf.keras.Model):
             memory_tensor = tf.expand_dims(out, axis=0)
             memory_context = self.attend_memory(memory_tensor, state)
         else:
-            memory_context = tf.zeros_like(state)  # ou tf.zeros([batch, self.hidden_dim], dtype=tf.float32)
+            memory_context = tf.zeros_like(state)
 
         out, [state] = self.agent(x_flat, [state])
         memory_tensor = tf.expand_dims(out, axis=0)
         memory_context = tf.cast(memory_context, tf.float32)
         full_context = tf.concat([state, memory_context], axis=-1)
 
-        context = tf.reshape(full_context, [batch, 1, 1, -1])
+        context = tf.reshape(full_context, [batch, 1, 1, 2 * self.hidden_dim])
         context = tf.tile(context, [1, 30, 30, 1])
+        context = tf.ensure_shape(context, [None, 30, 30, 2 * self.hidden_dim])
 
         projected = self.projector(context)
         attended = self.attn(projected)
         chosen = self.chooser(attended, hard=self.use_hard_choice)
 
         last_xt = self.token_embedding(x_seq)
+        last_xt = tf.ensure_shape(last_xt, [None, 30, 30, self.hidden_dim])
         last_xt = self.pos_enc(last_xt)
-        last_xt = self.rotation(last_xt)
         last_xt = self.early_proj(last_xt)
+        last_xt = self.rotation(last_xt)
         last_xt = self.encoder(last_xt, training=training)
 
         channel_gate = self.gate_scale(full_context)

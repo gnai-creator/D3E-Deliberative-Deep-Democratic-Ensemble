@@ -8,6 +8,8 @@ import tensorflow as tf
 from runtime_utils import log, pad_to_shape
 from collections import defaultdict
 
+WINNING_VOTES_COUNT = 3
+
 def conversational_loop(models, input_grid, max_rounds=3):
     """
     Recebe modelos SageAxiom treinados e realiza um debate iterativo.
@@ -51,7 +53,7 @@ def conversational_loop(models, input_grid, max_rounds=3):
                 key = json.dumps(c)
                 votes[key] += 1
             most_common = max(votes.items(), key=lambda x: x[1])
-            return json.loads(most_common[0]), most_common[1] >= 2
+            return json.loads(most_common[0]), most_common[1] >= WINNING_VOTES_COUNT
 
         if valid_responses:
             voted_output, success = count_votes(valid_responses)

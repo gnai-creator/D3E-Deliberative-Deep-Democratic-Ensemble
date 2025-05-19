@@ -4,7 +4,7 @@ import tensorflow as tf
 from neural_blocks import TokenEmbedding, EnhancedEncoder, PositionalEncoding2D, LearnedRotation
 from neural_blocks import MultiHeadAttentionWrapper, ChoiceHypothesisModule, AttentionOverMemory, OutputRefinement
 
-NUM_CLASSES = 15
+NUM_CLASSES = 10
 
 class SageAxiom(tf.keras.Model):
     def __init__(self, hidden_dim=64, use_hard_choice=False):

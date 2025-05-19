@@ -30,7 +30,7 @@ from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from losses import SparseFocalLoss
 
-VOCAB_SIZE = 15
+VOCAB_SIZE = 10
 NUMBER_OF_MODELS = 5
 LEARNING_RATE = 0.001
 PATIENCE = 15

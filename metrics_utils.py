@@ -78,29 +78,35 @@ def plot_attempts_stats(task_times, attempts_per_task):
 
 
 def plot_prediction_debug(input_tensor, expected_output, predicted_output, model_index):
-    # Garante que input_tensor esteja no formato one-hot antes de visualização
+    # Garante que input_tensor esteja no formato one-hot
     if input_tensor.shape[-1] > 15:
         input_tensor = tf.one_hot(tf.argmax(input_tensor, axis=-1), depth=15)
+
     input_img = input_tensor.numpy().argmax(axis=-1)
     expected_img = expected_output.numpy()
     prediction_img = predicted_output
     heatmap = (prediction_img == expected_img).astype(int)
 
-    fig, axs = plt.subplots(1, 4, figsize=(18, 4))
-    axs[0].imshow(input_img, cmap='viridis')
+    fig, axs = plt.subplots(1, 4, figsize=(10, 3), dpi=200)
+
+    axs[0].imshow(input_img, cmap='viridis', interpolation='nearest')
     axs[0].set_title("Input")
-    axs[1].imshow(expected_img, cmap='viridis')
+
+    axs[1].imshow(expected_img, cmap='viridis', interpolation='nearest')
     axs[1].set_title("Expected Output")
-    axs[2].imshow(prediction_img, cmap='viridis')
+
+    axs[2].imshow(prediction_img, cmap='viridis', interpolation='nearest')
     axs[2].set_title("Prediction")
-    axs[3].imshow(heatmap, cmap='gray')
+
+    axs[3].imshow(heatmap, cmap='gray', interpolation='nearest')
     axs[3].set_title("Correctness Heatmap")
+
     for ax in axs:
         ax.axis('off')
 
-    plt.suptitle(f"Prediction Debug - Model {model_index}", fontsize=14)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.suptitle(f"Prediction Debug - Model {model_index}", fontsize=12)
+    plt.tight_layout(rect=[0, 0, 1, 0.9])
     filename = f"prediction_debug_{model_index}.png"
-    plt.savefig(filename, dpi=150)
+    plt.savefig(filename, dpi=200)
     plt.close()
     log(f"[INFO] Debug visual salvo: {filename}")

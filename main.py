@@ -28,8 +28,9 @@ from metrics_utils import (
 from sage_debate_loop import conversational_loop
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-from losses import dynamic_focal_loss_wrapper, AlphaWarmupCallback
-from model_improvements import compute_aggressive_class_weights, spatial_augmentations
+# from losses import dynamic_focal_loss_wrapper, AlphaWarmupCallback
+# from model_improvements import compute_aggressive_class_weights, spatial_augmentations
+from model_improvements import spatial_augmentations
 
 VOCAB_SIZE = 10
 NUMBER_OF_MODELS = 5
@@ -86,18 +87,18 @@ y_train = tf.stack(aug_y)
 X_val = tf.convert_to_tensor(X_val_np, dtype=tf.float32)
 y_val = tf.convert_to_tensor(y_val_np, dtype=tf.int32)
 
-class_weight_array = compute_aggressive_class_weights(y_train, 0.4)
+# class_weight_array = compute_aggressive_class_weights(y_train, 0.4)
 
 models = []
 for i in range(NUMBER_OF_MODELS):
     log(f"[INFO] Iniciando treino do modelo SageAxiom_{i+1}...")
-    alpha_var = tf.Variable(initial_value=class_weight_array, dtype=tf.float32, trainable=False)
-    warmup_cb = AlphaWarmupCallback(
-        alpha_var=alpha_var,
-        initial_alpha=class_weight_array,
-        target_alpha=class_weight_array,
-        warmup_epochs=10
-    )
+    # alpha_var = tf.Variable(initial_value=class_weight_array, dtype=tf.float32, trainable=False)
+    # warmup_cb = AlphaWarmupCallback(
+    #     alpha_var=alpha_var,
+    #     initial_alpha=class_weight_array,
+    #     target_alpha=class_weight_array,
+    #     warmup_epochs=10
+    # )
 
     model = SageAxiom(hidden_dim=128)
     model.compile(

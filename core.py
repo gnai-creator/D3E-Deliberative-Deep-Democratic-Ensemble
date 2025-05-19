@@ -22,7 +22,12 @@ class SageAxiom(tf.keras.Model):
         self.encoder = EnhancedEncoder(hidden_dim)
         self.norm = layers.LayerNormalization()
 
-        self.attn = MultiHeadAttentionWrapper(hidden_dim, heads=8)
+        self.attn = tf.keras.layers.MultiHeadAttention(
+            num_heads=8,
+            key_dim=self.hidden_dim // 8,
+            dropout=0.1  # força o modelo a usar atenção
+        )
+
         self.agent = layers.GRUCell(hidden_dim, dtype="float32")
         self.memory_attention = AttentionOverMemory(hidden_dim)
 
@@ -86,15 +91,23 @@ class SageAxiom(tf.keras.Model):
         context = tf.tile(context, [1, 30, 30, 1])
 
         projected = self.projector(context)
-        attended = self.attn(projected)
+        attended = self.attn(
+            query=projected,
+            value=projected,
+            key=projected,
+            training=training  # <- isso é importante!
+        )
+
+
         self.last_attention_output = attended
 
         # Skip blend, use attended directly
         fused = tf.nn.relu(attended + xt)
 
         for _ in range(2):
-            refined = self.attn(fused)
+            refined = self.attn(query=fused, value=fused, key=fused, training=training)
             fused = tf.nn.relu(fused + refined)
+
 
         logits = self.decoder(fused, training=training)
         refined_logits = self.refiner(logits, training=training)

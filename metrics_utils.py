@@ -13,9 +13,6 @@ from runtime_utils import log
 os.makedirs("images", exist_ok=True)
 sns.set(style="whitegrid", font_scale=1.2)
 
-from tensorflow.keras.metrics import Metric
-
-
 import tensorflow as tf
 
 class MaskedIoU(tf.keras.metrics.Metric):

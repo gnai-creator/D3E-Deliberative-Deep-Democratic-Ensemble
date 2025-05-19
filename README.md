@@ -73,4 +73,4 @@ Sim, não há um `main.py` explícito, mas você é inteligente e conseguirá en
 
 ## 📜 Licença
 
-MIT ou algo assim. Ninguém está monetizando essa tristeza.
+ CC BY-ND 4.0

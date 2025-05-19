@@ -1,13 +1,8 @@
+# core.py
+
 import tensorflow as tf
-from transformers import BertTokenizer, TFBertModel
 from neural_blocks import TokenEmbedding, EnhancedEncoder, PositionalEncoding2D, LearnedRotation
 from neural_blocks import MultiHeadAttentionWrapper, ChoiceHypothesisModule, AttentionOverMemory, OutputRefinement
-
-# Carrega e congela o modelo BERT
-bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-bert_model = TFBertModel.from_pretrained("bert-base-uncased")
-for layer in bert_model.layers:
-    layer.trainable = False
 
 NUM_CLASSES = 15
 
@@ -19,7 +14,6 @@ class SageAxiom(tf.keras.Model):
 
         self.token_embedding = TokenEmbedding(vocab_size=NUM_CLASSES, dim=hidden_dim)
         self.early_proj = tf.keras.layers.Conv2D(hidden_dim, 1, activation='relu')
-        self.text_proj = tf.keras.layers.Dense(self.hidden_dim)
         self.encoder = EnhancedEncoder(hidden_dim)
         self.norm = tf.keras.layers.LayerNormalization()
         self.pos_enc = PositionalEncoding2D(hidden_dim)
@@ -52,17 +46,7 @@ class SageAxiom(tf.keras.Model):
             tf.keras.layers.Dropout(0.3)
         ])
 
-    def embed_text(self, prompt):
-        inputs = bert_tokenizer(prompt, return_tensors="tf", padding=True, truncation=True)
-        outputs = bert_model(**inputs)
-        cls_token = outputs.last_hidden_state[:, 0, :]
-        return tf.cast(self.text_proj(cls_token), tf.float32)
-
-    def from_prompt_and_grid(self, text_prompt, x_seq):
-        text_embed = self.embed_text(text_prompt)
-        return self(x_seq, text_embed=text_embed, training=False)
-
-    def call(self, x_seq, training=False, text_embed=None):
+    def call(self, x_seq, training=False):
         if x_seq.shape.rank != 4:
             raise ValueError(f"Esperado input de shape [batch, height, width, {NUM_CLASSES}]")
 
@@ -81,17 +65,10 @@ class SageAxiom(tf.keras.Model):
         x_flat = tf.cast(x_flat, tf.float32)
 
         state = tf.zeros([batch, self.hidden_dim], dtype=tf.float32)
-
-        if text_embed is not None:
-            x_flat += text_embed
-            out, [state] = self.agent(x_flat, [state])
-            memory_tensor = tf.expand_dims(out, axis=0)
-            memory_context = self.attend_memory(memory_tensor, state)
-        else:
-            memory_context = tf.zeros_like(state)
-
         out, [state] = self.agent(x_flat, [state])
+
         memory_tensor = tf.expand_dims(out, axis=0)
+        memory_context = self.attend_memory(memory_tensor, state)
         memory_context = tf.cast(memory_context, tf.float32)
         full_context = tf.concat([state, memory_context], axis=-1)
 

@@ -5,7 +5,6 @@ import warnings
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
 
-# Silenciar TensorFlow e warnings
 warnings.filterwarnings('ignore')
 tf.get_logger().setLevel('ERROR')
 for handler in tf.get_logger().handlers:
@@ -18,9 +17,15 @@ import numpy as np
 from collections import defaultdict, Counter
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
+
 from core import SageAxiom
-from metrics_utils import plot_history, plot_confusion, plot_attempts_stats, plot_prediction_debug
-from sage_dabate_loop import conversational_loop
+from metrics_utils import (
+    plot_history,
+    plot_confusion,
+    plot_attempts_stats,
+    plot_prediction_debug
+)
+from sage_debate_loop import conversational_loop
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from losses import SparseFocalLoss
@@ -108,18 +113,12 @@ for i in range(NUMBER_OF_MODELS):
         callbacks=callbacks
     )
 
-    dummy_input = tf.random.uniform((1, 30, 30, VOCAB_SIZE))
-    dummy_text_embed = tf.random.uniform((1, 128))
-    _ = model(dummy_input, text_embed=dummy_text_embed)
-
     model.save(f"sage_model_{i+1}", save_format="tf", save_traces=False)
-
     plot_history(history, i)
     y_val_pred = tf.argmax(model(X_val, training=False), axis=-1).numpy()
     plot_confusion(y_val.numpy(), y_val_pred, i)
     models.append(model)
 
-    # Extra: plot debug predictions no final do treino geral
     sample_input = X_val[0:1]
     sample_target = y_val[0:1]
     pred_logits = model(sample_input, training=False)
@@ -131,13 +130,8 @@ for task_id, task in train_tasks:
     example = task["train"][0]
     input_grid = pad_to_shape(tf.convert_to_tensor(example["input"], dtype=tf.int32))
     target_grid = pad_to_shape(tf.convert_to_tensor(example["output"], dtype=tf.int32))
-    result = conversational_loop(models, example["input"], max_rounds=1)
-    if not result["output"]:
-        continue
-    prediction = tf.convert_to_tensor(result["output"], dtype=tf.int32)
-    input_tensor = tf.one_hot(tf.convert_to_tensor(example["input"], dtype=tf.int32), depth=VOCAB_SIZE)
-    input_tensor = tf.expand_dims(input_tensor, 0)
-    target_tensor = tf.expand_dims(target_grid, 0)
+    input_tensor = tf.one_hot(input_grid, depth=VOCAB_SIZE)[None, ...]
+    target_tensor = target_grid[None, ...]
     for idx, model in enumerate(models):
         model.fit(
             input_tensor,
@@ -152,7 +146,7 @@ for task_id, task in train_tasks:
 
 elapsed_train_time = profile_time(train_start, "[INFO] Tempo total de treinamento")
 
-# === Avaliação ===
+# Avaliação
 submission_dict = defaultdict(list)
 correct_tasks = 0
 total_tasks = 0
@@ -160,7 +154,7 @@ task_times = {}
 attempts_per_task = {}
 scores = []
 task_ids = []
-model_vote_stats = {"model_1": 0, "model_2": 0, "model_3": 0}
+model_vote_stats = {f"model_{i+1}": 0 for i in range(NUMBER_OF_MODELS)}
 model_wins = Counter()
 
 os.makedirs("history_prompts", exist_ok=True)
@@ -203,8 +197,8 @@ while time.time() < end_time:
                 md.write("```\n\n")
             md.write(f"**Votos**: {entry['votes']}\n\n")
             md.write(f"**Ganhador**: Modelo {entry['winner']}\n\n")
-            model_vote_stats[f"model_{entry['winner']}"] += 1
-            model_wins[f"model_{entry['winner']}"] += 1
+            model_vote_stats[f"model_{entry['winner']+1}"] += 1
+            model_wins[f"model_{entry['winner']+1}"] += 1
 
     elapsed = profile_time(task_start, f"Task {task_id}")
     task_times[task_id] = elapsed
@@ -217,7 +211,6 @@ while time.time() < end_time:
         log("[INFO] Tempo total atingido. Encerrando avaliação.")
         break
 
-# === Resultados finais ===
 with open("submission.json", "w") as f:
     json.dump(submission_dict, f, ensure_ascii=False)
 
@@ -233,7 +226,6 @@ log(f"[INFO] Projeção final aproximada: {projection:.2f}%")
 log(f"[INFO] Votos por modelo: {dict(model_vote_stats)}")
 log(f"[INFO] Vitórias por modelo: {dict(model_wins)}")
 
-# Top tasks mais demoradas e mais tentativas
 hardest_tasks = sorted(task_times.items(), key=lambda x: x[1], reverse=True)[:5]
 most_attempts = sorted(attempts_per_task.items(), key=lambda x: x[1], reverse=True)[:5]
 log("[INFO] Tasks mais demoradas:")

@@ -11,20 +11,17 @@ from collections import defaultdict
 def conversational_loop(models, input_grid, max_rounds=3):
     """
     Recebe modelos SageAxiom treinados e realiza um debate iterativo.
-    Cada modelo propõe uma saída baseada no grid de entrada e texto.
+    Cada modelo propõe uma saída baseada no grid de entrada.
     O vencedor é determinado por votação majoritária.
     """
-    def generate_response(model, prompt):
+    def generate_response(model):
         x = tf.convert_to_tensor([pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))])
-        x_onehot = tf.one_hot(x, depth=10, dtype=tf.float32)
-        if isinstance(prompt, str):
-            prompt = [prompt]
-        y_pred = model.from_prompt_and_grid(prompt, x_onehot)
-        return tf.argmax(y_pred["logits"][0], axis=-1).numpy().tolist()
+        x_onehot = tf.one_hot(x, depth=15, dtype=tf.float32)
+        y_pred = model(x_onehot, training=False)
+        return tf.argmax(y_pred[0], axis=-1).numpy().tolist()
 
-    prompt_text = f"Input grid:\n{json.dumps(input_grid)}"
     log("[INFO] Iniciando debate com múltiplas rodadas")
-    log(prompt_text)
+    log(json.dumps(input_grid))
 
     all_responses = []
     for round_num in range(1, max_rounds + 1):
@@ -32,7 +29,7 @@ def conversational_loop(models, input_grid, max_rounds=3):
         responses = []
         for i, model in enumerate(models):
             try:
-                output = generate_response(model, prompt_text)
+                output = generate_response(model)
                 log(f"[INFO] Modelo {i+1} produziu uma saída com sucesso na rodada {round_num}")
                 log(f"[DEBUG] Output do modelo {i+1}: {output}")
                 responses.append(output)

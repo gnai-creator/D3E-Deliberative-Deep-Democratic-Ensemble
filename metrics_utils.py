@@ -78,6 +78,9 @@ def plot_attempts_stats(task_times, attempts_per_task):
 
 
 def plot_prediction_debug(input_tensor, expected_output, predicted_output, model_index):
+    # Garante que input_tensor esteja no formato one-hot antes de visualização
+    if input_tensor.shape[-1] > 15:
+        input_tensor = tf.one_hot(tf.argmax(input_tensor, axis=-1), depth=15)
     input_img = input_tensor.numpy().argmax(axis=-1)
     expected_img = expected_output.numpy()
     prediction_img = predicted_output

@@ -24,8 +24,8 @@ from metrics_utils import (
     plot_confusion,
     plot_attempts_stats,
     plot_prediction_debug,
-    CustomMeanIoU,
-    visualize_attention_map
+    visualize_attention_map,
+    MaskedIoU
 )
 from sage_debate_loop import conversational_loop
 from runtime_utils import log, pad_to_shape, profile_time
@@ -98,7 +98,7 @@ for i in range(NUMBER_OF_MODELS):
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
         loss=masked_focal_loss_wrapper(gamma=2.0, alpha=class_weight_array),
-        metrics=["accuracy",CustomMeanIoU(num_classes=VOCAB_SIZE)]
+        metrics=["accuracy",MaskedIoU(num_classes=VOCAB_SIZE, ignore_class=0)]
     )
 
     os.makedirs(f"checkpoints/sage_axiom_{i+1}", exist_ok=True)

@@ -13,23 +13,61 @@ from runtime_utils import log
 os.makedirs("images", exist_ok=True)
 sns.set(style="whitegrid", font_scale=1.2)
 
-from tensorflow.keras.metrics import MeanIoU
+from tensorflow.keras.metrics import Metric
 
-class CustomMeanIoU(tf.keras.metrics.Metric):
-    def __init__(self, num_classes=15, name='mean_iou', **kwargs):
+
+import tensorflow as tf
+
+class MaskedIoU(tf.keras.metrics.Metric):
+    def __init__(self, num_classes, ignore_class=None, name='mean_iou', **kwargs):
         super().__init__(name=name, **kwargs)
         self.num_classes = num_classes
-        self.iou = MeanIoU(num_classes=num_classes)
+        self.ignore_class = ignore_class
+        self.intersections = self.add_weight(
+            name="intersections",
+            shape=(num_classes,),
+            initializer="zeros",
+            dtype=tf.float32
+        )
+        self.unions = self.add_weight(
+            name="unions",
+            shape=(num_classes,),
+            initializer="zeros",
+            dtype=tf.float32
+        )
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        y_pred = tf.argmax(y_pred, axis=-1)
-        self.iou.update_state(y_true, y_pred)
+        y_true = tf.cast(y_true, tf.int32)
+        y_pred = tf.argmax(y_pred, axis=-1) if y_pred.shape.ndims == y_true.shape.ndims + 1 else y_pred
+        y_pred = tf.cast(y_pred, tf.int32)
+
+        for class_id in tf.range(self.num_classes, dtype=tf.int32):
+            def update_class():
+                true_mask = tf.equal(y_true, class_id)
+                pred_mask = tf.equal(y_pred, class_id)
+                intersection = tf.reduce_sum(tf.cast(true_mask & pred_mask, tf.float32))
+                union = tf.reduce_sum(tf.cast(true_mask | pred_mask, tf.float32))
+
+                updated_intersections = tf.tensor_scatter_nd_add(
+                    self.intersections, indices=[[class_id]], updates=[intersection])
+                updated_unions = tf.tensor_scatter_nd_add(
+                    self.unions, indices=[[class_id]], updates=[union])
+
+                self.intersections.assign(updated_intersections)
+                self.unions.assign(updated_unions)
+
+            tf.cond(class_id != self.ignore_class, update_class, lambda: None)
 
     def result(self):
-        return self.iou.result()
+        iou = tf.math.divide_no_nan(self.intersections, self.unions)
+        if self.ignore_class is not None:
+            mask = tf.one_hot(self.ignore_class, self.num_classes, on_value=False, off_value=True, dtype=tf.bool)
+            iou = tf.boolean_mask(iou, mask)
+        return tf.reduce_mean(iou)
 
     def reset_states(self):
-        self.iou.reset_states()
+        self.intersections.assign(tf.zeros_like(self.intersections))
+        self.unions.assign(tf.zeros_like(self.unions))
 
 
 

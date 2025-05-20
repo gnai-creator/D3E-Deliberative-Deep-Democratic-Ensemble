@@ -13,6 +13,7 @@ from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sage_debate_loop import conversational_loop
 from losses import masked_sparse_categorical_loss
+from data_augmentation import augment_data
 
 # Silenciar avisos
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -26,11 +27,11 @@ num_tasks = len(tasks)
 # Configs
 VOCAB_SIZE = 10
 LEARNING_RATE = 0.001
-PATIENCE = 10
+PATIENCE = 3
 RL_PATIENCE = 5
 FACTOR = 0.5
 BATCH_SIZE = 16
-EPOCHS = 140
+EPOCHS = 15
 RESULTS_DIR = "results"
 MODELS_PER_TASK = 5
 HOURS = 4
@@ -71,7 +72,9 @@ while (time.time() - start_time) < MAX_TRAINING_TIME:
         log(f"[INFO] Treinando modelos para task: {task_id}")
         X_train, y_train = [], []
 
-        for pair in task["train"]:
+        train_pairs = augment_data(task["train"]) if len(task["train"]) == 1 else task["train"]
+
+        for pair in train_pairs:
             input_grid = pad_to_shape(tf.convert_to_tensor(pair["input"], dtype=tf.int32))
             output_grid = pad_to_shape(tf.convert_to_tensor(pair["output"], dtype=tf.int32))
             X_train.append(input_grid)

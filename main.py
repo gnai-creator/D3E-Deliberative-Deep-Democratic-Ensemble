@@ -3,6 +3,7 @@ import json
 import time
 import warnings
 import tensorflow as tf
+import numpy as np
 from sklearn.model_selection import train_test_split
 from collections import defaultdict
 
@@ -11,7 +12,7 @@ from metrics_utils import plot_history, plot_confusion, plot_prediction_debug
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sage_debate_loop import conversational_loop
-
+from losses import masked_sparse_categorical_loss
 # Silenciar avisos
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 warnings.filterwarnings('ignore')
@@ -87,10 +88,11 @@ for task_id, task in tasks.items():
             model = tf.keras.models.load_model(model_path, custom_objects={"SageAxiom": SageAxiom})
             log(f"[INFO] Modelo carregado de {model_path}")
         except (IOError, OSError):
-            model = SageAxiom(hidden_dim=128)
+            model = SageAxiom(hidden_dim=32)
             model.compile(
                 optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
-                loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                # loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                loss=masked_sparse_categorical_loss,
                 metrics=["accuracy"]
             )
 
@@ -100,6 +102,8 @@ for task_id, task in tasks.items():
             ]
 
             task_start = time.time()
+            log(f"{y_train_np.shape} - {np.unique(y_train_np)}")
+            log(f"{y_val_np.shape} : {np.unique(y_val_np)}")
             history = model.fit(
                 X_train_np, y_train_np,
                 validation_data=(X_val, y_val),

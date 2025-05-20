@@ -27,10 +27,12 @@ def log(msg):
     logging.info(msg)
 
 
-def pad_to_shape(tensor, target_shape=(30, 30)):
-    pad_height = target_shape[0] - tf.shape(tensor)[0]
-    pad_width = target_shape[1] - tf.shape(tensor)[1]
-    return tf.pad(tensor, paddings=[[0, pad_height], [0, pad_width]], constant_values=0)
+def pad_to_shape(tensor, target_shape=(30, 30), pad_value=-1):
+    height, width = tensor.shape
+    pad_height = target_shape[0] - height
+    pad_width = target_shape[1] - width
+    return tf.pad(tensor, paddings=[[0, pad_height], [0, pad_width]], constant_values=pad_value)
+
 
 def profile_time(start, label):
     elapsed = time.time() - start

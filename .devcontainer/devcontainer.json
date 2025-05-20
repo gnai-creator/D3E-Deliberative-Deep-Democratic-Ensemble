@@ -17,5 +17,32 @@
   "containerEnv": {
     "TF_USE_LEGACY_KERAS": "False"
   },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-toolsai.jupyter",
+        "ms-toolsai.jupyter-keymap",
+        "ms-toolsai.jupyter-renderers"
+      ],
+      "settings": {
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "bash",
+            "args": ["-l"]
+          }
+        },
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "python.languageServer": "Pylance",
+        "python.analysis.typeCheckingMode": "basic",
+        "python.autoComplete.extraPaths": [
+          "/workspace/src"
+        ],
+        "jupyter.jupyterServerType": "local"
+      }
+    }
+  },
+  "forwardPorts": [8888, 6006],
   "remoteUser": "vscode"
 }

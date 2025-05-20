@@ -14,4 +14,3 @@ RUN apt update && \
     ln -s /usr/bin/python3 /usr/local/bin/python && \
     python -m pip install --upgrade pip setuptools wheel && \
     python -m pip install scikit-learn pandas matplotlib seaborn numpy transformers tensorflow==2.15.0 tf_keras && \
-    python -m pip install llama-cpp-python --extra-index-url=https://abetlen.github.io/llama-cpp-python/cu118

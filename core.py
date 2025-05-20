@@ -38,7 +38,7 @@ class SageAxiom(tf.keras.Model):
         self.memory_attention = AttentionOverMemory(hidden_dim)
 
         self.projector = tf.keras.Sequential([
-            layers.Conv2D(hidden_dim, 1, input_shape=(30, 30, 2 * hidden_dim), activation='relu'),
+            layers.Conv2D(hidden_dim, 1, activation='relu'),
             layers.ReLU()
         ])
 
@@ -63,7 +63,6 @@ class SageAxiom(tf.keras.Model):
     def get_config(self):
         config = super().get_config()
         config.update({
-            # adicione os parâmetros que deseja serializar
             "hidden_dim": self.hidden_dim,
         })
         return config
@@ -76,7 +75,7 @@ class SageAxiom(tf.keras.Model):
         if x_seq.shape.rank != 4:
             raise ValueError(f"Esperado input de shape [batch, height, width, {NUM_CLASSES}]")
 
-        batch = tf.shape(x_seq)[0]
+        batch_size = tf.shape(x_seq)[0]
 
         x = self.pos_enc(x_seq)
         x = self.early_proj(x)
@@ -95,24 +94,31 @@ class SageAxiom(tf.keras.Model):
         memory_context = tf.cast(memory_context, tf.float32)
         full_context = tf.concat([state, memory_context], axis=-1)
 
-        context = tf.reshape(full_context, [batch, 1, 1, 2 * self.hidden_dim])
+        context = tf.reshape(full_context, [batch_size, 1, 1, 2 * self.hidden_dim])
         context = tf.tile(context, [1, 30, 30, 1])
 
         projected = self.projector(context)
-        attended = self.attn(
-            query=projected,
-            value=projected,
-            key=projected,
+
+        # Prepare attention input: flatten spatial dimensions
+        attn_input = tf.reshape(projected, [batch_size, -1, self.hidden_dim])
+        attn_output = self.attn(
+            query=attn_input,
+            value=attn_input,
+            key=attn_input,
             training=training
         )
-        attended = self.attn_norm(attended + projected)
+        attn_output = self.attn_norm(attn_output + attn_input)
 
-        fused = tf.nn.relu(attended + x_encoded)
+        # Reshape attention output back to spatial format
+        attn_output_reshaped = tf.reshape(attn_output, [batch_size, 30, 30, self.hidden_dim])
+        fused = tf.nn.relu(attn_output_reshaped + x_encoded)
 
         for _ in range(2):
-            refined = self.attn(query=fused, value=fused, key=fused, training=training)
-            refined = self.attn_norm(refined + fused)
-            fused = tf.nn.relu(fused + refined)
+            fused_flat = tf.reshape(fused, [batch_size, -1, self.hidden_dim])
+            refined = self.attn(query=fused_flat, value=fused_flat, key=fused_flat, training=training)
+            refined = self.attn_norm(refined + fused_flat)
+            refined_reshaped = tf.reshape(refined, [batch_size, 30, 30, self.hidden_dim])
+            fused = tf.nn.relu(fused + refined_reshaped)
 
         logits = self.decoder(fused, training=training)
         final_logits = self.refiner(logits, training=training)

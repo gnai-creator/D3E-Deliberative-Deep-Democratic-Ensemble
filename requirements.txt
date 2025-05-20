@@ -4,5 +4,5 @@ matplotlib
 llama-cpp-python
 seaborn
 numpy
-tensorflow==2.15.0
+tensorflow-gpu==2.15.0
 tensorflow-addons==0.23.0

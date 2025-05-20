@@ -13,4 +13,4 @@ RUN apt update && \
     curl -sS https://bootstrap.pypa.io/get-pip.py | python3 && \
     ln -s /usr/bin/python3 /usr/local/bin/python && \
     python -m pip install --upgrade pip setuptools wheel && \
-    python -m pip install scikit-learn pandas matplotlib seaborn numpy transformers tensorflow==2.15.0 tf_keras && \
+    python -m pip install scikit-learn pandas matplotlib seaborn numpy transformers tensorflow==2.15.0 tf_keras

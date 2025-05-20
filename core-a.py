@@ -38,7 +38,7 @@ class SageAxiomA(tf.keras.Model):
         self.memory_attention = AttentionOverMemory(hidden_dim)
 
         self.projector = tf.keras.Sequential([
-            layers.Conv2D(hidden_dim, 1, input_shape=(30, 30, hidden_dim), activation='relu'),
+            layers.Conv2D(hidden_dim, 1, input_shape=(30, 30, 2 * hidden_dim), activation='relu'),
             layers.ReLU()
         ])
 

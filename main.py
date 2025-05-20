@@ -14,6 +14,7 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sage_debate_loop import conversational_loop
 from losses import masked_sparse_categorical_loss
 from data_augmentation import augment_data
+from retrain_scheduler import retrain_low_score_tasks
 
 # Silenciar avisos
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -21,21 +22,25 @@ warnings.filterwarnings('ignore')
 tf.get_logger().setLevel('ERROR')
 
 with open("arc-agi_test_challenges.json") as f:
-    tasks = json.load(f)
-num_tasks = len(tasks)
+    all_tasks = json.load(f)
 
 # Configs
 VOCAB_SIZE = 10
 LEARNING_RATE = 0.001
-PATIENCE = 10
+PATIENCE = 15
 RL_PATIENCE = 5
-RL_LEAARNING_RATE = 1e-4
-FACTOR = 0.5
-BATCH_SIZE = 16
-EPOCHS = 40
+RL_LEARNING_RATE = 3.3e-3
+FACTOR = 1.5
+BATCH_SIZE = 32
+EPOCHS = 140
 RESULTS_DIR = "results"
 MODELS_PER_TASK = 5
 HOURS = 4
+N_TASKS = 5  # Para testes mais rápidos
+
+# Selecionar apenas N_TASKS
+tasks = dict(list(all_tasks.items())[:N_TASKS])
+num_tasks = len(tasks)
 MAX_TRAINING_TIME = HOURS * 60 * 60
 MAX_EVAL_TIME = HOURS * 2 * 60 * 60 / (num_tasks * MODELS_PER_TASK)
 
@@ -102,7 +107,13 @@ while (time.time() - start_time) < MAX_TRAINING_TIME:
         for i in range(MODELS_PER_TASK):
             model_path = os.path.join(model_dir, f"model_{i}")
             try:
-                model = tf.keras.models.load_model(model_path, custom_objects={"SageAxiom": SageAxiom})
+                model = tf.keras.models.load_model(
+                    model_path,
+                    custom_objects={
+                        "SageAxiom": SageAxiom,
+                        "masked_sparse_categorical_loss": masked_sparse_categorical_loss,
+                    }
+                )
                 log(f"[INFO] Modelo carregado de {model_path}")
             except (IOError, OSError):
                 model = SageAxiom(hidden_dim=128)
@@ -114,7 +125,7 @@ while (time.time() - start_time) < MAX_TRAINING_TIME:
 
                 callbacks = [
                     EarlyStopping(monitor="val_loss", patience=PATIENCE, restore_best_weights=True),
-                    ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=RL_LEAARNING_RATE),
+                    ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=RL_LEARNING_RATE)
                 ]
 
                 task_start = time.time()
@@ -126,7 +137,7 @@ while (time.time() - start_time) < MAX_TRAINING_TIME:
                     verbose=1,
                     callbacks=callbacks
                 )
-                model.save(model_path, save_format="tf", save_traces=False)
+                model.save(model_path, save_format="tf", save_traces=True)
                 elapsed = profile_time(task_start, f"[TEMPO] Task {task_id} - Modelo {i}")
                 task_times[task_id] += elapsed
 
@@ -147,17 +158,15 @@ while (time.time() - start_time) < MAX_TRAINING_TIME:
         evaluation_logs[task_id] = result
         log(f"[INFO] Task {task_id} avaliada com sucesso")
 
-# Avaliação final com dados de teste
+# Avaliação final
 log("[INFO] Avaliação final")
 eval_start_time = time.time()
 while (time.time() - eval_start_time) < EVAL_TIME_LIMIT:
     for task_id, task in tasks.items():
         if not task.get("test"):
-            log(f"[INFO] Task {task_id} não possui dados de teste.")
             continue
 
         if evaluation_logs.get(f"test_{task_id}", {}).get("success") is True:
-            log(f"[INFO] Task {task_id} já avaliada com sucesso anteriormente. Pulando.")
             continue
 
         models = []
@@ -168,10 +177,9 @@ while (time.time() - eval_start_time) < EVAL_TIME_LIMIT:
                 model = tf.keras.models.load_model(model_path, custom_objects={"SageAxiom": SageAxiom})
                 models.append(model)
             except (IOError, OSError):
-                log(f"[ERRO] Modelo model_{i} não encontrado para task {task_id}.")
+                continue
 
         if not models:
-            log(f"[ERRO] Nenhum modelo carregado para task {task_id}. Pulando.")
             continue
 
         input_grid = task["test"][0]["input"]
@@ -193,3 +201,7 @@ media = sum(scores.values()) / len(scores)
 log(f"[RESULTADO FINAL] Média de acurácia por task: {media:.3f}")
 total_train_time = sum(task_times.values())
 log(f"[TEMPO TOTAL] Treinamento em {total_train_time:.2f} segundos")
+
+# Chamada do retrain para melhorar os piores scores
+top_to_retrain = sorted_scores[-2:]
+retrain_low_score_tasks(top_to_retrain, tasks, evaluation_logs, RESULTS_DIR, VOCAB_SIZE)

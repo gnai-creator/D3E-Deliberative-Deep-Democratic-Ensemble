@@ -80,10 +80,10 @@ def augment_data(pair):
     # Flip
     augmented.append(flip_pair(pair))
     # Color permutation
-    augmented.append(color_permutation_pair(pair))
-    # Translations (small shifts)
-    for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-        augmented.append(translate_pair(pair, dx, dy))
-    # Random crop & resize
-    augmented.append(random_crop_resize_pair(pair))
+    # augmented.append(color_permutation_pair(pair))
+    # # Translations (small shifts)
+    # for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+    #     augmented.append(translate_pair(pair, dx, dy))
+    # # Random crop & resize
+    # augmented.append(random_crop_resize_pair(pair))
     return augmented

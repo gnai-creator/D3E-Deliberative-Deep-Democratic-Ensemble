@@ -24,8 +24,8 @@ class SageAxiom(tf.keras.Model):
         self.norm = layers.LayerNormalization()
 
         self.attn = tf.keras.layers.MultiHeadAttention(
-            num_heads=8,
-            key_dim=self.hidden_dim // 8,
+            num_heads=4,
+            key_dim=self.hidden_dim // 4,
             dropout=0.2
         )
         self.attn_norm = layers.LayerNormalization()
@@ -54,21 +54,11 @@ class SageAxiom(tf.keras.Model):
         ])
 
         self.refiner = OutputRefinement(hidden_dim, num_classes=NUM_CLASSES)
-        self.fallback = layers.Conv2D(NUM_CLASSES, 1)
-
-        self.refine_weight = self.add_weight(
-            name="refine_weight",
-            shape=(),
-            initializer=tf.keras.initializers.Constant(0.5),
-            trainable=False
-        )
 
         self.pool_dense1 = tf.keras.Sequential([
             layers.Dense(hidden_dim, activation='relu'),
             layers.Dropout(0.3)
         ])
-
-        self.attention_scores = []
 
     def call(self, x_seq, training=False):
         if x_seq.shape.rank != 4:
@@ -86,7 +76,7 @@ class SageAxiom(tf.keras.Model):
         x_flat = self.pool_dense1(x_flat)
         x_flat = tf.cast(x_flat, tf.float32)
 
-        state = self.agent_dense(x_flat)  # Replace GRUCell with dense processing
+        state = self.agent_dense(x_flat)
 
         memory_tensor = tf.expand_dims(state, axis=0)
         memory_context = self.memory_attention(memory_tensor, state)
@@ -97,15 +87,13 @@ class SageAxiom(tf.keras.Model):
         context = tf.tile(context, [1, 30, 30, 1])
 
         projected = self.projector(context)
-        attended, attn_scores = self.attn(
+        attended = self.attn(
             query=projected,
             value=projected,
             key=projected,
-            training=training,
-            return_attention_scores=True
+            training=training
         )
         attended = self.attn_norm(attended + projected)
-        self.attention_scores.append(attn_scores)
 
         fused = tf.nn.relu(attended + x_encoded)
 
@@ -115,10 +103,6 @@ class SageAxiom(tf.keras.Model):
             fused = tf.nn.relu(fused + refined)
 
         logits = self.decoder(fused, training=training)
-        refined_logits = self.refiner(logits, training=training)
-        conservative_logits = self.fallback(fused)
-
-        w = tf.clip_by_value(self.refine_weight, 0.0, 1.0)
-        final_logits = w * refined_logits + (1.0 - w) * conservative_logits
+        final_logits = self.refiner(logits, training=training)
 
         return final_logits

@@ -1,3 +1,4 @@
+# main.py
 import os
 import warnings
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -21,16 +22,11 @@ from metrics_utils import (
     plot_confusion,
     plot_attempts_stats,
     plot_prediction_debug,
-    visualize_attention_map,
-    MaskedIoU,
     plot_logit_distribution
 )
 from sage_debate_loop import conversational_loop
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-# from losses import dynamic_focal_loss_wrapper, AlphaWarmupCallback
-# from model_improvements import compute_aggressive_class_weights, spatial_augmentations
-from model_improvements import spatial_augmentations
 
 VOCAB_SIZE = 10
 NUMBER_OF_MODELS = 5
@@ -76,14 +72,6 @@ X_train_np, X_val_np, y_train_np, y_val_np = train_test_split(
     X_all_onehot.numpy(), y_all.numpy(), test_size=0.2, random_state=42
 )
 
-aug_X, aug_y = [], []
-for x, y in zip(X_train_np, y_train_np):
-    ax, ay = spatial_augmentations(tf.convert_to_tensor(x), tf.convert_to_tensor(y))
-    aug_X.append(ax)
-    aug_y.append(ay)
-X_train = tf.stack(aug_X)
-y_train = tf.stack(aug_y)
-
 X_val = tf.convert_to_tensor(X_val_np, dtype=tf.float32)
 y_val = tf.convert_to_tensor(y_val_np, dtype=tf.int32)
 
@@ -92,19 +80,11 @@ y_val = tf.convert_to_tensor(y_val_np, dtype=tf.int32)
 models = []
 for i in range(NUMBER_OF_MODELS):
     log(f"[INFO] Iniciando treino do modelo SageAxiom_{i+1}...")
-    # alpha_var = tf.Variable(initial_value=class_weight_array, dtype=tf.float32, trainable=False)
-    # warmup_cb = AlphaWarmupCallback(
-    #     alpha_var=alpha_var,
-    #     initial_alpha=class_weight_array,
-    #     target_alpha=class_weight_array,
-    #     warmup_epochs=10
-    # )
+
 
     model = SageAxiom(hidden_dim=128)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
-        # loss=dynamic_focal_loss_wrapper(alpha_var=alpha_var, gamma=0.25),
-        # metrics=["accuracy", MaskedIoU(num_classes=VOCAB_SIZE, ignore_class=0)]
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=["accuracy"]
     )
@@ -114,11 +94,10 @@ for i in range(NUMBER_OF_MODELS):
         ModelCheckpoint(f"checkpoints/sage_axiom_{i+1}/model", monitor="val_loss", save_best_only=True, save_format="tf", verbose=0),
         EarlyStopping(monitor="val_loss", patience=PATIENCE, restore_best_weights=True),
         ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=1e-5, verbose=0),
-        # warmup_cb
     ]
 
     history = model.fit(
-        X_train, y_train,
+        X_train_np, y_train_np,
         validation_data=(X_val, y_val),
         epochs=EPOCHS,
         batch_size=BATCH_SIZE,
@@ -138,9 +117,7 @@ for i in range(NUMBER_OF_MODELS):
     plot_logit_distribution(pred_logits[0], model_index=i)
     pred_output = tf.argmax(pred_logits[0], axis=-1).numpy()
     plot_prediction_debug(sample_input[0], sample_target[0], pred_output, f"val_sample_model_{i}")
-
-    if hasattr(model, 'attention_scores') and model.attention_scores:
-        visualize_attention_map(model.attention_scores[-1], i, title=f"Attention Map - Model {i}")
+    
 
 
 elapsed_train_time = profile_time(train_start, "[INFO] Tempo total de treinamento")

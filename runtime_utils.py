@@ -22,7 +22,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-
 def log(msg):
     print(msg)
     logging.info(msg)

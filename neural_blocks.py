@@ -1,7 +1,8 @@
 # neural_blocks.py
 
 import tensorflow as tf
-
+import tensorflow_addons as tfa
+import math
 NUM_CLASSES = 10
 
 class OutputRefinement(tf.keras.layers.Layer):
@@ -37,14 +38,19 @@ class FractalBlock(tf.keras.layers.Layer):
         super().__init__()
         self.conv3 = tf.keras.layers.Conv2D(dim // 2, 3, padding='same', activation='relu')
         self.conv5 = tf.keras.layers.Conv2D(dim // 2, 5, padding='same', activation='relu')
-        self.merge = tf.keras.layers.Conv2D(dim, 1, padding='same', activation='relu')
-        self.skip = tf.keras.layers.Conv2D(dim, 1, padding='same')
+        self.merge = tf.keras.layers.Conv2D(dim, 1, padding='same', activation=None)
+        self.norm = tf.keras.layers.LayerNormalization()
+        self.dropout = tf.keras.layers.Dropout(0.2)
+        self.residual = tf.keras.layers.Conv2D(dim, 1, padding='same')
 
     def call(self, x):
         x3 = self.conv3(x)
         x5 = self.conv5(x)
         merged = tf.concat([x3, x5], axis=-1)
-        return tf.nn.relu(self.merge(merged) + self.skip(x))
+        merged = self.merge(merged)
+        out = self.norm(merged)
+        out = self.dropout(out)
+        return tf.nn.relu(out + self.residual(x))
 
 
 class EnhancedEncoder(tf.keras.layers.Layer):
@@ -59,17 +65,22 @@ class EnhancedEncoder(tf.keras.layers.Layer):
         return self.out(x)
 
 
+
+
 class LearnedRotation(tf.keras.layers.Layer):
     def __init__(self, dim):
         super().__init__()
-        self.selector = tf.keras.layers.Dense(4, activation='softmax')
+        self.angle_layer = tf.keras.layers.Dense(1, activation='tanh')
 
     def call(self, x):
         b = tf.shape(x)[0]
-        weights = tf.reshape(self.selector(tf.reduce_mean(x, axis=[1, 2])), [b, 4, 1, 1, 1])
-        rotations = tf.stack([tf.image.rot90(x, k=i) for i in range(4)], axis=1)
-        return tf.reduce_sum(rotations * weights, axis=1)
-    
+        mean_features = tf.reduce_mean(x, axis=[1, 2])  # [B, C]
+        angle_normed = self.angle_layer(mean_features)  # [-1, 1] range
+        angle = tf.squeeze(angle_normed, axis=-1) * math.pi  # [-π, π] radians
+        angle = tf.clip_by_value(angle, -math.pi, math.pi)
+        rotated = tfa.image.rotate(x, angles=angle, interpolation='BILINEAR')
+        return rotated
+
 
 class AttentionOverMemory(tf.keras.layers.Layer):
     def __init__(self, dim):

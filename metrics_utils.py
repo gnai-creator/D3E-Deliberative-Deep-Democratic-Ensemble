@@ -170,8 +170,14 @@ def visualize_attention_map(attn_tensor, model_index, title="Attention Output"):
             mean_heads = tf.reduce_mean(attn_tensor, axis=1)
             # Média sobre as posições de query: [1, key_len]
             mean_attention = tf.reduce_mean(mean_heads, axis=1)
-            # Reshape para 30x30 se possível
-            spatial_size = int(np.sqrt(mean_attention.shape[-1]))
+
+            key_len = mean_attention.shape[-1]
+            spatial_size = int(np.sqrt(key_len))
+
+            if spatial_size * spatial_size != key_len:
+                log(f"[WARN] key_len={key_len} não é quadrado perfeito, não dá pra virar (h, w)")
+                return
+
             attn_map = tf.reshape(mean_attention[0], (spatial_size, spatial_size)).numpy()
         else:
             log(f"[WARN] Attention tensor com shape inesperado: {attn_tensor.shape}")

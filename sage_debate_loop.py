@@ -1,4 +1,4 @@
-# sage_debate_loop.py
+# sage_debate_loop.py (nova parte do conversational_loop)
 
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -6,16 +6,11 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import json
 import tensorflow as tf
 from runtime_utils import log, pad_to_shape
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 WINNING_VOTES_COUNT = 3
 
 def conversational_loop(models, input_grid, max_rounds=3):
-    """
-    Recebe modelos SageAxiom treinados e realiza um debate iterativo.
-    Cada modelo propõe uma saída baseada no grid de entrada.
-    O vencedor é determinado por votação majoritária.
-    """
     def generate_response(model):
         x = tf.convert_to_tensor([pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))])
         x_onehot = tf.one_hot(x, depth=15, dtype=tf.float32)
@@ -26,21 +21,21 @@ def conversational_loop(models, input_grid, max_rounds=3):
     log(json.dumps(input_grid))
 
     all_responses = []
+    model_output_counter = Counter()
+    model_similarity_scores = defaultdict(list)
+
     for round_num in range(1, max_rounds + 1):
         log(f"[INFO] Rodada {round_num} iniciada")
         responses = []
         for i, model in enumerate(models):
             try:
                 output = generate_response(model)
-                log(f"[INFO] Modelo {i+1} produziu uma saída com sucesso na rodada {round_num}")
-                log(f"[DEBUG] Output do modelo {i+1}: {output}")
+                model_output_counter[f"model_{i+1}"] += 1
                 responses.append(output)
             except Exception as e:
-                log(f"[ERRO] Modelo {i+1} falhou ao gerar resposta: {e}")
                 responses.append(None)
 
         valid_responses = [r for r in responses if r is not None]
-
         round_entry = {
             "candidates": responses,
             "votes": [],
@@ -59,27 +54,38 @@ def conversational_loop(models, input_grid, max_rounds=3):
             voted_output, success = count_votes(valid_responses)
             round_entry["votes"] = [json.dumps(r) for r in valid_responses]
 
+            winner_idx = None
             if success:
                 winner_idx = responses.index(voted_output)
                 round_entry["winner"] = winner_idx
-                all_responses.append(round_entry)
 
+            # Score de similaridade por round
+            for i, output in enumerate(responses):
+                if output is not None:
+                    similarity = sum([int(output == other) for other in responses if other is not None and other != output])
+                    model_similarity_scores[f"model_{i+1}"].append(similarity)
+
+            all_responses.append(round_entry)
+
+            if success:
                 log(f"[INFO] Votação encerrada com maioria na rodada {round_num}")
-                log(f"[RESULTADO] Output vencedor: {voted_output}")
                 return {
                     "output": voted_output,
                     "success": True,
                     "rounds": round_num,
-                    "history": all_responses
+                    "history": all_responses,
+                    "output_diversity": dict(model_output_counter),
+                    "similarity_scores": {k: sum(v)/len(v) for k,v in model_similarity_scores.items() if v}
                 }
 
         all_responses.append(round_entry)
-        log("[WARN] Nenhuma resposta válida recebida nesta rodada")
 
     log("[INFO] Debate finalizado sem maioria")
     return {
         "output": None,
         "success": False,
         "rounds": max_rounds,
-        "history": all_responses
+        "history": all_responses,
+        "output_diversity": dict(model_output_counter),
+        "similarity_scores": {k: sum(v)/len(v) for k,v in model_similarity_scores.items() if v}
     }

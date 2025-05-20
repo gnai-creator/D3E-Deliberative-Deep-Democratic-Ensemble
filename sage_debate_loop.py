@@ -1,5 +1,3 @@
-# sage_debate_loop.py 
-
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
@@ -9,7 +7,6 @@ from runtime_utils import log, pad_to_shape
 from collections import defaultdict, Counter
 
 WINNING_VOTES_COUNT = 3
-
 
 def conversational_loop(models, input_grid, max_rounds=100):
     def generate_response(model):
@@ -50,25 +47,16 @@ def conversational_loop(models, input_grid, max_rounds=100):
                 key = json.dumps(c)
                 votes[key] += 1
             most_common = max(votes.items(), key=lambda x: x[1])
-            return json.loads(most_common[0]), most_common[1] >= WINNING_VOTES_COUNT
+            return json.loads(most_common[0]), most_common[1], votes
 
         if valid_responses:
-            voted_output, success = count_votes(valid_responses)
+            voted_output, count, all_votes = count_votes(valid_responses)
             round_entry["votes"] = [json.dumps(r) for r in valid_responses]
 
-            winner_idx = None
-            if success:
+            if count >= WINNING_VOTES_COUNT:
                 winner_idx = responses.index(voted_output)
                 round_entry["winner"] = winner_idx
-
-            for i, output in enumerate(responses):
-                if output is not None:
-                    similarity = sum([int(output == other) for other in responses if other is not None and other != output])
-                    model_similarity_scores[f"model_{i+1}"].append(similarity)
-
-            all_responses.append(round_entry)
-
-            if success:
+                all_responses.append(round_entry)
                 log(f"[INFO] Votação encerrada com maioria na rodada {round_num}")
                 return {
                     "output": voted_output,
@@ -79,12 +67,19 @@ def conversational_loop(models, input_grid, max_rounds=100):
                     "similarity_scores": {k: sum(v)/len(v) for k,v in model_similarity_scores.items() if v}
                 }
 
+            for i, output in enumerate(responses):
+                if output is not None:
+                    similarity = sum([int(output == other) for other in responses if other is not None and other != output])
+                    model_similarity_scores[f"model_{i+1}"].append(similarity)
+
         all_responses.append(round_entry)
         round_num += 1
 
-    log("[INFO] Debate finalizado sem maioria")
+    # Fallback: retorna o mais votado mesmo sem maioria
+    fallback_output, _, _ = count_votes([r for r in responses if r is not None])
+    log("[INFO] Debate finalizado sem maioria. Retornando resultado mais votado por fallback.")
     return {
-        "output": None,
+        "output": fallback_output,
         "success": False,
         "rounds": max_rounds,
         "history": all_responses,

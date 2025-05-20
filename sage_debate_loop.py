@@ -76,13 +76,26 @@ def conversational_loop(models, input_grid, max_rounds=100):
         round_num += 1
 
     # Fallback: retorna o mais votado mesmo sem maioria
-    fallback_output, _, _ = count_votes([r for r in responses if r is not None])
-    log("[INFO] Debate finalizado sem maioria. Retornando resultado mais votado por fallback.")
-    return {
-        "output": fallback_output,
-        "success": False,
-        "rounds": max_rounds,
-        "history": all_responses,
-        "output_diversity": dict(model_output_counter),
-        "similarity_scores": {k: sum(v)/len(v) for k,v in model_similarity_scores.items() if v}
-    }
+    final_valid = [r for r in responses if r is not None]
+    if final_valid:
+        fallback_output, _, _ = count_votes(final_valid)
+        log("[INFO] Debate finalizado sem maioria. Retornando resultado mais votado por fallback.")
+        return {
+            "output": fallback_output,
+            "success": False,
+            "rounds": max_rounds,
+            "history": all_responses,
+            "output_diversity": dict(model_output_counter),
+            "similarity_scores": {k: sum(v)/len(v) for k,v in model_similarity_scores.items() if v}
+        }
+    else:
+        log("[WARN] Nenhum modelo conseguiu gerar resposta. Debate finalizado sem saída.")
+        return {
+            "output": None,
+            "success": False,
+            "rounds": max_rounds,
+            "history": all_responses,
+            "output_diversity": dict(model_output_counter),
+            "similarity_scores": {}
+        }
+ 

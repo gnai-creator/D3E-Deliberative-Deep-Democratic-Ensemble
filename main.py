@@ -27,11 +27,12 @@ num_tasks = len(tasks)
 # Configs
 VOCAB_SIZE = 10
 LEARNING_RATE = 0.001
-PATIENCE = 3
+PATIENCE = 10
 RL_PATIENCE = 5
+RL_LEAARNING_RATE = 1e-4
 FACTOR = 0.5
 BATCH_SIZE = 16
-EPOCHS = 15
+EPOCHS = 40
 RESULTS_DIR = "results"
 MODELS_PER_TASK = 5
 HOURS = 4
@@ -72,7 +73,7 @@ while (time.time() - start_time) < MAX_TRAINING_TIME:
         log(f"[INFO] Treinando modelos para task: {task_id}")
         X_train, y_train = [], []
 
-        train_pairs = augment_data(task["train"]) if len(task["train"]) == 1 else task["train"]
+        train_pairs = [aug for pair in task["train"] for aug in augment_data(pair)]
 
         for pair in train_pairs:
             input_grid = pad_to_shape(tf.convert_to_tensor(pair["input"], dtype=tf.int32))
@@ -104,7 +105,7 @@ while (time.time() - start_time) < MAX_TRAINING_TIME:
                 model = tf.keras.models.load_model(model_path, custom_objects={"SageAxiom": SageAxiom})
                 log(f"[INFO] Modelo carregado de {model_path}")
             except (IOError, OSError):
-                model = SageAxiom(hidden_dim=32)
+                model = SageAxiom(hidden_dim=128)
                 model.compile(
                     optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
                     loss=masked_sparse_categorical_loss,
@@ -113,7 +114,7 @@ while (time.time() - start_time) < MAX_TRAINING_TIME:
 
                 callbacks = [
                     EarlyStopping(monitor="val_loss", patience=PATIENCE, restore_best_weights=True),
-                    ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=1e-5)
+                    ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=RL_LEAARNING_RATE),
                 ]
 
                 task_start = time.time()

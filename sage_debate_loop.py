@@ -1,4 +1,4 @@
-# sage_debate_loop.py (nova parte do conversational_loop)
+# sage_debate_loop.py 
 
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -10,7 +10,8 @@ from collections import defaultdict, Counter
 
 WINNING_VOTES_COUNT = 3
 
-def conversational_loop(models, input_grid, max_rounds=3):
+
+def conversational_loop(models, input_grid, max_rounds=100):
     def generate_response(model):
         x = tf.convert_to_tensor([pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))])
         x_onehot = tf.one_hot(x, depth=15, dtype=tf.float32)
@@ -24,7 +25,8 @@ def conversational_loop(models, input_grid, max_rounds=3):
     model_output_counter = Counter()
     model_similarity_scores = defaultdict(list)
 
-    for round_num in range(1, max_rounds + 1):
+    round_num = 1
+    while round_num <= max_rounds:
         log(f"[INFO] Rodada {round_num} iniciada")
         responses = []
         for i, model in enumerate(models):
@@ -32,7 +34,7 @@ def conversational_loop(models, input_grid, max_rounds=3):
                 output = generate_response(model)
                 model_output_counter[f"model_{i+1}"] += 1
                 responses.append(output)
-            except Exception as e:
+            except Exception:
                 responses.append(None)
 
         valid_responses = [r for r in responses if r is not None]
@@ -59,7 +61,6 @@ def conversational_loop(models, input_grid, max_rounds=3):
                 winner_idx = responses.index(voted_output)
                 round_entry["winner"] = winner_idx
 
-            # Score de similaridade por round
             for i, output in enumerate(responses):
                 if output is not None:
                     similarity = sum([int(output == other) for other in responses if other is not None and other != output])
@@ -79,6 +80,7 @@ def conversational_loop(models, input_grid, max_rounds=3):
                 }
 
         all_responses.append(round_entry)
+        round_num += 1
 
     log("[INFO] Debate finalizado sem maioria")
     return {

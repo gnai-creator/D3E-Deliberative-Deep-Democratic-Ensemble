@@ -1,71 +1,99 @@
-# ARC-2025 Solver com SageAxiom
+# Sage Debate Loop: ARC Challenge Task-Specific Debate Framework
 
-Este repositório apresenta uma solução baseada em redes neurais para os desafios propostos pelo dataset **Abstraction and Reasoning Corpus (ARC)**. O sistema utiliza uma arquitetura chamada `SageAxiom`, que integra componentes de visão computacional, embeddings de linguagem com BERT e um mecanismo de consenso entre múltiplas instâncias de modelos.
+## Visão Geral
 
-## Estrutura do Projeto
+Este projeto implementa um pipeline completo de aprendizado de máquina para resolver desafios do tipo ARC (Abstraction and Reasoning Corpus) usando múltiplos modelos por tarefa. O diferencial é o uso de um "loop de debate" entre modelos para decidir uma resposta por maioria, inspirado em dinâmicas de consenso coletivo.
 
-```
-├── core.py                # Definição do modelo SageAxiom
-├── metrics_utils.py       # Módulos de análise de performance
-├── runtime_utils.py       # Funções auxiliares para logging e padronização
-├── sage_dabate_loop.py    # Lógica de inferência baseada em votação entre modelos
-├── neural_blocks.py       # Componentes modulares reutilizáveis da arquitetura neural
-├── arc-agi_test_challenges.json  # Conjunto de tarefas (externo)
-└── main.py                # Script principal de execução
-```
+## Componentes Principais
 
-## Funcionamento Geral
+### 1. `core.py`
 
-1. **Preparação dos Dados:** As tarefas do ARC são convertidas em tensores com tamanho fixo (30x30) usando codificação one-hot para 10 classes.
-2. **Treinamento:** São treinadas múltiplas instâncias (padrão: 5) do modelo `SageAxiom` com técnicas de regularização e checkpoints automáticos.
-3. **Arquitetura:** O `SageAxiom` combina:
+Contém a definição da arquitetura principal `SageAxiom`, uma rede convolucional com atenção e rotação aprendida.
 
-   * Embeddings textuais com BERT (camadas congeladas)
-   * Codificação posicional 2D e atenção multi-cabeça
-   * GRU para memória de curto prazo
-   * Mecanismo de escolha baseada em hipóteses
-   * Módulo de refinamento da saída
-4. **Inferência:** A saída para cada tarefa é gerada através de um ciclo de votação entre modelos, promovendo maior robustez ao sistema.
-5. **Avaliação:** Métricas, matrizes de confusão e estatísticas de execução são geradas ao final da avaliação.
+### 2. `metrics_utils.py`
+
+Funções auxiliares para plotar histórico de treino, matriz de confusão, distribuição de logits e mapas de atenção.
+
+### 3. `runtime_utils.py`
+
+Funções utilitárias para logging, profile de tempo e padding de entradas.
+
+### 4. `sage_debate_loop.py`
+
+Loop de debate entre modelos. Em cada rodada, os modelos geram saídas e o sistema tenta atingir uma maioria de votos. Se houver maioria, a saída é considerada aceita.
+
+### 5. `main.py`
+
+Pipeline principal que:
+
+* Carrega os desafios ARC
+* Treina `MODELS_PER_TASK` modelos por tarefa
+* Salva e recarrega os modelos por task
+* Realiza inferência com debate
+* Avalia desempenho em dados de validação e teste
+
+## Como Funciona o Debate
+
+* Cada task tem seus próprios modelos.
+* Cada modelo gera uma saída para o mesmo input.
+* Se 3 ou mais modelos concordarem (por padrão `WINNING_VOTES_COUNT = 3`), essa saída vence.
+* Caso contrário, o loop prossegue até `max_rounds`.
 
 ## Requisitos
 
-* Python 3.8+
-* TensorFlow 2.x
-* scikit-learn
-* matplotlib
-* seaborn
-* transformers (HuggingFace)
-* GPU recomendada para treinamento
+* Python 3.9+
+* TensorFlow 2.11+
+* `tensorflow-addons`
+* `scikit-learn`
+* `matplotlib`, `seaborn`
 
-Instalação de dependências:
+## Como Rodar
+
+1. Instale as dependências:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Execução
+2. Coloque seu arquivo de desafios no formato:
 
-Para treinar e avaliar o modelo:
+```json
+{
+  "task_id": {
+    "train": [{"input": [[...]], "output": [[...]]}],
+    "test": [{"input": [[...]]}]
+  },
+  ...
+}
+```
+
+3. Execute:
 
 ```bash
 python main.py
 ```
 
-## Resultados
+4. Saídas salvas em:
 
-* Gráficos de histórico de treinamento: `training_plot_*.png`
-* Matrizes de confusão por modelo: `confusion_matrix_*.png`
-* Relatórios por classe: `per_class_metrics.json`
-* Estatísticas por tarefa: `task_performance_overview.png`
+* `results/` (modelos por task)
+* `submission.json` (respostas inferidas)
+* `evaluation_logs.json` (histórico do debate)
+* `images/` (gráficos de histórico e avaliação)
 
-## Saídas Geradas
+## Configurações
 
-* `checkpoints/`: Pesos intermediários salvos durante treinamento
-* `sage_model_{i}/`: Modelos finais treinados
-* `history_prompts/`: Registro detalhado de cada rodada de inferência
-* `submission.json`: Resultado final para as tarefas
+Modificáveis no `main.py`:
 
-## Licença
+* `MODELS_PER_TASK`
+* `EPOCHS`, `BATCH_SIZE`, `PATIENCE`
+* `HOURS`, `MAX_TRAINING_TIME`, `MAX_EVAL_TIME`
 
-Este projeto está licenciado sob os termos da licença **CC BY-ND 4.0**.
+## Contribuições Futuras
+
+* Suporte a retreinamento incremental
+* Salvar tempos por task (`task_times.json`)
+* Visualização em tempo real do consenso
+
+---
+
+Se você chegou até aqui, parabéns. Este projeto está mais disciplinado que muita gente em grupo de TCC.

@@ -1,30 +1,42 @@
-FROM tensorflow/tensorflow:2.15.0-gpu
+FROM nvidia/cuda:12.3.2-devel-ubuntu22.04
 
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Atualiza e instala dependências básicas
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    git \
+    curl \
+    wget \
+    ca-certificates \
+    build-essential \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configura usuário vscode, porque o VSCode acha que é especial
 ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=1000
 
-# Instala dependências básicas do sistema
-RUN apt update && \
-    apt install -y sudo git build-essential cmake curl wget \
-    python3-dev python3-distutils libopenblas-dev ninja-build && \
-    # Criação do usuário
-    groupadd --gid $USER_GID $USERNAME && \
-    useradd --uid $USER_UID --gid $USER_GID -m $USERNAME && \
-    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
-    # Atualiza o pip e cria o symlink do python
-    curl -sS https://bootstrap.pypa.io/get-pip.py | python3 && \
-    ln -s /usr/bin/python3 /usr/local/bin/python && \
-    python -m pip install --upgrade pip setuptools wheel
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/nopasswd \
+    && chmod 0440 /etc/sudoers.d/nopasswd
 
-# Copia requirements.txt antes de mudar de usuário (evita permissão boba)
+# Cria symlink (só pra manter a paz com o VSCode)
+RUN ln -s /usr/bin/python3 /usr/local/bin/python
+
+# Atualiza pip e instala libs básicas
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# Copia requirements.txt e instala dependências do projeto
 COPY requirements.txt /tmp/requirements.txt
-
-# Instala os pacotes Python
-RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt
+RUN python3 -m pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Define diretório de trabalho
 WORKDIR /workspace
 
-# Muda pro usuário padrão (menos perigoso que root)
+# Muda pro usuário civilizado
 USER $USERNAME

@@ -3,6 +3,6 @@ pandas
 matplotlib
 seaborn
 numpy
-tensorflow==2.13.0
+tensorflow==2.15.0
 tensorflow-addons==0.21.0
 llama-cpp-python

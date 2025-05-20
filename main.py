@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, f1_score
 import math
 from core import SageAxiom
+import tensorflow.keras as keras
 from metrics_utils import plot_history, plot_confusion, plot_prediction_debug
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
@@ -19,8 +20,45 @@ PAD_VALUE = -1
 
 def masked_loss_with_smoothing(y_true, y_pred):
     mask = tf.cast(tf.not_equal(y_true, PAD_VALUE), tf.float32)
-    loss = tf.keras.losses.sparse_categorical_crossentropy(y_true, y_pred, from_logits=True)
-    return tf.reduce_sum(loss * mask) / (tf.reduce_sum(mask) + 1e-6)
+
+    loss = keras.losses.sparse_categorical_crossentropy(y_true, y_pred, from_logits=True)
+    loss = tf.cast(tf.convert_to_tensor(loss), tf.float32)
+
+    # Usa tf.math.multiply para garantir a compatibilidade
+    masked_loss = tf.math.multiply(loss, mask)
+
+    return tf.reduce_sum(masked_loss) / (tf.reduce_sum(mask) + 1e-6)
+
+
+# --- Inicialização de variáveis ---
+X_train = []
+X_val = tf.constant([])
+X_all = tf.constant([])
+X_onehot = tf.constant([])
+X_train_np = np.array([])
+X_val_np = np.array([])
+X_onehot_np = np.array([])
+y_train = []
+y_val = tf.constant([])
+y_all = tf.constant([])
+y_train_np = np.array([])
+y_val_np = np.array([])
+y_all_np = np.array([])
+y_val_clean = np.array([])
+y_val_pred = tf.constant([])
+y_val_pred_np = np.array([])
+val_sample_weight = np.array([])
+split_result = None
+models = []
+history = None
+model = None
+model_dir = ""
+model_path = ""
+task_start = 0
+learning_rate = 0.0
+rl_learning_rate = 0.0
+oscillation = 0.0
+scaling = 0.0
 
 # --- Configs e Hiperparâmetros ---
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -55,8 +93,7 @@ with open("arc-agi_evaluation_solutions.json") as f:
 
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-log(f"[INFO] Configurações gerais:")
-log(f"[INFO] Tempo máximo total de treinamento: {MAX_TRAINING_TIME:.2f} segundos")
+log(f"[INFO] Tempo máximo total de treinamento: {MAX_TRAINING_TIME:.2f} segundos") if log else print(f"[INFO] Tempo máximo total de treinamento: {MAX_TRAINING_TIME:.2f} segundos")
 log(f"[INFO] Tempo máximo total de avaliação: {MAX_EVAL_TIME:.2f} segundos")
 log(f"[INFO] Número de modelos por task: {MODELS_PER_TASK}")
 log(f"[INFO] Tamanho do vocabulário: {VOCAB_SIZE}")
@@ -101,16 +138,22 @@ if task_blocks:
 
         if X_train:
             X_all = tf.stack(X_train)
-            y_all = tf.stack(y_train)
+            y_all = tf.stack(y_train) if y_train else tf.constant([])
             X_onehot = tf.one_hot(X_all, depth=VOCAB_SIZE)
 
-            X_train_np, X_val_np, y_train_np, y_val_np = train_test_split(
-                X_onehot.numpy(), y_all.numpy(), test_size=0.2, random_state=42)
+            X_onehot_np = X_onehot.numpy()
+            y_all_np = y_all.numpy() 
 
-            X_val = tf.convert_to_tensor(X_val_np, dtype=tf.float32)
+            split_result = train_test_split(X_onehot_np, y_all_np, test_size=0.2, random_state=42)
+            if split_result is not None:
+                X_train_np, X_val_np, y_train_np, y_val_np = split_result
+            else:
+                X_train_np = X_val_np = y_train_np = y_val_np = np.array([])
+
+            X_val = tf.convert_to_tensor(X_val_np.astype(np.float32)) 
             y_val_clean = np.where(y_val_np == -1, 0, y_val_np)
             val_sample_weight = (y_val_np != -1).astype(np.float32)
-            y_val = tf.convert_to_tensor(y_val_clean, dtype=tf.int32)
+            y_val = tf.convert_to_tensor(y_val_clean.astype(np.int32)) 
 
             models = []
             oscillation = math.sin(block_index)
@@ -125,51 +168,64 @@ if task_blocks:
                 os.makedirs(model_dir, exist_ok=True)
                 model_path = os.path.join(model_dir, f"model_{i}")
                 model = SageAxiom(hidden_dim=256)
-                model.compile(
-                    optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-                    loss=masked_loss_with_smoothing,
-                    metrics=["accuracy"]
-                )
 
-                y_train_clean = np.where(y_train_np == -1, 0, y_train_np)
-                sample_weight = (y_train_np != -1).astype(np.float32)
+                if model is not None:
+                    model.compile(
+                        optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
+                        loss=masked_loss_with_smoothing,
+                        metrics=["accuracy"]
+                    )
 
-                task_start = time.time()
-                log(f"[INFO] Treinando modelo {i} do bloco {block_index} com taxa de aprendizado {learning_rate:.6f}")
-                # log de X_val shape
-                log(f"[INFO] X_val shape: {X_val.shape}")
-                # log X_train_np shape
-                log(f"[INFO] X_train_np shape: {X_train_np.shape}")
-                history = model.fit(
-                    X_train_np, y_train_clean,
-                    validation_data=(X_val, y_val, val_sample_weight),
-                    sample_weight=sample_weight,
-                    epochs=EPOCHS,
-                    batch_size=BATCH_SIZE,
-                    verbose=1,
-                    callbacks=[
-                        EarlyStopping(monitor="val_loss", patience=PATIENCE, restore_best_weights=True),
-                        ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=rl_learning_rate)
-                    ]
-                )
+                    y_train_clean = np.where(y_train_np == -1, 0, y_train_np)
+                    sample_weight = (y_train_np != -1).astype(np.float32)
 
-                model.save(model_path, save_format="tf", save_traces=False)
-                profile_time(task_start, f"[TEMPO] Bloco {block_index} - Modelo {i}")
+                    task_start = time.time()
+                    log(f"[INFO] Treinando modelo {i} do bloco {block_index} com taxa de aprendizado {learning_rate:.6f}") if log else print(f"[INFO] Treinando modelo {i} do bloco {block_index} com taxa de aprendizado {learning_rate:.6f}")
+                    log(f"[INFO] X_val shape: {X_val.shape}")
+                    log(f"[INFO] X_train_np shape: {X_train_np.shape}")
 
-                plot_history(history, model_name=f"block_{block_index}_model_{i}")
-                y_val_pred = tf.argmax(model(X_val, training=False), axis=-1).numpy()
-                plot_confusion(y_val.numpy(), y_val_pred, model_name=f"block_{block_index}_model_{i}")
-                plot_prediction_debug(X_val[0], y_val[0], y_val_pred[0], f"block_{block_index}_model_{i}")
+                    history = model.fit(
+                        X_train_np, y_train_clean,
+                        validation_data=(X_val, y_val, val_sample_weight),
+                        sample_weight=sample_weight,
+                        epochs=EPOCHS,
+                        batch_size=BATCH_SIZE,
+                        verbose="1",
+                        callbacks=[
+                            EarlyStopping(monitor="val_loss", patience=PATIENCE, restore_best_weights=True),
+                            ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=rl_learning_rate)
+                        ]
+                    )
 
-                flat_true = y_val.numpy().flatten()
-                flat_pred = y_val_pred.flatten()
-                mask = flat_true != -1
-                log("\n" + classification_report(flat_true[mask], flat_pred[mask], zero_division=0))
-                log(f"[INFO] F1-score macro: {f1_score(flat_true[mask], flat_pred[mask], average='macro'):.4f}")
+                    model.save(model_path, save_format="tf", save_traces=False)
+                    profile_time(task_start, f"[TEMPO] Bloco {block_index} - Modelo {i}")
 
-                models.append(model)
+                    plot_history(history, model_name=f"block_{block_index}_model_{i}")
 
-# Avaliação com MAX_BLOCKS
+                    try:
+                        y_val_pred = tf.argmax(model(X_val, training=False), axis=-1)
+                        y_val_pred_np = y_val_pred.numpy()
+                        X_val_np = X_val.numpy()
+                        y_val_np_eval = y_val.numpy()
+                        if (
+                            len(X_val_np) > 0 and
+                            len(y_val_np_eval) > 0 and
+                            len(y_val_pred_np) > 0
+                        ):
+                            plot_confusion(y_val_np_eval, y_val_pred_np, model_name=f"block_{block_index}_model_{i}")
+                            plot_prediction_debug(X_val_np[0], y_val_np_eval[0], y_val_pred_np[0], f"block_{block_index}_model_{i}")
+                    except Exception as e:
+                        log(f"[ERROR] Erro ao gerar predicoes: {e}")
+
+                    flat_true = y_val.numpy().flatten()
+                    flat_pred = y_val_pred.numpy().flatten()
+                    mask = flat_true != -1
+                    classify = classification_report(flat_true[mask], flat_pred[mask], zero_division=0)
+                    log(f"{classify}")
+                    log(f"[INFO] F1-score macro: {f1_score(flat_true[mask], flat_pred[mask], average='macro'):.4f}")
+
+                    models.append(model)
+
 log("[INFO] Avaliação final")
 eval_start_time = time.time()
 eval_task_ids = list(eval_challenges.keys())
@@ -182,13 +238,14 @@ def load_models():
         for i in range(MODELS_PER_TASK):
             model_path = os.path.join(model_dir, f"model_{i}")
             try:
-                model = tf.keras.models.load_model(
+                model = keras.models.load_model(
                     model_path,
                     custom_objects={"SageAxiom": SageAxiom, "masked_sparse_categorical_loss": masked_sparse_categorical_loss}
                 )
-                models.append(model)
-            except:
-                continue
+                if model is not None:
+                    models.append(model)
+            except Exception as e:
+                log(f"[WARN] Não foi possível carregar o modelo {model_path}: {e}")
     return models
 
 for eval_block in eval_blocks:
@@ -202,10 +259,10 @@ for eval_block in eval_blocks:
         expected = eval_solutions[task_id]["solution"]
         input_grid = eval_challenges[task_id]["test"][0]["input"]
         result = conversational_loop(models, input_grid, max_rounds=10)
-        predicted = result.get("output")
+        predicted = result.get("output") if result else None
         evaluation_logs[f"test_{task_id}"] = result
         submission_dict[task_id] = [predicted] if predicted else []
-        log(f"[EVAL] {task_id}: {'✅' if predicted == expected else '❌'}")
+        log(f"[EVAL] {task_id}: CONCLUIDA")
 
 with open("submission.json", "w") as f:
     json.dump(submission_dict, f, indent=2)

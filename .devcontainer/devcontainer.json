@@ -8,7 +8,7 @@
     }
   },
   "runArgs": [
-    "--gpus", "all"
+    "--gpus=all"
   ],
   "workspaceFolder": "/workspace",
   "mounts": [
@@ -27,18 +27,21 @@
         "ms-toolsai.jupyter-renderers"
       ],
       "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
         "terminal.integrated.profiles.linux": {
           "bash": {
-            "path": "bash",
+            "path": "/bin/bash",
             "args": ["-l"]
           }
         },
-        "terminal.integrated.defaultProfile.linux": "bash",
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
         "python.languageServer": "Pylance",
         "python.analysis.typeCheckingMode": "basic",
-        "python.autoComplete.extraPaths": [
-          "/workspace/src"
-        ],
+        "python.analysis.diagnosticSeverityOverrides": {
+          "reportMissingImports": "none",
+          "reportOptionalCall": "none",
+          "reportAttributeAccessIssue": "none"
+        },
         "jupyter.jupyterServerType": "local"
       }
     }

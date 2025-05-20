@@ -60,6 +60,18 @@ class SageAxiom(tf.keras.Model):
             layers.Dropout(0.3)
         ])
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            # adicione os parâmetros que deseja serializar
+            "hidden_dim": self.hidden_dim,
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
     def call(self, x_seq, training=False):
         if x_seq.shape.rank != 4:
             raise ValueError(f"Esperado input de shape [batch, height, width, {NUM_CLASSES}]")

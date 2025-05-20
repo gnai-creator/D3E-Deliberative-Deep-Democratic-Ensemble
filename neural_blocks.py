@@ -1,13 +1,13 @@
-# neural_blocks.py
-
 import tensorflow as tf
 import tensorflow_addons as tfa
 import math
 NUM_CLASSES = 10
 
 class OutputRefinement(tf.keras.layers.Layer):
-    def __init__(self, hidden_dim, num_classes=NUM_CLASSES):
-        super().__init__()
+    def __init__(self, hidden_dim, num_classes=NUM_CLASSES, **kwargs):
+        super().__init__(**kwargs)
+        self.hidden_dim = hidden_dim
+        self.num_classes = num_classes
         self.conv = tf.keras.Sequential([
             tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
             tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
@@ -17,10 +17,20 @@ class OutputRefinement(tf.keras.layers.Layer):
     def call(self, x):
         return self.conv(x)
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({"hidden_dim": self.hidden_dim, "num_classes": self.num_classes})
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
 
 class PositionalEncoding2D(tf.keras.layers.Layer):
-    def __init__(self, channels):
-        super().__init__()
+    def __init__(self, channels, **kwargs):
+        super().__init__(**kwargs)
+        self.channels = channels
         self.dense = tf.keras.layers.Dense(channels, activation='tanh')
 
     def call(self, x):
@@ -32,10 +42,20 @@ class PositionalEncoding2D(tf.keras.layers.Layer):
         encoded = self.dense(pos)
         return tf.concat([x, encoded], axis=-1)
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({"channels": self.channels})
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
 
 class FractalBlock(tf.keras.layers.Layer):
-    def __init__(self, dim):
-        super().__init__()
+    def __init__(self, dim, **kwargs):
+        super().__init__(**kwargs)
+        self.dim = dim
         self.conv3 = tf.keras.layers.Conv2D(dim // 2, 3, padding='same', activation='relu')
         self.conv5 = tf.keras.layers.Conv2D(dim // 2, 5, padding='same', activation='relu')
         self.merge = tf.keras.layers.Conv2D(dim, 1, padding='same', activation=None)
@@ -52,10 +72,20 @@ class FractalBlock(tf.keras.layers.Layer):
         out = self.dropout(out)
         return tf.nn.relu(out + self.residual(x))
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({"dim": self.dim})
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
 
 class EnhancedEncoder(tf.keras.layers.Layer):
-    def __init__(self, dim):
-        super().__init__()
+    def __init__(self, dim, **kwargs):
+        super().__init__(**kwargs)
+        self.dim = dim
         self.blocks = [FractalBlock(dim) for _ in range(4)]
         self.out = tf.keras.layers.Conv2D(dim, 3, padding='same', activation='relu')
 
@@ -64,12 +94,20 @@ class EnhancedEncoder(tf.keras.layers.Layer):
             x = block(x)
         return self.out(x)
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({"dim": self.dim})
+        return config
 
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
 
 
 class LearnedRotation(tf.keras.layers.Layer):
-    def __init__(self, dim):
-        super().__init__()
+    def __init__(self, dim, **kwargs):
+        super().__init__(**kwargs)
+        self.dim = dim
         self.angle_layer = tf.keras.layers.Dense(1, activation='tanh')
 
     def call(self, x):
@@ -81,10 +119,20 @@ class LearnedRotation(tf.keras.layers.Layer):
         rotated = tfa.image.rotate(x, angles=angle, interpolation='BILINEAR')
         return rotated
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({"dim": self.dim})
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
 
 class AttentionOverMemory(tf.keras.layers.Layer):
-    def __init__(self, dim):
-        super().__init__()
+    def __init__(self, dim, **kwargs):
+        super().__init__(**kwargs)
+        self.dim = dim
         self.q_proj = tf.keras.layers.Dense(dim)
         self.k_proj = tf.keras.layers.Dense(dim)
         self.v_proj = tf.keras.layers.Dense(dim)
@@ -96,3 +144,12 @@ class AttentionOverMemory(tf.keras.layers.Layer):
         scores = tf.reduce_sum(q * k, axis=-1, keepdims=True)
         attn = tf.nn.softmax(scores, axis=1)
         return tf.reduce_sum(attn * v, axis=1)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"dim": self.dim})
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)

@@ -84,7 +84,7 @@ for task_id, task in tasks.items():
     for i in range(MODELS_PER_TASK):
         model_path = os.path.join(model_dir, f"model_{i}")
         try:
-            model = tf.keras.models.load_model(model_path)
+            model = tf.keras.models.load_model(model_path, custom_objects={"SageAxiom": SageAxiom})
             log(f"[INFO] Modelo carregado de {model_path}")
         except (IOError, OSError):
             model = SageAxiom(hidden_dim=128)

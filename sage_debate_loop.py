@@ -6,7 +6,7 @@ import tensorflow as tf
 from runtime_utils import log, pad_to_shape
 from collections import defaultdict, Counter
 
-WINNING_VOTES_COUNT = 3
+WINNING_VOTES_COUNT = 2
 
 def conversational_loop(models, input_grid, max_rounds=100):
     def generate_response(model):

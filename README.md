@@ -1,99 +1,55 @@
-# Sage Debate Loop: ARC Challenge Task-Specific Debate Framework
+# ARC Challenge - Paradigms for Model Training and Debate Evaluation
 
-## Visão Geral
+This project explores two distinct paradigms for training and deploying models to solve tasks in the Abstraction and Reasoning Corpus (ARC) challenge. Both approaches use ensembles of neural models evaluated through a debate-style consensus mechanism, but they differ in their architectural diversity and specialization strategies.
 
-Este projeto implementa um pipeline completo de aprendizado de máquina para resolver desafios do tipo ARC (Abstraction and Reasoning Corpus) usando múltiplos modelos por tarefa. O diferencial é o uso de um "loop de debate" entre modelos para decidir uma resposta por maioria, inspirado em dinâmicas de consenso coletivo.
+## Overview
 
-## Componentes Principais
+The objective is to learn from limited examples in a grid-based transformation problem space. Models are trained on few-shot input/output pairs and are later evaluated through multiple rounds of "discussion" (inference voting) to determine consensus outputs.
 
-### 1. `core.py`
+## Paradigm 1: Homogeneous Ensemble (Clone Strategy)
 
-Contém a definição da arquitetura principal `SageAxiom`, uma rede convolucional com atenção e rotação aprendida.
+In this setup, all models in the ensemble are instances of the same architecture (e.g., `SageAxiom`). This promotes redundancy, stability, and consistency during training and evaluation. Each model is trained independently with slight variation due to stochastic optimization.
 
-### 2. `metrics_utils.py`
+### Pros:
 
-Funções auxiliares para plotar histórico de treino, matriz de confusão, distribuição de logits e mapas de atenção.
+* Consistent behavior across models.
+* Easier to interpret performance discrepancies.
+* Uniform model complexity and resource use.
 
-### 3. `runtime_utils.py`
+### Cons:
 
-Funções utilitárias para logging, profile de tempo e padding de entradas.
+* Limited architectural diversity may result in blind spots.
+* All models may share the same biases and weaknesses.
 
-### 4. `sage_debate_loop.py`
+## Paradigm 2: Heterogeneous Ensemble (Specialized Strategy)
 
-Loop de debate entre modelos. Em cada rodada, os modelos geram saídas e o sistema tenta atingir uma maioria de votos. Se houver maioria, a saída é considerada aceita.
+In this approach, the ensemble is composed of models with different architectural specializations:
 
-### 5. `main.py`
+* A complete model (`SageAxiom`) with all modules enabled.
+* Variants with subsets of the architecture (e.g., reduced attention, no memory, simplified refinement).
 
-Pipeline principal que:
+This fosters complementary strengths, enabling more diverse problem-solving heuristics within the ensemble.
 
-* Carrega os desafios ARC
-* Treina `MODELS_PER_TASK` modelos por tarefa
-* Salva e recarrega os modelos por task
-* Realiza inferência com debate
-* Avalia desempenho em dados de validação e teste
+### Pros:
 
-## Como Funciona o Debate
+* Architectural diversity can lead to better generalization.
+* Voting debates benefit from different reasoning styles.
+* Improves robustness to task variation.
 
-* Cada task tem seus próprios modelos.
-* Cada modelo gera uma saída para o mesmo input.
-* Se 3 ou mais modelos concordarem (por padrão `WINNING_VOTES_COUNT = 3`), essa saída vence.
-* Caso contrário, o loop prossegue até `max_rounds`.
+### Cons:
 
-## Requisitos
+* More complex to manage and debug.
+* Performance attribution becomes harder.
+* Requires careful balancing to avoid model redundancy or overfitting.
 
-* Python 3.9+
-* TensorFlow 2.11+
-* `tensorflow-addons`
-* `scikit-learn`
-* `matplotlib`, `seaborn`
+## Debate Mechanism
 
-## Como Rodar
+Each task is evaluated by running the trained ensemble in a multi-round voting system. The output selected is the one that receives a majority consensus among models. If no consensus is reached, fallback strategies can be employed.
 
-1. Instale as dependências:
+## Results & Tracking
 
-```bash
-pip install -r requirements.txt
-```
+Each training and evaluation session logs individual model outputs, round history, vote counts, and similarity scores. This enables meta-analysis of ensemble behavior and helps identify the most influential or accurate models within a debate cycle.
 
-2. Coloque seu arquivo de desafios no formato:
+## Conclusion
 
-```json
-{
-  "task_id": {
-    "train": [{"input": [[...]], "output": [[...]]}],
-    "test": [{"input": [[...]]}]
-  },
-  ...
-}
-```
-
-3. Execute:
-
-```bash
-python main.py
-```
-
-4. Saídas salvas em:
-
-* `results/` (modelos por task)
-* `submission.json` (respostas inferidas)
-* `evaluation_logs.json` (histórico do debate)
-* `images/` (gráficos de histórico e avaliação)
-
-## Configurações
-
-Modificáveis no `main.py`:
-
-* `MODELS_PER_TASK`
-* `EPOCHS`, `BATCH_SIZE`, `PATIENCE`
-* `HOURS`, `MAX_TRAINING_TIME`, `MAX_EVAL_TIME`
-
-## Contribuições Futuras
-
-* Suporte a retreinamento incremental
-* Salvar tempos por task (`task_times.json`)
-* Visualização em tempo real do consenso
-
----
-
-Se você chegou até aqui, parabéns. Este projeto está mais disciplinado que muita gente em grupo de TCC.
+Both paradigms offer distinct benefits. The homogeneous strategy ensures consistency and controlled testing conditions, while the heterogeneous strategy enhances diversity and coverage. Together, they provide a comprehensive framework to explore automated reasoning under few-shot learning constraints.

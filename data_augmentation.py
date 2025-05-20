@@ -13,7 +13,7 @@ def flip_pair(pair):
         "output": np.fliplr(pair["output"]).tolist()
     }
 
-def augment_pair(pair):
+def augment_data(pair):
     augmented = [pair]
     for k in range(1, 4):  # 90, 180, 270 degrees
         augmented.append(rotate_pair(pair, k))

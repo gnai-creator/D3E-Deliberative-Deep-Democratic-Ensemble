@@ -9,7 +9,7 @@ from sklearn.metrics import classification_report, f1_score
 import math
 from core import SageAxiom
 import tensorflow.keras as keras
-from metrics_utils import plot_history, plot_confusion, plot_prediction_debug
+from metrics_utils import plot_history, plot_confusion, plot_prediction_debug, plot_prediction_debug
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sage_debate_loop import conversational_loop
@@ -193,6 +193,9 @@ if task_blocks:
                     profile_time(task_start, f"[TEMPO] Bloco {block_index} - Modelo {i}")
 
                     plot_history(history, model_name=f"block_{block_index}_model_{i}")
+                    # Usar um exemplo aleatório do conjunto de validação
+                    idx = np.random.randint(len(X_val))
+                    plot_prediction_debug(X_val.numpy()[idx], y_val.numpy()[idx], y_val_pred.numpy()[idx], i)
 
                     try:
                         y_val_pred = tf.argmax(model(X_val, training=False), axis=-1)
@@ -212,9 +215,19 @@ if task_blocks:
                     flat_true = y_val.numpy().flatten()
                     flat_pred = y_val_pred.numpy().flatten()
                     mask = flat_true != -1
-                    classify = classification_report(flat_true[mask], flat_pred[mask], zero_division=0)
-                    log(f"{classify}")
-                    log(f"[INFO] F1-score macro: {f1_score(flat_true[mask], flat_pred[mask], average='macro'):.4f}")
+                    # Filtrar fora a classe 0
+                    filtered_mask = (flat_true != -1) & (flat_true != 0)
+
+                    filtered_true = flat_true[filtered_mask]
+                    filtered_pred = flat_pred[filtered_mask]
+
+                    if len(filtered_true) > 0:
+                        classify = classification_report(filtered_true, filtered_pred, zero_division=0)
+                        log("[INFO] Métricas sem classe 0:")
+                        log(f"{classify}")
+                        log(f"[INFO] F1-score macro (sem classe 0): {f1_score(filtered_true, filtered_pred, average='macro'):.4f}")
+                    else:
+                        log("[WARN] Nenhum dado restante após remover classe 0. Métricas ignoradas.")
 
                     models.append(model)
 

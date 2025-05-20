@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.3.2-devel-ubuntu22.04
+FROM nvcr.io/nvidia/tensorflow:23.12-tf2-py3
 
 ENV DEBIAN_FRONTEND=noninteractive
 

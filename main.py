@@ -13,21 +13,13 @@ from metrics_utils import plot_history, plot_confusion, plot_prediction_debug
 from runtime_utils import log, pad_to_shape, profile_time
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sage_debate_loop import conversational_loop
-from losses import masked_sparse_categorical_loss
+from losses import masked_loss_with_smoothing
 from data_augmentation import augment_data
 
 PAD_VALUE = -1
 
-def masked_loss_with_smoothing(y_true, y_pred):
-    mask = tf.cast(tf.not_equal(y_true, PAD_VALUE), tf.float32)
 
-    loss = keras.losses.sparse_categorical_crossentropy(y_true, y_pred, from_logits=True)
-    loss = tf.cast(tf.convert_to_tensor(loss), tf.float32)
 
-    # Usa tf.math.multiply para garantir a compatibilidade
-    masked_loss = tf.math.multiply(loss, mask)
-
-    return tf.reduce_sum(masked_loss) / (tf.reduce_sum(mask) + 1e-6)
 
 
 # --- Inicialização de variáveis ---
@@ -190,7 +182,7 @@ if task_blocks:
                         sample_weight=sample_weight,
                         epochs=EPOCHS,
                         batch_size=BATCH_SIZE,
-                        verbose="1",
+                        verbose=int(1),
                         callbacks=[
                             EarlyStopping(monitor="val_loss", patience=PATIENCE, restore_best_weights=True),
                             ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=rl_learning_rate)
@@ -240,7 +232,7 @@ def load_models():
             try:
                 model = keras.models.load_model(
                     model_path,
-                    custom_objects={"SageAxiom": SageAxiom, "masked_sparse_categorical_loss": masked_sparse_categorical_loss}
+                    custom_objects={"SageAxiom": SageAxiom, "masked_loss_with_smoothing": masked_loss_with_smoothing}
                 )
                 if model is not None:
                     models.append(model)
@@ -256,8 +248,8 @@ for eval_block in eval_blocks:
     for task_id in eval_block:
         if time.time() - eval_start_time > MAX_EVAL_TIME:
             break
-        expected = eval_solutions[task_id]["solution"]
-        input_grid = eval_challenges[task_id]["test"][0]["input"]
+        expected = eval_solutions[task_id][0]
+        input_grid = eval_challenges[task_id]
         result = conversational_loop(models, input_grid, max_rounds=10)
         predicted = result.get("output") if result else None
         evaluation_logs[f"test_{task_id}"] = result

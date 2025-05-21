@@ -39,17 +39,21 @@ def plot_confusion(y_true, y_pred, model_name):
     from sklearn.metrics import confusion_matrix, classification_report
     import json
 
-    y_true_flat = np.array(y_true).flatten()
-    y_pred_flat = np.array(y_pred).flatten()
+    # Sempre flattens seguros
+    y_true_flat = np.array(y_true).reshape(-1)
+    y_pred_flat = np.array(y_pred).reshape(-1)
 
-    # Ignora classe -1 (padding) e 0 (o carpete inútil)
+    if y_true_flat.shape != y_pred_flat.shape:
+        min_len = min(len(y_true_flat), len(y_pred_flat))
+        y_true_flat = y_true_flat[:min_len]
+        y_pred_flat = y_pred_flat[:min_len]
+
+    # Ignora PAD (-1) e classe 0
     mask = (y_true_flat != -1) & (y_true_flat != 0)
     y_true_filtered = y_true_flat[mask]
     y_pred_filtered = y_pred_flat[mask]
 
-    # Classes restantes depois da exclusão de 0
     remaining_classes = sorted(set(y_true_filtered) | set(y_pred_filtered))
-
     if len(remaining_classes) == 0:
         log("[WARN] Nenhuma classe relevante encontrada após filtragem. Nada a plotar.")
         return
@@ -57,10 +61,8 @@ def plot_confusion(y_true, y_pred, model_name):
     cm = confusion_matrix(y_true_filtered, y_pred_filtered, labels=remaining_classes)
 
     plt.figure(figsize=(8, 6))
-    sns.heatmap(
-        cm, annot=True, fmt='d', cmap='Blues',
-        xticklabels=remaining_classes, yticklabels=remaining_classes
-    )
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=remaining_classes, yticklabels=remaining_classes)
     plt.title("SageAxiom Confusion Matrix (sem classe 0)")
     plt.xlabel("Predicted")
     plt.ylabel("True")
@@ -71,17 +73,15 @@ def plot_confusion(y_true, y_pred, model_name):
     plt.close()
     log(f"[INFO] Matriz de confusão salva: {filename}")
 
-    # Relatório de métricas por classe (sem 0)
     report = classification_report(
         y_true_filtered, y_pred_filtered,
-        labels=remaining_classes,
-        output_dict=True,
-        zero_division=0
+        labels=remaining_classes, output_dict=True, zero_division=0
     )
 
     with open("images/per_class_metrics.json", "w") as f:
         json.dump(report, f, indent=2)
     log("[INFO] Relatório de métricas por classe salvo (sem classe 0): images/per_class_metrics.json")
+
 
 
 def plot_attempts_stats(task_times, attempts_per_task):
@@ -109,15 +109,30 @@ def plot_attempts_stats(task_times, attempts_per_task):
     plt.close()
     log("[INFO] Gráfico de performance salvo: images/task_performance_overview.png")
 
+
+def ensure_numpy(x):
+    if isinstance(x, tf.Tensor):
+        return x.numpy()
+    elif isinstance(x, np.ndarray):
+        return x
+    else:
+        return np.array(x)
+
+
 def plot_prediction_debug(input_tensor, expected_output, predicted_output, model_index):
-    # Se input for one-hot (3D com último dim == VOCAB_SIZE), faz argmax
+    # Garantir formato adequado para imagens
     if len(input_tensor.shape) == 3 and input_tensor.shape[-1] == 10:
         input_tensor = tf.argmax(input_tensor, axis=-1)
 
-    input_img = input_tensor.numpy()
-    expected_img = expected_output.numpy()
-    prediction_img = predicted_output
-    heatmap = (prediction_img == expected_img).astype(int)
+    def to_numpy(tensor):
+        return tensor.numpy() if hasattr(tensor, "numpy") else tensor
+
+    input_img = ensure_numpy(input_tensor).astype(np.int32)
+    expected_img = ensure_numpy(expected_output).astype(np.int32)
+    prediction_img = ensure_numpy(predicted_output).astype(np.int32)
+
+
+    heatmap = (prediction_img == expected_img).astype(np.int32)
 
     fig, axs = plt.subplots(1, 4, figsize=(18, 4))
     axs[0].imshow(input_img, cmap='viridis')
@@ -137,6 +152,7 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
     plt.savefig(filename, dpi=150)
     plt.close()
     log(f"[INFO] Debug visual salvo: {filename}")
+
 
 
 

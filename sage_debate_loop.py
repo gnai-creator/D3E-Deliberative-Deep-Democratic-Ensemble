@@ -10,7 +10,7 @@ WINNING_VOTES_COUNT = 2
 
 def conversational_loop(models, input_grid, max_rounds=100):
     def generate_response(model):
-        x = tf.convert_to_tensor([pad_to_shape(tf.convert_to_tensor(input_grid, dtype=tf.int32))])
+        x = tf.convert_to_tensor([pad_to_shape(tf.convert_to_tensor(input_grid["test"], dtype=tf.int32))])
         x_onehot = tf.one_hot(x, depth=15, dtype=tf.float32)
         y_pred = model(x_onehot, training=False)
         return tf.argmax(y_pred[0], axis=-1).numpy().tolist()

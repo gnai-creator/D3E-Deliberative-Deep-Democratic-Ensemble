@@ -110,8 +110,10 @@ def plot_attempts_stats(task_times, attempts_per_task):
     log("[INFO] Gráfico de performance salvo: images/task_performance_overview.png")
 
 def plot_prediction_debug(input_tensor, expected_output, predicted_output, model_index):
-    if int(input_tensor.shape[-1]) > 10:
-        input_tensor = tf.cast(tf.argmax(input_tensor, axis=-1), input_tensor.dtype)
+    # Se input for one-hot (3D com último dim == VOCAB_SIZE), faz argmax
+    if len(input_tensor.shape) == 3 and input_tensor.shape[-1] == 10:
+        input_tensor = tf.argmax(input_tensor, axis=-1)
+
     input_img = input_tensor.numpy()
     expected_img = expected_output.numpy()
     prediction_img = predicted_output
@@ -135,6 +137,7 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
     plt.savefig(filename, dpi=150)
     plt.close()
     log(f"[INFO] Debug visual salvo: {filename}")
+
 
 
 def plot_logit_distribution(logits, model_index="model"):

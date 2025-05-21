@@ -28,10 +28,17 @@ def log(msg):
 
 
 def pad_to_shape(tensor, target_shape=(30, 30), pad_value=-1):
-    height, width = tensor.shape
+    # Get dynamic shape
+    shape = tensor.shape
+    height = shape[0]
+    width = shape[1]
+
     pad_height = target_shape[0] - height
     pad_width = target_shape[1] - width
-    return tf.pad(tensor, paddings=[[0, pad_height], [0, pad_width]], constant_values=pad_value)
+
+    paddings = [[0, pad_height], [0, pad_width]]
+    return tf.pad(tensor, paddings=paddings, constant_values=pad_value)
+
 
 
 def profile_time(start, label):

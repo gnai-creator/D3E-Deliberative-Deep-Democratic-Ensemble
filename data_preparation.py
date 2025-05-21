@@ -1,14 +1,15 @@
-from runtime_utils import log
+import tensorflow as tf
+import numpy as np
+from runtime_utils import log, pad_to_shape
+from sklearn.model_selection import train_test_split
 
-def get_dataset(block_index, block_size, task_ids, train_challenges):
+def get_dataset(block_index, task_ids, train_challenges, block_size, pad_value, vocab_size):
     start = block_index * block_size
     end = start + block_size
     block_task_ids = task_ids[start:end]
-    block_train_challenges = {k: train_challenges[k] for k in block_task_ids}
     X_train, y_train = [],[]
-    X_test, y_test = [], []
+    X_test = []
     test_list = []
-    input_list = []
 
     # Aqui você colocaria o seu treino com block_train_challenges
     log(f"[INFO] Treinando bloco {block_index} com tasks: {block_task_ids}")
@@ -33,4 +34,33 @@ def get_dataset(block_index, block_size, task_ids, train_challenges):
         # log(f"test_list[test_idx][0]['input'] : {test_list[test_idx][0]['input']}")
         X_test.append(test_list[test_idx][0]['input'])
     
-    return X_train, y_train, X_test
+    # Padding
+    X_all = [pad_to_shape(np.array(x), pad_value=pad_value) for x in X_train]
+    y_all = [pad_to_shape(np.array(y), pad_value=pad_value) for y in y_train]
+    X_test = [pad_to_shape(np.array(x), pad_value=pad_value) for x in X_test]
+
+    # Tensores
+    X_all = tf.convert_to_tensor(X_all, dtype=tf.int32)
+    y_all = tf.convert_to_tensor(y_all, dtype=tf.int32)
+    X_test = tf.convert_to_tensor(X_test, dtype=tf.int32)
+
+    X_all = tf.one_hot(X_all, depth=vocab_size, dtype=tf.float32)
+    X_test = tf.one_hot(X_test, depth=vocab_size, dtype=tf.float32)
+
+    sample_weight = tf.cast(y_all != pad_value, tf.float32)
+    y_all = tf.where(y_all == pad_value, 0, y_all)
+
+    # Split
+    X_train_final, X_val_final, y_train_final, y_val_final, sw_train, sw_val = train_test_split(
+        X_all.numpy(), y_all.numpy(), sample_weight.numpy(), test_size=0.2, random_state=42
+    )
+
+    return (
+        tf.convert_to_tensor(X_train_final, dtype=tf.float32),
+        tf.convert_to_tensor(X_val_final, dtype=tf.float32),
+        tf.convert_to_tensor(y_train_final, dtype=tf.int32),
+        tf.convert_to_tensor(y_val_final, dtype=tf.int32),
+        tf.convert_to_tensor(sw_train, dtype=tf.float32),
+        tf.convert_to_tensor(sw_val, dtype=tf.float32),
+        X_test
+    )

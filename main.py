@@ -124,14 +124,14 @@ while block_index * BLOCK_SIZE < len(task_ids) and time.time() - start_time < MA
             )
             
             model.save_weights(model_path + "_weights.h5")
-            plot_history(history, model_name=f"block_{block_index}_task{task_ids[block_index]}_model_{i}")
+            plot_history(history, model_name=f"block_{block_index}_task_{task_ids[block_index]}_model_{i}")
 
             try:
                 y_val_pred = tf.argmax(model(X_val_final, training=False), axis=-1).numpy()
-                plot_confusion(y_val_final.numpy(), y_val_pred, model_name=f"block_{block_index}_task{task_ids[block_index]}_model_{i}")
+                plot_confusion(y_val_final.numpy(), y_val_pred, model_name=f"block_{block_index}_task_{task_ids[block_index]}_model_{i}")
                 plot_prediction_debug(tf.gather(X_train_final, task_idx),
                                     tf.gather(y_val_final, task_idx),
-                                    history, f"block_{block_index}_task{task_ids[block_index]}_model_{i}")
+                                    history, f"block_{block_index}_task_{task_ids[block_index]}_model_{i}")
             except Exception as e:
                 log(f"[ERROR] Erro ao gerar predicoes: {e}")
     block_index += 1

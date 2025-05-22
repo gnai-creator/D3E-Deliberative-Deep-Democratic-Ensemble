@@ -44,7 +44,7 @@ BLOCK_SIZE = 1
 LEN_TRAINING = 5
 FULL_TRAIN_EPOCHS = 5
 PERMUTE_TRAIN_EPOCHS = 3
-CYCLES = 10
+CYCLES = 5
 MAX_BLOCKS = 400
 HOURS = 12
 MAX_TRAINING_TIME = HOURS * 60 * 60
@@ -105,7 +105,12 @@ for i in range(LEN_TRAINING):
         model = ShapeLocatorNet(hidden_dim=256)
         model = compile_shape_locator(model, lr=LEARNING_RATE)
 
+        bloco_resolvido = False
+
         for cycle in range(CYCLES):
+            if bloco_resolvido:
+                break
+
             log(f"Ciclo {cycle+1}/{CYCLES} - Treinando modelo ShapeLocatorNet")
             t0 = time.time()
             model.fit(
@@ -158,15 +163,15 @@ for i in range(LEN_TRAINING):
                 presence_mask = (y_val_expected > 0).astype(np.float32)
                 relevant = np.sum(presence_mask)
                 color_match_pct = 1.0 if relevant == 0 else np.sum(match_pixels * presence_mask) / relevant
+                shape_match_pct = np.mean(presence)
 
                 log(f"[INFO] Color Match no bloco {block_index}, ciclo {cycle+1}: {color_match_pct*100:.2f}%")
+                log(f"[INFO] Shape Match no bloco {block_index}, ciclo {cycle+1}: {shape_match_pct*100:.2f}%")
 
-                if color_match_pct >= 1.0:
+                if color_match_pct >= 1.0 and shape_match_pct >= 1.0:
                     log(f"[SUCCESS] Bloco {block_index} resolvido com sucesso. Pulando para próximo bloco.")
                     block_index += 1
-                    break  # pula para o próximo bloco, ignora os ciclos restantes
-                else:
-                    log(f"[INFO] Bloco {block_index} ainda não atingiu match satisfatório.")
+                    bloco_resolvido = True
 
             except Exception as e:
                 log(f"[ERROR] Erro ao gerar predicoes: {e}")

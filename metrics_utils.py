@@ -106,7 +106,7 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
 
         plt.suptitle(f"Prediction Debug - Model {model_index}", fontsize=14)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
-        filename = f"images/prediction_debug_{model_index}_index_{index}.png"
+        filename = f"images/prediction_debug_{model_index}.png"
         plt.savefig(filename, dpi=150)
         plt.close()
 

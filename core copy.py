@@ -5,10 +5,10 @@ from neural_blocks import (
     PositionalEncoding2D,
     LearnedRotation,
     AttentionOverMemory,
-    OutputRefinement,
-    TemporalEncoding
+    OutputRefinement
 )
 from typing import cast, Any
+
 
 NUM_CLASSES = 10
 
@@ -18,7 +18,6 @@ class SageAxiom(tf.keras.Model):
         self.hidden_dim = hidden_dim
 
         self.pos_enc = PositionalEncoding2D(hidden_dim)
-        self.temporal_enc = TemporalEncoding(hidden_dim, input_channels=10)
         self.early_proj = layers.Conv2D(hidden_dim, 1, activation='relu')
         self.rotation = LearnedRotation(hidden_dim)
         self.encoder = EnhancedEncoder(hidden_dim)
@@ -69,33 +68,24 @@ class SageAxiom(tf.keras.Model):
     def _tile_context(self, context):
         context_tensor = tf.convert_to_tensor(context, dtype=tf.float32)
         multiples_tensor = tf.constant([1, 30, 30, 1], dtype=tf.int32)
+
+        # Cast them to Any to silence the type checker
         return tf.tile(cast(Any, context_tensor), cast(Any, multiples_tensor))
 
     def call(self, x_seq, training=False):
-        if x_seq.shape.rank != 5:
-            raise ValueError(f"Esperado input de shape [batch, height, width, time, {NUM_CLASSES}]")
+        if x_seq.shape.rank != 4:
+            raise ValueError(f"Esperado input de shape [batch, height, width, {NUM_CLASSES}]")
 
-        batch_size = tf.shape(x_seq)[0]
-        time_steps = tf.shape(x_seq)[3]
+        batch_shape = tf.shape(x_seq)
+        batch_size = tf.gather(batch_shape, 0)
 
-        frames = tf.TensorArray(dtype=tf.float32, size=time_steps)
+        x = self.pos_enc(x_seq)
+        x = self.early_proj(x)
+        x = self.rotation(x)
+        x_encoded = self.encoder(x, training=training)
+        x_encoded = self.norm(x_encoded, training=training)
 
-        for t in tf.range(time_steps):
-            x_t = x_seq[:, :, :, t, :]
-            t_tensor = tf.broadcast_to(tf.cast(t, tf.int32), [batch_size])
-            x_t = self.temporal_enc(x_t, t_tensor)
-            x_t = self.pos_enc(x_t)
-            x_t = self.early_proj(x_t)
-            x_t = self.rotation(x_t)
-            x_t = self.encoder(x_t, training=training)
-            x_t = self.norm(x_t, training=training)
-            frames = frames.write(t, x_t)  # <- uso correto
-
-        x_encoded = tf.transpose(frames.stack(), perm=[1, 0, 2, 3, 4])  # [B, T, H, W, C]
-
-        x_encoded_avg = tf.reduce_mean(x_encoded, axis=1)  # [B, H, W, C]
-
-        x_flat = tf.keras.layers.GlobalAveragePooling2D()(x_encoded_avg)
+        x_flat = tf.keras.layers.GlobalAveragePooling2D()(x_encoded)
         x_flat = self.pool_dense1(x_flat)
         state = self.agent_dense(x_flat)
 
@@ -106,11 +96,16 @@ class SageAxiom(tf.keras.Model):
         context = tf.reshape(full_context, [batch_size, 1, 1, 2 * self.hidden_dim])
         context = self._tile_context(context)
 
-        downsampled = tf.keras.layers.AveragePooling2D(pool_size=2)(x_encoded_avg)
+        downsampled = tf.keras.layers.AveragePooling2D(pool_size=2)(x_encoded)
         shape = tf.shape(downsampled)
         h = tf.gather(shape, 1)
         w = tf.gather(shape, 2)
         seq_len = tf.math.multiply(h, w)
+
+        batch_size = tf.cast(batch_size, tf.int32)
+        seq_len = tf.cast(seq_len, tf.int32)
+        h = tf.cast(h, tf.int32)
+        w = tf.cast(w, tf.int32)
 
         attn_input = tf.reshape(downsampled, [batch_size, seq_len, self.hidden_dim])
 
@@ -125,8 +120,7 @@ class SageAxiom(tf.keras.Model):
         attn_output_reshaped = tf.reshape(attn_output, [batch_size, h, w, self.hidden_dim])
         attn_upsampled = tf.image.resize(attn_output_reshaped, size=[30, 30], method='bilinear')
 
-        x_encoded_resized = tf.image.resize(x_encoded_avg, size=[30, 30], method='bilinear')
-        fused = tf.nn.relu(tf.add(attn_upsampled, x_encoded_resized))
+        fused = tf.nn.relu(attn_upsampled + x_encoded)
 
         for _ in range(2):
             block = self.attn_conv(fused)
@@ -135,15 +129,5 @@ class SageAxiom(tf.keras.Model):
 
         logits = self.decoder(fused, training=training)
         final_logits = self.refiner(logits, training=training)
-        # tf.print("Logits unique:", tf.unique(tf.argmax(logits, axis=-1))[0])
-        # tf.print("Final logits unique:", tf.unique(tf.argmax(final_logits, axis=-1))[0])
-        # tf.print("Unique values in logits before argmax:", tf.unique(tf.argmax(logits, axis=-1))[0])
-        # temp_output = self.decoder.layers[-1](fused)
-        # tf.print("Logits últimos convs:", tf.reduce_max(temp_output, axis=[1,2]))
 
-        return final_logits, logits
-        # return {
-        #     "main_output": final_logits,
-        #     "aux_output": logits
-        # }
-
+        return logits

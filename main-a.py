@@ -1,212 +1,170 @@
-# main-a.py (com chamada para debate_analysis)
-
 import os
 import json
 import time
 import warnings
 import tensorflow as tf
 import numpy as np
-import random
 from sklearn.model_selection import train_test_split
-from collections import defaultdict
-
+from sklearn.metrics import classification_report, f1_score
+import math
+from core import SageAxiom
+import tensorflow.keras as keras
 from metrics_utils import plot_history, plot_confusion, plot_prediction_debug
-from runtime_utils import log, pad_to_shape, profile_time
+from runtime_utils import log, profile_time, ensure_batch_dim
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sage_debate_loop import conversational_loop
-from losses import masked_sparse_categorical_loss
-from debate_analysis import analyze_debate_logs
+from losses import masked_loss_with_smoothing
+from data_preparation import get_dataset
+from model_compile import model_compilation
 
-from core_a import SageAxiom as CoreA
-from core_b import SageAxiomB as CoreB
-from core_c import SageAxiomC as CoreC
-from core_d import SageAxiomD as CoreD
-from core_e import SageAxiomE as CoreE
+PAD_VALUE = -1
 
-# Silenciar avisos
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+# Configurações de performance do TF
+
 warnings.filterwarnings('ignore')
 tf.get_logger().setLevel('ERROR')
+tf.config.optimizer.set_experimental_options({
+    "layout_optimizer": False,
+    "remapping": False,
+    "constant_folding": True
+})
 
-with open("arc-agi_test_challenges.json") as f:
-    tasks = json.load(f)
-num_tasks = len(tasks)
-
-# Configs
+# Hiperparâmetros
+PAD_VALUE = -1
 VOCAB_SIZE = 10
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.0005
 PATIENCE = 10
-RL_PATIENCE = 5
-FACTOR = 0.5
-BATCH_SIZE = 16
-EPOCHS = 140
+RL_PATIENCE = 3
+RL_LEARNING_RATE = 3e-3
+FACTOR = 0.7
+BATCH_SIZE = 8
+EPOCHS = 60
 RESULTS_DIR = "results"
-MODELS_PER_TASK = 5
-HOURS = 4
+MODELS_PER_TASK = 3
+BLOCK_SIZE = 5
+MAX_BLOCKS = 400 / BLOCK_SIZE
+HOURS = 1
 MAX_TRAINING_TIME = HOURS * 60 * 60
-MAX_EVAL_TIME = HOURS * 2 * 60 * 60 / (num_tasks * MODELS_PER_TASK)
+MAX_EVAL_TIME = HOURS * 2 * 60 * 60 / MODELS_PER_TASK
 
-model_classes = [CoreA, CoreB, CoreC, CoreD, CoreE]
+# Carregar dados
+with open("arc-agi_training_challenges.json") as f:
+    train_challenges = json.load(f)
+with open("arc-agi_training_solutions.json") as f:
+    train_solutions = json.load(f)
+with open("arc-agi_evaluation_challenges.json") as f:
+    eval_challenges = json.load(f)
+with open("arc-agi_evaluation_solutions.json") as f:
+    eval_solutions = json.load(f)
 
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-log(f"[INFO] Total de tasks: {num_tasks}")
-TRAINING_TIME_LIMIT = MAX_TRAINING_TIME / (num_tasks * MODELS_PER_TASK)
-EVAL_TIME_LIMIT = MAX_EVAL_TIME / (num_tasks * MODELS_PER_TASK)
-log(f"[INFO] Tempo máximo de treinamento por task: {TRAINING_TIME_LIMIT:.2f} segundos")
-log(f"[INFO] Tempo máximo de avaliação por task: {EVAL_TIME_LIMIT:.2f} segundos")
+# Preparar tasks
+task_ids = list(train_challenges.keys())
 
+start_time = time.time()
 scores = {}
-task_times = defaultdict(float)
 submission_dict = {}
 evaluation_logs = {}
 
-if os.path.exists("evaluation_logs.json"):
-    with open("evaluation_logs.json") as f:
-        evaluation_logs = json.load(f)
+block_index = 0
 
-start_time = time.time()
-while (time.time() - start_time) < MAX_TRAINING_TIME:
-    for task_id, task in tasks.items():
-        if not task.get("train"):
-            continue
 
-        if evaluation_logs.get(task_id, {}).get("success") is True:
-            log(f"[INFO] Task {task_id} já solucionada em debate anterior. Pulando.")
-            continue
+# TREINAMENTO
+while block_index < len(task_ids) and time.time() - start_time < MAX_TRAINING_TIME:
+    
+    if time.time() - start_time > MAX_TRAINING_TIME:
+        break
 
-        if task_times[task_id] >= TRAINING_TIME_LIMIT:
-            log(f"[INFO] Task {task_id} já atingiu o limite de tempo de treino. Pulando.")
-            continue
 
-        log(f"[INFO] Treinando modelos para task: {task_id}")
-        X_train, y_train = [], []
+    X_train_final, X_val_final, y_train_final, y_val_final, sw_train, sw_val, X_test_final = get_dataset(block_index, task_ids, train_challenges, BLOCK_SIZE, PAD_VALUE, VOCAB_SIZE)
+    
+    oscillation = math.sin(block_index)
+    scaling = 1 + 0.5 * oscillation
+    learning_rate = LEARNING_RATE * scaling
+    rl_learning_rate = RL_LEARNING_RATE * scaling
+    model_path = ""
+    models = []
+    for i in range(MODELS_PER_TASK):
+        if time.time() - start_time > MAX_TRAINING_TIME:
+            break
 
-        for pair in task["train"]:
-            input_grid = pad_to_shape(tf.convert_to_tensor(pair["input"], dtype=tf.int32))
-            output_grid = pad_to_shape(tf.convert_to_tensor(pair["output"], dtype=tf.int32))
-            X_train.append(input_grid)
-            y_train.append(output_grid)
-
-        X_all = tf.stack(X_train)
-        y_all = tf.stack(y_train)
-
-        max_value = tf.reduce_max(tf.maximum(tf.reduce_max(X_all), tf.reduce_max(y_all))).numpy()
-        assert max_value < VOCAB_SIZE, f"[ERRO] Valor fora do vocabulário detectado: {max_value} >= {VOCAB_SIZE}"
-
-        X_onehot = tf.one_hot(X_all, depth=VOCAB_SIZE)
-        X_train_np, X_val_np, y_train_np, y_val_np = train_test_split(
-            X_onehot.numpy(), y_all.numpy(), test_size=0.2, random_state=42
+        model, model_path = model_compilation(
+            index=i,
+            learning_rate=learning_rate,
+            vocab_size=VOCAB_SIZE,
+            block_index=block_index,
+            result_dir=RESULTS_DIR
         )
 
-        X_val = tf.convert_to_tensor(X_val_np, dtype=tf.float32)
-        y_val = tf.convert_to_tensor(y_val_np, dtype=tf.int32)
+        models.append(model)
+    y_val_pred = tf.ones([1,30,30,10], dtype=tf.int64)
+    for i in range(MODELS_PER_TASK):
+        while not tf.reduce_all(tf.equal(
+            tf.cast(tf.argmax(y_val_pred, axis=-1), dtype=tf.int64),
+            tf.cast(tf.gather(y_val_final, block_index), dtype=tf.int64)
+        )):
 
-        model_dir = os.path.join(RESULTS_DIR, task_id)
-        os.makedirs(model_dir, exist_ok=True)
-        models = []
-
-        for i in range(MODELS_PER_TASK):
-            model_class = model_classes[i % len(model_classes)]
-            model_path = os.path.join(model_dir, f"model_{i}")
-
-            try:
-                model = tf.keras.models.load_model(
-                    model_path, custom_objects={model_class.__name__: model_class}
-                )
-                log(f"[INFO] Modelo carregado de {model_path}")
-            except (IOError, OSError):
-                model = model_class(hidden_dim=32)
-                model.compile(
-                    optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
-                    loss=masked_sparse_categorical_loss,
-                    metrics=["accuracy"]
-                )
-
-                callbacks = [
+            x = tf.gather(X_train_final, block_index)
+            y = tf.gather(y_train_final, block_index)
+            sw = tf.gather(sw_train, block_index)
+            log(f"Modelo {i} vai treinar a task {task_ids[block_index]}")
+            history = models[i].fit(
+                x=tf.expand_dims(x, 0),  # batchify: (30, 30, 10) → (1, 30, 30, 10)
+                y=tf.expand_dims(y, 0),  # (30, 30) → (1, 30, 30)
+                sample_weight=tf.expand_dims(sw, 0),  # (30, 30) → (1, 30, 30)
+                validation_data=(
+                    X_val_final, y_val_final, sw_val
+                ),
+                batch_size=1,  # só uma amostra
+                epochs=EPOCHS,
+                verbose=1,
+                callbacks=[
                     EarlyStopping(monitor="val_loss", patience=PATIENCE, restore_best_weights=True),
-                    ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=1e-5)
+                    ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=rl_learning_rate)
                 ]
+            )
+            
+            models[i].save_weights(model_path + f"_task_{task_ids[block_index]}_weights.h5")
+            plot_history(history, model_name=f"block_{block_index}_task_{task_ids[block_index]}_model_{i}")
 
-                task_start = time.time()
-                history = model.fit(
-                    X_train_np, y_train_np,
-                    validation_data=(X_val, y_val),
-                    epochs=EPOCHS,
-                    batch_size=BATCH_SIZE,
-                    verbose=1,
-                    callbacks=callbacks
-                )
-                model.save(model_path, save_format="tf", save_traces=False)
-                elapsed = profile_time(task_start, f"[TEMPO] Task {task_id} - Modelo {i}")
-                task_times[task_id] += elapsed
-
-                plot_history(history, model_name=f"{task_id}_model_{i}")
-                y_val_pred = tf.argmax(model(X_val, training=False), axis=-1).numpy()
-                plot_confusion(y_val.numpy(), y_val_pred, model_name=f"{task_id}_model_{i}")
-                plot_prediction_debug(X_val[0], y_val[0], y_val_pred[0], f"{task_id}_model_{i}")
-
-            models.append(model)
-
-        y_val_pred = tf.argmax(models[0](X_val, training=False), axis=-1).numpy()
-        acc = (y_val_pred == y_val.numpy()).mean()
-        scores[task_id] = acc
-
-        input_grid = task["train"][0]["input"]
-        result = conversational_loop(models, input_grid, max_rounds=10)
-        submission_dict[task_id] = [result["output"]] if result["output"] else []
-        evaluation_logs[task_id] = result
-        log(f"[INFO] Task {task_id} avaliada com sucesso")
-
-# Avaliação final com dados de teste
-log("[INFO] Avaliação final")
-eval_start_time = time.time()
-while (time.time() - eval_start_time) < EVAL_TIME_LIMIT:
-    for task_id, task in tasks.items():
-        if not task.get("test"):
-            log(f"[INFO] Task {task_id} não possui dados de teste.")
-            continue
-
-        if evaluation_logs.get(f"test_{task_id}", {}).get("success") is True:
-            log(f"[INFO] Task {task_id} já avaliada com sucesso anteriormente. Pulando.")
-            continue
-
-        models = []
-        model_dir = os.path.join(RESULTS_DIR, task_id)
-        for i in range(MODELS_PER_TASK):
-            model_class = model_classes[i % len(model_classes)]
-            model_path = os.path.join(model_dir, f"model_{i}")
             try:
-                model = tf.keras.models.load_model(
-                    model_path, custom_objects={model_class.__name__: model_class}
+                X_val = ensure_batch_dim(tf.gather(X_val_final, block_index))
+                y_val_pred = models[i].predict(X_val)  # (batch, height, width, vocab)
+                
+                unique_preds = np.unique(np.argmax(y_val_pred, axis=-1))
+                log(f"[DEBUG] Valores únicos preditos: {unique_preds}")
+
+                # Reduz para classe predita por posição
+                y_val_pred = tf.argmax(y_val_pred, axis=-1).numpy()  # (batch, height, width)
+
+                plot_confusion(
+                    y_val_final.numpy(),
+                    y_val_pred,
+                    model_name=f"block_{block_index}_task_{task_ids[block_index]}_model_{i}_index_{i}"
+                )        
+
+                plot_prediction_debug(
+                    input_tensor=tf.gather(X_val_final, block_index),
+                    expected_output=tf.gather(y_val_final, block_index),
+                    predicted_output=y_val_pred[0],
+                    model_index=f"block_{block_index}_task_{task_ids[block_index]}_model_{i}",
+                    index=i
                 )
-                models.append(model)
-            except (IOError, OSError):
-                log(f"[ERRO] Modelo model_{i} não encontrado para task {task_id}.")
 
-        if not models:
-            log(f"[ERRO] Nenhum modelo carregado para task {task_id}. Pulando.")
-            continue
+            except Exception as e:
+                log(f"[ERROR] Erro ao gerar predicoes: {e}")
 
-        input_grid = task["test"][0]["input"]
-        result = conversational_loop(models, input_grid, max_rounds=10)
-        evaluation_logs[f"test_{task_id}"] = result
-        log(f"[INFO] Avaliação de teste finalizada para task {task_id}")
+    block_index += 1 
+# printar tempo de treinamento
+elapsed =profile_time(start_time, f"Tempo de treinamento finalizado")
+log(f"Tempo de Treinamento : {elapsed}")
+# DEBATE
+while block_index * BLOCK_SIZE < len(task_ids) and time.time() - start_time < MAX_TRAINING_TIME:
+    
+
+        
+    log(f"block_index: {block_index}")
+    block_index += 1
     break
 
-with open("submission.json", "w") as f:
-    json.dump(submission_dict, f, indent=2)
-with open("evaluation_logs.json", "w") as f:
-    json.dump(evaluation_logs, f, indent=2)
-
-sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-for task_id, acc in sorted_scores:
-    log(f"[SCORE] {task_id}: {acc:.3f}")
-
-media = sum(scores.values()) / len(scores)
-log(f"[RESULTADO FINAL] Média de acurácia por task: {media:.3f}")
-total_train_time = sum(task_times.values())
-log(f"[TEMPO TOTAL] Treinamento em {total_train_time:.2f} segundos")
-
-# Chamar análise final do debate
-debate_stats = analyze_debate_logs(evaluation_logs)

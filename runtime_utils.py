@@ -27,17 +27,39 @@ def log(msg):
     logging.info(msg)
 
 
+
 def pad_to_shape(tensor, target_shape=(30, 30), pad_value=-1):
-    # Get dynamic shape
-    shape = tensor.shape
-    height = shape[0]
-    width = shape[1]
+    import tensorflow as tf
 
-    pad_height = target_shape[0] - height
-    pad_width = target_shape[1] - width
+    tensor = tf.convert_to_tensor(tensor)
 
-    paddings = [[0, pad_height], [0, pad_width]]
+    # Se for 1D (ex: [0, 1, 2]), converte para 2D automaticamente
+    if tensor.shape.rank == 1:
+        tensor = tf.expand_dims(tensor, axis=0)  # (1, N)
+
+    shape = tf.shape(tensor)
+    rank = tensor.shape.rank
+
+    if rank == 2:
+        height, width = shape[0], shape[1]
+        pad_height = tf.maximum(target_shape[0] - height, 0)
+        pad_width = tf.maximum(target_shape[1] - width, 0)
+        paddings = [[0, pad_height], [0, pad_width]]
+
+    elif rank == 3:
+        height, width, channels = shape[0], shape[1], shape[2]
+        pad_height = tf.maximum(target_shape[0] - height, 0)
+        pad_width = tf.maximum(target_shape[1] - width, 0)
+        paddings = [[0, pad_height], [0, pad_width], [0, 0]]
+
+    else:
+        raise ValueError(f"[ERRO] Tensor com rank não suportado: {rank}")
+
     return tf.pad(tensor, paddings=paddings, constant_values=pad_value)
+
+
+
+
 
 
 
@@ -47,3 +69,5 @@ def profile_time(start, label):
     log(f"[PERF] {label}: {int(mins)}m {int(secs)}s ({elapsed:.2f} segundos)")
     return elapsed
 
+def ensure_batch_dim(tensor):
+    return tf.expand_dims(tensor, axis=0) if tensor.shape.rank == 3 else tensor

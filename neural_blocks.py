@@ -34,7 +34,7 @@ class PositionalEncoding2D(tf.keras.layers.Layer):
         self.dense = tf.keras.layers.Dense(channels, activation='tanh')
 
     def call(self, x):
-        b, h, w = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2]
+        b, h, w, _ = tf.unstack(tf.shape(x))
         yy, xx = tf.meshgrid(tf.linspace(-1.0, 1.0, h), tf.linspace(-1.0, 1.0, w), indexing='ij')
         pos = tf.stack([yy, xx], axis=-1)
         pos = tf.expand_dims(pos, 0)
@@ -89,7 +89,7 @@ class EnhancedEncoder(tf.keras.layers.Layer):
         self.blocks = [FractalBlock(dim) for _ in range(4)]
         self.out = tf.keras.layers.Conv2D(dim, 3, padding='same', activation='relu')
 
-    def call(self, x, training=False):
+    def call(self, x):
         for block in self.blocks:
             x = block(x)
         return self.out(x)
@@ -111,11 +111,11 @@ class LearnedRotation(tf.keras.layers.Layer):
         self.angle_layer = tf.keras.layers.Dense(1, activation='tanh')
 
     def call(self, x):
-        b = tf.shape(x)[0]
         mean_features = tf.reduce_mean(x, axis=[1, 2])  # [B, C]
         angle_normed = self.angle_layer(mean_features)  # [-1, 1] range
-        angle = tf.squeeze(angle_normed, axis=-1) * math.pi  # [-π, π] radians
-        angle = tf.clip_by_value(angle, -math.pi, math.pi)
+        pi_const = tf.constant(math.pi, dtype=angle_normed.dtype)
+        angle = tf.squeeze(angle_normed, axis=-1) * pi_const  # [-π, π] radians
+        angle = tf.clip_by_value(angle, -pi_const, pi_const)
         rotated = tfa.image.rotate(x, angles=angle, interpolation='BILINEAR')
         return rotated
 
@@ -153,3 +153,23 @@ class AttentionOverMemory(tf.keras.layers.Layer):
     @classmethod
     def from_config(cls, config):
         return cls(**config)
+    
+
+class TemporalEncoding(tf.keras.layers.Layer):
+    def __init__(self, hidden_dim, input_channels):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.input_channels = input_channels
+        self.linear = tf.keras.layers.Dense(hidden_dim)
+        self.align = tf.keras.layers.Dense(input_channels) if hidden_dim != input_channels else None
+
+    def call(self, x, time_index):
+        time_emb = self.linear(tf.cast(time_index[:, tf.newaxis], tf.float32))  # [B, hidden]
+        time_emb = tf.reshape(time_emb, [-1, 1, 1, self.hidden_dim])
+
+        if self.align is not None:
+            time_emb = self.align(time_emb)
+
+        return x + time_emb
+
+

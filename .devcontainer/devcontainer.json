@@ -48,12 +48,18 @@
         },
         "python.defaultInterpreterPath": "/usr/local/bin/python",
         "python.languageServer": "Pylance",
-        "python.analysis.typeCheckingMode": "basic",
+        "python.analysis.typeCheckingMode": "off",
         "python.analysis.diagnosticSeverityOverrides": {
           "reportMissingImports": "none",
           "reportOptionalCall": "none",
           "reportAttributeAccessIssue": "none",
-          "reportArgumentType": "none"
+          "reportArgumentType": "none",
+          "reportGeneralTypeIssues": "none",
+          "reportUnknownMemberType": "none",
+          "reportUnknownParameterType": "none",
+          "reportUnknownVariableType": "none",
+          "reportUnknownArgumentType": "none",
+          "reportOptionalMemberAccess": "none"
         },
         "jupyter.jupyterServerType": "local"
       }

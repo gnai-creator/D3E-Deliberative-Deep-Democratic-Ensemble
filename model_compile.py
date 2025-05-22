@@ -39,7 +39,7 @@ def model_compilation(index, learning_rate, vocab_size, block_index, result_dir)
                                 
                                 )
         },
-        loss_weights={"main_output": 1.5, "aux_output": 0.5},
+        loss_weights={"main_output": 0.75, "aux_output": 1.75},
         metrics=["accuracy"]
     )
 

@@ -89,7 +89,7 @@ class SageUNet(tf.keras.Model):
 
         x_encoded = tf.transpose(frames.stack(), perm=[1, 0, 2, 3, 4])
         x_encoded_avg = tf.reduce_mean(x_encoded, axis=1)
-        x_encoded_avg = self.translation(x_encoded_avg, y=30)
+        # x_encoded_avg = self.translation(x_encoded_avg, y=30)
 
         input_guide = self.input_proj(x_encoded_avg)
 

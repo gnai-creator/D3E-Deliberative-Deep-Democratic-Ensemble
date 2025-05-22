@@ -46,9 +46,7 @@ def plot_training_input(input_tensor, model_name):
 
 
 
-
-
-def plot_prediction_debug(input_tensor, expected_output, predicted_output, model_index, index, pad_value=0):
+def plot_prediction_debug(input_tensor, expected_output, predicted_output, model_index, index):
     def to_numpy_safe(tensor):
         if isinstance(tensor, tf.Tensor):
             tensor = tensor.numpy()
@@ -57,37 +55,47 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
             raise TypeError(f"[ERROR] Tensor com tipo inválido: {tensor.dtype}")
         return tensor
 
+    def argmax_if_logits(tensor):
+        return np.argmax(tensor, axis=-1) if tensor.ndim >= 3 and tensor.shape[-1] > 1 else tensor
+
     try:
         os.makedirs("images", exist_ok=True)
 
         input_tensor = to_numpy_safe(input_tensor)
         expected_output = to_numpy_safe(expected_output).astype(np.int32)
-        predicted_output = to_numpy_safe(predicted_output).astype(np.int32)
+        predicted_output = to_numpy_safe(predicted_output)
+        predicted_output = argmax_if_logits(predicted_output).astype(np.int32)
 
-        # Corrige input_tensor para extração correta do frame e canal de cor
-        if input_tensor.ndim == 4 and input_tensor.shape[2] == 1:
-            input_tensor = np.squeeze(input_tensor, axis=2)  # (H, W, C)
-        if input_tensor.ndim == 3 and input_tensor.shape[-1] == 10:
-            input_img = np.argmax(input_tensor, axis=-1)  # (H, W)
+        if input_tensor.ndim == 4:
+            input_img = argmax_if_logits(input_tensor[:, :, 0, :])
+        elif input_tensor.ndim == 3:
+            input_img = argmax_if_logits(input_tensor)
+        elif input_tensor.ndim == 2:
+            input_img = input_tensor
         else:
-            raise ValueError(f"[ERROR] input_tensor shape inesperado: {input_tensor.shape}")
+            raise ValueError(f"[ERROR] input_tensor shape inválido: {input_tensor.shape}")
 
-        # Ajuste de shape se vier esquisito
-        if predicted_output.ndim == 4:
-            predicted_output = predicted_output[0]
-        if predicted_output.ndim == 3 and predicted_output.shape[-1] == 1:
-            predicted_output = predicted_output[:, :, 0]
-
-        if expected_output.ndim == 3 and expected_output.shape[-1] == 1:
-            expected_output = expected_output[:, :, 0]
+        if predicted_output.ndim == 1 and expected_output.ndim == 2:
+            if predicted_output.size == expected_output.shape[0]:
+                predicted_output = np.tile(predicted_output[:, None], (1, expected_output.shape[1]))
+            elif predicted_output.size == expected_output.shape[1]:
+                predicted_output = np.tile(predicted_output[None, :], (expected_output.shape[0], 1))
+            elif predicted_output.size == np.prod(expected_output.shape):
+                predicted_output = predicted_output.reshape(expected_output.shape)
+            else:
+                raise ValueError("[ERROR] Shape de predição incompatível com o esperado.")
 
         if not all(img.ndim == 2 for img in [input_img, expected_output, predicted_output]):
             raise ValueError("[ERROR] Todos os dados esperados no formato 2D (H, W).")
 
-        # Só compara onde não é padding
-        valid_mask = expected_output != pad_value
-        pixel_color_perfect = np.mean((predicted_output == expected_output)[valid_mask])
+        # Métricas
+        # Color Match: onde o expected é diferente de zero e o valor bate exatamente
+        valid_color_mask = expected_output != 0
+        pixel_color_perfect = np.mean((predicted_output == expected_output)[valid_color_mask])
+
+        # Shape Match: compara presença (>0) em toda a imagem
         pixel_shape_perfect = np.mean((predicted_output > 0) == (expected_output > 0))
+
 
         heatmap = ((predicted_output > 0) == (expected_output > 0)).astype(np.int32)
 
@@ -103,7 +111,7 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
         cmaps = ["viridis", "viridis", "viridis", "gray"]
 
         for ax, img, title, cmap in zip(axs, images, titles, cmaps):
-            ax.imshow(img, cmap=cmap, vmin=0, vmax=9)
+            ax.imshow(img, cmap=cmap)
             ax.set_title(title)
             ax.axis("off")
 
@@ -116,6 +124,7 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
 
     except Exception as e:
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
+
 
 
 

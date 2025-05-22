@@ -41,13 +41,14 @@ class PositionalEncoding2D(tf.keras.layers.Layer):
         self.dense = tf.keras.layers.Dense(channels, activation='tanh')
 
     def call(self, x):
-        b, h, w, _ = tf.unstack(tf.shape(x))
+        b, h, w, c = tf.unstack(tf.shape(x))
         yy, xx = tf.meshgrid(tf.linspace(-1.0, 1.0, h), tf.linspace(-1.0, 1.0, w), indexing='ij')
-        pos = tf.stack([yy, xx], axis=-1)
+        pos = tf.stack([yy, xx], axis=-1)  # (h, w, 2)
         pos = tf.expand_dims(pos, 0)
         pos = tf.tile(pos, [b, 1, 1, 1])
         encoded = self.dense(pos)
-        return tf.concat([x, encoded], axis=-1)
+        return x + encoded  # SOMA em vez de CONCAT
+
 
     def get_config(self):
         config = super().get_config()
@@ -185,25 +186,59 @@ class DiscreteRotation(tf.keras.layers.Layer):
         rotated = tf.map_fn(rotate_single, (x, k), dtype=x.dtype)
         return rotated
     
-class LearnedColorPermutation(tf.keras.layers.Layer):
-    def __init__(self, num_classes, **kwargs):
-        super().__init__(**kwargs)
+class ColorTransposer(tf.keras.layers.Layer):
+    def __init__(self, num_classes, use_softmax=True, reg_strength=0.01):
+        super().__init__()
         self.num_classes = num_classes
-        # Inicializa a matriz próxima de identidade
-        initializer = tf.keras.initializers.Identity()
-        self.permutation_matrix = self.add_weight(
-            name='color_map',
-            shape=(num_classes, num_classes),
-            initializer=initializer,
-            trainable=True
+        self.use_softmax = use_softmax
+        self.reg_strength = reg_strength
+
+        initial_weights = tf.eye(num_classes) + tf.random.normal(
+            (num_classes, num_classes), stddev=0.01
         )
+        self.permutation_weights = tf.Variable(initial_weights, trainable=True)
 
     def call(self, x):
-        # x: [B, H, W, C]
-        shape = tf.shape(x)
-        flat_x = tf.reshape(x, [-1, self.num_classes])  # [B*H*W, C]
-        permuted = tf.matmul(flat_x, self.permutation_matrix)  # [B*H*W, C]
-        return tf.reshape(permuted, shape)  # [B, H, W, C]
+        weights = self.permutation_weights
+        if self.use_softmax:
+            weights = tf.nn.softmax(weights, axis=-1)
+
+        # Regularização L2 para manter próximo da identidade
+        identity = tf.eye(self.num_classes)
+        reg_loss = tf.reduce_sum(tf.square(weights - identity))
+        self.add_loss(self.reg_strength * reg_loss)
+
+        return tf.stop_gradient(tf.einsum('bhwc,cd->bhwd', x, weights)) + 0.0 * tf.einsum('bhwc,cd->bhwd', x, weights)
+
+
+
+
+class LearnedColorPermutation(tf.keras.layers.Layer):
+    def __init__(self, num_classes, reg_strength=0.01, name="learned_color_permutation"):
+        super().__init__(name=name)
+        self.num_classes = num_classes
+        self.reg_strength = reg_strength
+
+        initial_weights = tf.eye(num_classes) + tf.random.normal((num_classes, num_classes), stddev=0.01)
+        self.permutation_weights = tf.Variable(initial_weights, trainable=True, name="perm_matrix")
+
+    def call(self, x, training=False):
+        weights = tf.nn.softmax(self.permutation_weights, axis=1)
+        weights = tf.clip_by_value(weights, 0.001, 0.999)  # Limita os extremos
+        output = tf.einsum('bhwc,cd->bhwd', x, weights)
+
+        if training:
+            identity = tf.eye(self.num_classes)
+            reg_loss = tf.reduce_sum(tf.square(weights - identity))
+            self.add_loss(self.reg_strength * reg_loss)
+            self.add_metric(tf.reduce_mean(weights), name="perm_mean")
+            std = tf.sqrt(tf.reduce_mean(tf.square(weights - tf.reduce_mean(weights))))
+            self.add_metric(std, name="perm_std")
+
+        # impede gradientes de voltarem para o encoder
+        return output
+
+
 
 
 class LearnedRotation(tf.keras.layers.Layer):

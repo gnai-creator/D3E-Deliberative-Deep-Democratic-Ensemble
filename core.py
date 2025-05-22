@@ -23,10 +23,15 @@ class SageUNet(tf.keras.Model):
         self.pos_enc = PositionalEncoding2D(hidden_dim)
         self.early_proj = layers.Conv2D(hidden_dim, 1, activation='relu')
         self.rotation = DiscreteRotation()
-        self.flip =  LearnedFlip()
+        self.flip = LearnedFlip()
+        self.shape_decoder = tf.keras.Sequential([
+            layers.Conv2D(self.hidden_dim, 3, padding='same', activation='relu'),
+            layers.Conv2D(1, 1, activation='sigmoid')  # saída binária: presença ou ausência de shape
+        ])
+
         self.encoder = EnhancedEncoder(hidden_dim)
         self.encoder_norm = layers.LayerNormalization()
-        self.translation = LearnedTranslation(max_offset=30)  # ou 30 se quiser agressivo
+        self.translation = LearnedTranslation(max_offset=30)
 
         self.down_conv = layers.Conv2D(hidden_dim, 3, strides=2, padding='same', activation='relu')
         self.skip_conv = layers.Conv2D(hidden_dim, 1, activation='relu')
@@ -42,11 +47,17 @@ class SageUNet(tf.keras.Model):
             layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
             layers.BatchNormalization(),
             layers.Conv2D(hidden_dim, 1, activation='relu'),
-            layers.Conv2D(NUM_CLASSES, 1)  # logits
+            layers.Conv2D(NUM_CLASSES, 1)
         ])
 
-        self.refiner = OutputRefinement(hidden_dim, num_classes=NUM_CLASSES)
-        self.color_transposer = LearnedColorPermutation(NUM_CLASSES)
+        self.input_proj = layers.Conv2D(self.hidden_dim, 1, activation='relu')
+        self.context_proj_context = layers.Conv2D(hidden_dim, 1, activation='relu')
+        self.context_proj_skip = layers.Conv2D(hidden_dim, 1, activation='relu')
+
+        self.use_refiner = tf.Variable(False, trainable=False, dtype=tf.bool)
+        self.refiner = OutputRefinement(hidden_dim, num_classes=NUM_CLASSES, scale=0.1)
+        self.learned_color_permutation = LearnedColorPermutation(NUM_CLASSES)
+
         self.agent_dense = tf.keras.Sequential([
             layers.Dense(hidden_dim, activation='relu'),
             layers.Dropout(0.3)
@@ -56,41 +67,32 @@ class SageUNet(tf.keras.Model):
             layers.Dense(hidden_dim, activation='relu'),
             layers.Dropout(0.3)
         ])
-        self.context_proj = layers.Conv2D(hidden_dim, 1, activation='relu')
-
-    def entropy(self, logits):
-        probs = tf.nn.softmax(logits, axis=-1)
-        ent = -tf.reduce_sum(probs * tf.math.log(probs + 1e-9), axis=-1, keepdims=True)  # [B, H, W, 1]
-        return ent
 
     def call(self, x_seq, training=False):
         batch_size = tf.shape(x_seq)[0]
         time_steps = tf.shape(x_seq)[3]
-
         frames = tf.TensorArray(dtype=tf.float32, size=time_steps)
 
         for t in tf.range(time_steps):
             x_t = x_seq[:, :, :, t, :]
             t_tensor = tf.broadcast_to(tf.cast(t, tf.int32), [batch_size])
             x_t = self.temporal_enc(x_t, t_tensor)
-            x_t = x_t + tf.random.normal(tf.shape(x_t), stddev=0.025)  # Add noise
-
-            x_t = self.pos_enc(x_t)
+            x_t = x_t + tf.random.normal(tf.shape(x_t), stddev=0.025)
             x_t = self.early_proj(x_t)
+            x_t = self.pos_enc(x_t)
             x_t = self.rotation(x_t)
             x_t = self.flip(x_t)
             x_t = self.encoder(x_t, training=training)
             x_t = self.encoder_norm(x_t, training=training)
+            tf.print("[DEBUG] Encoder mean abs:", tf.reduce_mean(tf.abs(x_t)))
             frames = frames.write(t, x_t)
 
-        x_encoded = tf.transpose(frames.stack(), perm=[1, 0, 2, 3, 4])  # [B, T, H, W, C]
-        x_encoded_avg = tf.reduce_mean(x_encoded, axis=1)  # [B, H, W, C]
-        x_encoded_avg = self.translation(x_encoded_avg, y=30)  # [B, H_out, W_out, C]
-        # logits = self.decoder(x_encoded_avg)  
-        # noise_scale = tf.stop_gradient(self.entropy(logits))  # shape: [B, H, W, 1
-        # x_encoded_avg += tf.random.normal(tf.shape(x_encoded_avg)) * noise_scale
+        x_encoded = tf.transpose(frames.stack(), perm=[1, 0, 2, 3, 4])
+        x_encoded_avg = tf.reduce_mean(x_encoded, axis=1)
+        x_encoded_avg = self.translation(x_encoded_avg, y=30)
 
-        # Context encoding
+        input_guide = self.input_proj(x_encoded_avg)
+
         x_flat = tf.keras.layers.GlobalAveragePooling2D()(x_encoded_avg)
         x_flat = self.pool_dense1(x_flat)
         state = self.agent_dense(x_flat)
@@ -100,10 +102,12 @@ class SageUNet(tf.keras.Model):
         full_context = tf.concat([state, memory_context], axis=-1)
         context = tf.reshape(full_context, [batch_size, 1, 1, 2 * self.hidden_dim])
         context = tf.tile(context, [1, tf.shape(x_encoded_avg)[1], tf.shape(x_encoded_avg)[2], 1])
-        context = self.context_proj(context)  # reduce to hidden_dim
+        context = self.context_proj_context(context)
 
-        # Downsample path with attention
-        skip_connection = self.skip_conv(x_encoded_avg)
+        skip = self.skip_conv(x_encoded_avg)
+        skip_pos = self.pos_enc(skip)
+        skip_connection = self.context_proj_skip(skip_pos)
+
         downsampled = self.down_conv(x_encoded_avg)
         h, w = tf.shape(downsampled)[1], tf.shape(downsampled)[2]
         seq_len = h * w
@@ -113,24 +117,29 @@ class SageUNet(tf.keras.Model):
         attn_output = self.attn_norm(attn_output + attn_input)
         attn_output_reshaped = tf.reshape(attn_output, [batch_size, h, w, self.hidden_dim])
 
-        # Upsample + skip connection
         upsampled = self.upsample_conv(attn_output_reshaped)
 
-        # Ensure compatibility of tensor shapes before addition
-        skip_shape = tf.shape(skip_connection)[-1]
-        context_shape = tf.shape(context)[-1]
-        upsampled_shape = tf.shape(upsampled)[-1]
-        min_channels = tf.reduce_min([skip_shape, context_shape, upsampled_shape])
+        fused = tf.nn.relu(upsampled + skip_connection + context + input_guide)
+        shape_logits = self.shape_decoder(fused)
 
-        skip_connection = skip_connection[:, :, :, :min_channels]
-        context = context[:, :, :, :min_channels]
-        upsampled = upsampled[:, :, :, :min_channels]
-
-        fused = tf.nn.relu(upsampled + skip_connection + context)
+        heatmap = tf.reduce_mean(fused, axis=-1)
+        max_pos = tf.argmax(tf.reshape(heatmap, [tf.shape(heatmap)[0], -1]), axis=-1)
+        h = tf.cast(tf.shape(heatmap)[1], tf.int64)
+        w = tf.cast(tf.shape(heatmap)[2], tf.int64)
+        max_y = max_pos // w
+        max_x = max_pos % w
+        tf.print("[DEBUG] fused max (y, x):", max_y, max_x)
 
         color_logits = self.decoder(fused, training=training)
-        position_logits = self.refiner(color_logits, training=training)
-        transposed_logits = self.color_transposer(color_logits, training=training)
-        position_logits = self.refiner(transposed_logits, training=training)
+        permuted_logits = self.learned_color_permutation(color_logits, training=training)
 
-        return position_logits, color_logits
+        if self.use_refiner:
+            final_logits = self.refiner(permuted_logits, training=training)
+        else:
+            final_logits = permuted_logits
+
+        return {
+            "main_output": final_logits,
+            "aux_output": color_logits,
+            "shape_output": shape_logits
+        }

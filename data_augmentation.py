@@ -73,3 +73,10 @@ def augment_with_class_replacement(X_data, y_data, pad_value=-1, num_classes=10)
             y_aug.append(np.copy(y))
     
     return np.array(X_aug), np.array(y_aug)
+
+
+def pad_to_zeros(array, target_shape=(30, 30)):
+    padded = np.zeros(target_shape, dtype=array.dtype)
+    h, w = array.shape
+    padded[:h, :w] = array
+    return padded

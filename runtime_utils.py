@@ -28,7 +28,7 @@ def log(msg):
 
 
 
-def pad_to_shape(tensor, target_shape=(30, 30), pad_value=-1):
+def pad_to_shape(tensor, target_shape=(30, 30), pad_value=0):
     import tensorflow as tf
 
     tensor = tf.convert_to_tensor(tensor)

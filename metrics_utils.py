@@ -49,13 +49,10 @@ def plot_training_input(input_tensor, model_name):
 
 
 def plot_prediction_debug(input_tensor, expected_output, predicted_output, model_index, index, pad_value=0):
-    def to_numpy_safe(tensor):
-        if isinstance(tensor, tf.Tensor):
-            tensor = tensor.numpy()
-        tensor = np.asarray(tensor)
-        if tensor.dtype.kind in {'U', 'S', 'O'}:
-            raise TypeError(f"[ERROR] Tensor com tipo inválido: {tensor.dtype}")
-        return tensor
+    def to_numpy_safe(x):
+        if isinstance(x, tf.Tensor):
+            x = x.numpy()
+        return np.asarray(x)
 
     try:
         os.makedirs("images", exist_ok=True)
@@ -64,15 +61,13 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
         expected_output = to_numpy_safe(expected_output).astype(np.int32)
         predicted_output = to_numpy_safe(predicted_output).astype(np.int32)
 
-        # Corrige input_tensor para extração correta do frame e canal de cor
         if input_tensor.ndim == 4 and input_tensor.shape[2] == 1:
             input_tensor = np.squeeze(input_tensor, axis=2)  # (H, W, C)
         if input_tensor.ndim == 3 and input_tensor.shape[-1] == 10:
-            input_img = np.argmax(input_tensor, axis=-1)  # (H, W)
+            input_img = np.argmax(input_tensor, axis=-1)
         else:
             raise ValueError(f"[ERROR] input_tensor shape inesperado: {input_tensor.shape}")
 
-        # Ajuste de shape se vier esquisito
         if predicted_output.ndim == 4:
             predicted_output = predicted_output[0]
         if predicted_output.ndim == 3 and predicted_output.shape[-1] == 1:
@@ -84,14 +79,16 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
         if not all(img.ndim == 2 for img in [input_img, expected_output, predicted_output]):
             raise ValueError("[ERROR] Todos os dados esperados no formato 2D (H, W).")
 
-        # Só compara onde não é padding
         valid_mask = expected_output != pad_value
         pixel_color_perfect = np.mean((predicted_output == expected_output)[valid_mask])
         pixel_shape_perfect = np.mean((predicted_output > 0) == (expected_output > 0))
 
         heatmap = ((predicted_output > 0) == (expected_output > 0)).astype(np.int32)
 
-        # Plot
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        sns.set(style="whitegrid")
+
         fig, axs = plt.subplots(1, 4, figsize=(22, 4))
         titles = [
             "Input",
@@ -112,10 +109,14 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
         filename = f"images/prediction_debug_{model_index}_index_{index}.png"
         plt.savefig(filename, dpi=150)
         plt.close()
+
+        from runtime_utils import log
         log(f"[INFO] Debug visual salvo: {filename}")
 
     except Exception as e:
+        from runtime_utils import log
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
+
 
 
 

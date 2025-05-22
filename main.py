@@ -20,6 +20,8 @@ from metrics import compute_metrics
 from callbacks import MetricsCallback, PermutationRegularizationCallback, EnableRefinerCallback
 from training_utils import freeze_all_except_learned_color_permutation, unfreeze_all, freeze_color_permutation, unfreeze_color_permutation
 from shape_locator_net import ShapeLocatorNet, compile_shape_locator
+import traceback
+
 # Seed and env setup
 tf.random.set_seed(42)
 np.random.seed(42)
@@ -42,9 +44,9 @@ BLOCK_SIZE = 1
 LEN_TRAINING = 5
 FULL_TRAIN_EPOCHS = 5
 PERMUTE_TRAIN_EPOCHS = 3
-CYCLES = 1
-MAX_BLOCKS = 1
-HOURS = 1
+CYCLES = 10
+MAX_BLOCKS = 400
+HOURS = 12
 MAX_TRAINING_TIME = HOURS * 60 * 60
 MAX_EVAL_TIME = HOURS * 2 * 60 * 60 / MODELS_PER_TASK
 
@@ -69,30 +71,32 @@ evaluation_logs = {}
 def transform_input(x):
     return tf.expand_dims(x, 0) if len(x.shape) == 4 else x
 
+def to_numpy_safe(x):
+    if isinstance(x, tf.Tensor):
+        return x.numpy()
+    elif isinstance(x, np.ndarray):
+        return x
+    else:
+        return np.array(x)
+
 for i in range(LEN_TRAINING):
     block_index = 0
     while block_index < MAX_BLOCKS and time.time() - start_time < MAX_TRAINING_TIME:
         log(f"Treinando bloco {block_index:02d}")
 
         X_train, X_val, Y_train, Y_val, sw_train, sw_val, info_train, info_val = get_dataset(
-                    block_index=block_index,
-                    task_ids=task_ids,
-                    challenges=train_challenges,
-                    block_size=BLOCK_SIZE,
-                    pad_value=PAD_VALUE,
-                    vocab_size=VOCAB_SIZE
-                )
-        
-        # log(f"X_train: {X_train}")
-        # log(f"X_val: {X_val}")
-        # log(f"Y_train: {Y_train}")
-        # log(f"Y_val: {Y_val}")
-        # log(f"Y_train: {Y_train}")
+            block_index=block_index,
+            task_ids=task_ids,
+            challenges=train_challenges,
+            block_size=BLOCK_SIZE,
+            pad_value=PAD_VALUE,
+            vocab_size=VOCAB_SIZE
+        )
 
-
+        print("Valores únicos de Y_train:", np.unique(Y_train.numpy()))
 
         if len(X_train.shape) == 4:
-            X_train = X_train[..., tf.newaxis, :]  # adiciona T=1
+            X_train = X_train[..., tf.newaxis, :]
             X_val = X_val[..., tf.newaxis, :]
 
         shape_mask_train = tf.cast(Y_train > 0, tf.float32)[..., tf.newaxis]
@@ -103,12 +107,11 @@ for i in range(LEN_TRAINING):
 
         for cycle in range(CYCLES):
             log(f"Ciclo {cycle+1}/{CYCLES} - Treinando modelo ShapeLocatorNet")
-
             t0 = time.time()
             model.fit(
                 x=X_train,
-                y=shape_mask_train,
-                validation_data=(X_val, shape_mask_val),
+                y=Y_train,
+                validation_data=(X_val, Y_val),
                 batch_size=BATCH_SIZE,
                 epochs=EPOCHS,
                 callbacks=[
@@ -119,8 +122,6 @@ for i in range(LEN_TRAINING):
             t1 = time.time()
             log(f"Treinamento do ciclo {cycle+1} concluído em {t1 - t0:.2f}s")
 
-            preds = model.predict(X_val)
-
             try:
                 x_val_sample = X_val[:1]
                 y_val_sample = Y_val[:1]
@@ -128,42 +129,47 @@ for i in range(LEN_TRAINING):
 
                 preds = model.predict(x_val_sample)
 
-                # Se for dicionário, pega a chave correta
                 if isinstance(preds, dict):
-                    y_val_logits = preds["class_logits"]
+                    presence_raw = preds["presence_map"]
+                    presence = presence_raw[0, :, :, 0] if isinstance(presence_raw, np.ndarray) else presence_raw.numpy()[0, :, :, 0]
                 else:
-                    y_val_logits = preds
+                    log("[WARN] Modelo retornou array, não dicionário. Usando fallback sem presence_map.")
+                    presence = np.zeros_like(preds[0, :, :, 0])
 
-                # Verificação de tipo
-                if isinstance(y_val_logits, tf.Tensor) and y_val_logits.dtype == tf.string:
-                    raise TypeError("[ERROR] y_val_logits do tipo string. Isso nao deveria acontecer.")
-                if isinstance(y_val_logits, np.ndarray) and y_val_logits.dtype.kind in {'U', 'S', 'O'}:
-                    raise TypeError("[ERROR] y_val_logits contem strings ou objetos invalidos.")
+                print("Presence média:", np.mean(presence))
 
-                # Predição: pega argmax nos logits
+                if np.mean(presence) < 0.01:
+                    print("[INFO] Modelo acha que não tem nada aqui — talvez esteja certo?")
+
+                y_val_logits = preds["class_logits"] if isinstance(preds, dict) else preds
+
                 y_val_pred = tf.argmax(y_val_logits, axis=-1).numpy()
-                y_val_pred_sample = y_val_pred[0]  # (H, W)
-                y_val_expected = y_val_sample.numpy()[0]  # (H, W)
+                y_val_pred_sample = y_val_pred[0]
+                y_val_expected = to_numpy_safe(y_val_sample[0])
 
-                if np.sum(y_val_expected) == 0 and np.sum(y_val_pred_sample) == 0:
-                    log("[WARN] Nenhum pixel positivo nas predições ou ground truth — ignorando visualização.")
+                plot_confusion(y_val_expected, y_val_pred_sample,
+                               model_name=f"block_{block_index}_cycle_{cycle+1}_model_0")
+                plot_prediction_debug(
+                    X_val[0], y_val_expected, y_val_pred_sample,
+                    model_index=f"block_{block_index}_model_0", index=cycle, pad_value=PAD_VALUE
+                )
+
+                match_pixels = (y_val_pred_sample == y_val_expected).astype(np.float32)
+                presence_mask = (y_val_expected > 0).astype(np.float32)
+                relevant = np.sum(presence_mask)
+                color_match_pct = 1.0 if relevant == 0 else np.sum(match_pixels * presence_mask) / relevant
+
+                log(f"[INFO] Color Match no bloco {block_index}, ciclo {cycle+1}: {color_match_pct*100:.2f}%")
+
+                if color_match_pct >= 1.0:
+                    log(f"[SUCCESS] Bloco {block_index} resolvido com sucesso. Pulando para próximo bloco.")
+                    block_index += 1
+                    break  # pula para o próximo bloco, ignora os ciclos restantes
                 else:
-                    plot_confusion(y_val_expected, y_val_pred_sample,
-                                model_name=f"block_{block_index}_cycle_{cycle+1}_model_0")
-                    plot_prediction_debug(
-                        X_val[0], y_val_expected, y_val_pred_sample,
-                        model_index=f"block_{block_index}_model_0", index=cycle, pad_value=PAD_VALUE
-                    )
+                    log(f"[INFO] Bloco {block_index} ainda não atingiu match satisfatório.")
 
             except Exception as e:
                 log(f"[ERROR] Erro ao gerar predicoes: {e}")
+                traceback.print_exc()
 
-
-
-
-
-
-
-            log(f"Predições salvas para ciclo {cycle+1} do bloco {block_index}")
-
-    block_index += 1
+        log(f"Predições salvas para ciclo {cycle+1} do bloco {block_index}")

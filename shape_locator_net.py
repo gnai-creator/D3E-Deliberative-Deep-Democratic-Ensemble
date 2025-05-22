@@ -7,7 +7,7 @@ from neural_blocks import (
     PositionalEncoding2D,
     AttentionOverMemory,
     FractalBlock,
-
+    DynamicClassPermuter
 )
 
 NUM_CLASSES = 10
@@ -19,24 +19,31 @@ class ShapeLocatorNet(tf.keras.Model):
         self.rotation = DiscreteRotation()
         self.input_proj = layers.Conv2D(hidden_dim, 1, activation='relu')
         self.pos_enc = PositionalEncoding2D(hidden_dim)
-        self.fractal = FractalBlock(hidden_dim)
-        self.attn_memory = AttentionOverMemory(hidden_dim)
-
         self.encoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
             layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
         ])
+        self.fractal = FractalBlock(hidden_dim)
+        self.attn_memory = AttentionOverMemory(hidden_dim)
+
+        self.mha = tf.keras.layers.MultiHeadAttention(num_heads=8, key_dim=hidden_dim)
+        self.norm = tf.keras.layers.LayerNormalization()
 
         self.decoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
-            layers.Conv2D(NUM_CLASSES, 1)  # logits
+            layers.Conv2D(NUM_CLASSES, 1)  # logits finais
         ])
 
-        self.presence_head = layers.Conv2D(1, 1, activation='sigmoid')  # Presença binária
-        self.color_perm = LearnedColorPermutation(NUM_CLASSES)
+        self.presence_head = layers.Conv2D(1, 1, activation='sigmoid')
+
+        # Permutadores
+        self.color_perm_train = LearnedColorPermutation(NUM_CLASSES)
+        self.permutation_eval = tf.range(NUM_CLASSES)  # identidade
+        self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
 
     def call(self, x, training=False):
-        x = x[:, :, :, -1, :]
+        x = x[:, :, :, -1, :]  # (B, H, W, C)
+
         x = self.flip(x)
         x = self.rotation(x)
         x = self.input_proj(x)
@@ -44,6 +51,7 @@ class ShapeLocatorNet(tf.keras.Model):
         x = self.encoder(x)
         x = self.fractal(x)
 
+        # Memory attention
         pooled = tf.reduce_mean(x, axis=[1, 2])
         memory = tf.expand_dims(pooled, axis=1)
         memory_out = self.attn_memory(memory, pooled)
@@ -51,16 +59,28 @@ class ShapeLocatorNet(tf.keras.Model):
         memory_out = tf.tile(memory_out, [1, tf.shape(x)[1], tf.shape(x)[2], 1])
         x = x + memory_out
 
-        class_logits = self.decoder(x)
-        presence_map = self.presence_head(x)
+        # MultiHeadAttention refinamento
+        b, h, w, c = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], x.shape[-1]
+        x_flat = tf.reshape(x, [b, h * w, c])
+        x_attn = self.mha(x_flat, x_flat)
+        x_attn = self.norm(x_attn + x_flat)
+        x = tf.reshape(x_attn, [b, h, w, x_attn.shape[-1]])
 
-        class_logits = self.color_perm(class_logits, training=training)
+        # Logits
+        raw_logits = self.decoder(x)  # antes de qualquer permutação
+        raw_logits = self.permuter(x, raw_logits)  # aplica filtro baseado no shape latente
 
-        return {
-            "class_logits": class_logits,       # (B, H, W, NUM_CLASSES)
-            "presence_map": presence_map        # (B, H, W, 1)
-        }
-
+        # Treino vs inferência
+        if training:
+            class_logits = self.color_perm_train(raw_logits, training=True)
+            return class_logits
+        else:
+            class_logits = tf.gather(raw_logits, self.permutation_eval, axis=-1)
+            presence_map = self.presence_head(x)
+            return {
+                "class_logits": class_logits,
+                "presence_map": presence_map
+            }
 
 def compile_shape_locator(model, lr=1e-3):
     model.compile(

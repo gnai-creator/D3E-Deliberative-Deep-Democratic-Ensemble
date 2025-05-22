@@ -223,20 +223,25 @@ class LearnedColorPermutation(tf.keras.layers.Layer):
         self.permutation_weights = tf.Variable(initial_weights, trainable=True, name="perm_matrix")
 
     def call(self, x, training=False):
-        weights = tf.nn.softmax(self.permutation_weights, axis=1)
-        weights = tf.clip_by_value(weights, 0.001, 0.999)  # Limita os extremos
+        # Usa logits diretamente
+        weights = self.permutation_weights
+
         output = tf.einsum('bhwc,cd->bhwd', x, weights)
 
         if training:
+            # Regularização contra identidade
             identity = tf.eye(self.num_classes)
-            reg_loss = tf.reduce_sum(tf.square(weights - identity))
+            reg_loss = tf.reduce_sum(tf.square(tf.nn.softmax(weights, axis=-1) - identity))
             self.add_loss(self.reg_strength * reg_loss)
-            self.add_metric(tf.reduce_mean(weights), name="perm_mean")
-            std = tf.sqrt(tf.reduce_mean(tf.square(weights - tf.reduce_mean(weights))))
+
+            # Métricas de monitoração (após softmax para interpretação humana)
+            soft_weights = tf.nn.softmax(weights, axis=-1)
+            self.add_metric(tf.reduce_mean(soft_weights), name="perm_mean")
+            std = tf.sqrt(tf.reduce_mean(tf.square(soft_weights - tf.reduce_mean(soft_weights))))
             self.add_metric(std, name="perm_std")
 
-        # impede gradientes de voltarem para o encoder
         return output
+
 
 
 
@@ -310,3 +315,126 @@ class TemporalEncoding(tf.keras.layers.Layer):
         return x + time_emb
 
 
+class ClassEmbeddingMatcher(tf.keras.layers.Layer):
+    """
+    Transforma representações contínuas em predições discretas de classe
+    via similaridade com vetores de classe (embeddings).
+
+    - Entrada: Tensor contínuo [B, H, W, D]
+    - Saída: Logits [B, H, W, C], onde C = num_classes
+    """
+    def __init__(self, num_classes, embedding_dim, use_temperature=True):
+        super().__init__()
+        self.num_classes = num_classes
+        self.embedding_dim = embedding_dim
+        self.use_temperature = use_temperature
+        self.class_embeddings = self.add_weight(
+            shape=(num_classes, embedding_dim),
+            initializer="glorot_uniform",
+            trainable=True,
+            name="class_embeddings"
+        )
+        if self.use_temperature:
+            self.temperature = self.add_weight(
+                shape=(),
+                initializer=tf.keras.initializers.Constant(1.0),
+                trainable=True,
+                name="temperature"
+            )
+
+    def call(self, x):
+        # x: [B, H, W, D]
+        # Reshape para [B*H*W, D]
+        orig_shape = tf.shape(x)
+        flat_x = tf.reshape(x, [-1, self.embedding_dim])  # [N, D]
+
+        # Normalize embeddings and inputs
+        norm_x = tf.nn.l2_normalize(flat_x, axis=-1)  # [N, D]
+        norm_classes = tf.nn.l2_normalize(self.class_embeddings, axis=-1)  # [C, D]
+
+        # Similaridade coseno: [N, C]
+        logits = tf.matmul(norm_x, norm_classes, transpose_b=True)
+
+        if self.use_temperature:
+            logits = logits / self.temperature
+
+        # Volta pro shape [B, H, W, C]
+        new_shape = tf.concat([orig_shape[:-1], [self.num_classes]], axis=0)
+        logits = tf.reshape(logits, new_shape)
+        return logits
+
+
+class ConditionalClassPermuter(tf.keras.layers.Layer):
+    """
+    Aplica uma máscara de permissão de classe baseada no 'tipo de shape' latente.
+
+    Assumimos que o modelo primeiro gera logits para classes latentes (ou embeddings),
+    e depois isso é mapeado para classes reais, mas só onde for permitido.
+    """
+    def __init__(self, class_mask, use_logit_penalty=True):
+        """
+        class_mask: tensor shape [NUM_CLASSES], ou [1, 1, 1, NUM_CLASSES]
+        que indica quais classes são permitidas. Pode ser aprendida ou fixa.
+        """
+        super().__init__()
+        self.class_mask = tf.constant(class_mask, dtype=tf.float32)
+        self.use_logit_penalty = use_logit_penalty
+
+    def call(self, logits):
+        """
+        logits: Tensor [B, H, W, NUM_CLASSES]
+        """
+        if self.use_logit_penalty:
+            large_neg = tf.constant(-1e9, dtype=logits.dtype)
+            penalty_mask = 1.0 - self.class_mask  # zeros onde permitido
+            penalty = penalty_mask * large_neg
+            return logits + penalty
+        else:
+            return logits * self.class_mask  # simplesmente zera onde proibido
+        
+
+class DynamicClassPermuter(tf.keras.layers.Layer):
+    """
+    Permutador de classe condicional baseado em shape type inferido.
+    """
+    def __init__(self, num_shape_types, num_classes, temperature=1.0):
+        super().__init__()
+        self.num_shape_types = num_shape_types
+        self.num_classes = num_classes
+        self.temperature = temperature
+
+        # Logits que definem a máscara de permissão por shape
+        # Shape: [S, C] — S shape types, C classes
+        self.shape_class_logits = self.add_weight(
+            shape=(num_shape_types, num_classes),
+            initializer='glorot_uniform',
+            trainable=True,
+            name="shape_class_logits"
+        )
+
+        # MLP pra prever tipo de shape de cada pixel
+        self.shape_type_predictor = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(32, 1, activation='relu'),
+            tf.keras.layers.Conv2D(num_shape_types, 1)  # logits de tipo
+        ])
+
+    def call(self, x, class_logits):
+        """
+        x: features latentes [B, H, W, D]
+        class_logits: predição por classe antes da máscara [B, H, W, C]
+        """
+
+        # Prever tipo de shape de cada pixel: [B, H, W, S]
+        shape_type_logits = self.shape_type_predictor(x)
+        shape_type_probs = tf.nn.softmax(shape_type_logits / self.temperature, axis=-1)
+
+        # Soft mask final por pixel:
+        # shape_type_probs: [B, H, W, S]
+        # shape_class_logits: [S, C]
+        # → shape_class_probs: [B, H, W, C]
+        shape_class_mask = tf.einsum('bhws,sc->bhwc', shape_type_probs, tf.nn.sigmoid(self.shape_class_logits))
+
+        # Aplica a máscara suavizada aos logits de classe
+        masked_logits = class_logits * shape_class_mask
+
+        return masked_logits

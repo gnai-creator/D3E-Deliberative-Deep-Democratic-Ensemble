@@ -66,7 +66,7 @@ def get_dataset(block_index, task_ids, train_challenges, block_size, pad_value, 
         )
     
     X_aug, y_aug = augment_dataset_rotation_flip(X_train_final, y_train_final)
-    X_aug, y_aug = augment_with_class_replacement(X_aug, y_aug, num_classes=10)
+    # X_aug, y_aug = augment_with_class_replacement(X_aug, y_aug, num_classes=10)
 
     
     # Retorno como tensores

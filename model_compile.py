@@ -3,10 +3,10 @@ import tensorflow as tf
 import tensorflow.keras as keras
 from runtime_utils import log
 from losses import FocalLoss
-from core import SageAxiom
+from core import SageUNet
 
 def model_compilation(index, learning_rate, vocab_size, block_index, result_dir):
-    base_model = SageAxiom(hidden_dim=128)
+    base_model = SageUNet(hidden_dim=128)
     
     inputs = tf.keras.Input(shape=(30, 30, 10, vocab_size))
     final_logits, base_logits = base_model(inputs)
@@ -24,7 +24,7 @@ def model_compilation(index, learning_rate, vocab_size, block_index, result_dir)
 
     focal_loss = FocalLoss(
         gamma=1.0,
-        alpha=[0.25] + [0.75] * 9,
+        alpha=[0.3] + [1.33] * 9,
     )
 
     model.compile(
@@ -32,7 +32,7 @@ def model_compilation(index, learning_rate, vocab_size, block_index, result_dir)
         loss={  "main_output":  focal_loss,
                 "aux_output":  focal_loss
         },
-        loss_weights={"main_output": 0.8, "aux_output": 0.2},
+        loss_weights={"main_output": 0.8, "aux_output": 0.05},
         metrics={"main_output": [tf.keras.metrics.SparseCategoricalAccuracy(name="acc")],
              "aux_output":  [tf.keras.metrics.SparseCategoricalAccuracy(name="acc_aux")]}
     )

@@ -45,21 +45,9 @@ def plot_training_input(input_tensor, model_name):
     log(f"[INFO] Input visualizado salvo: {filename}")
 
 
-import numpy as np
-import matplotlib.pyplot as plt
-import tensorflow as tf
-from runtime_utils import log
-
-
-import numpy as np
-import matplotlib.pyplot as plt
-import tensorflow as tf
-from runtime_utils import log
-
 
 def plot_prediction_debug(input_tensor, expected_output, predicted_output, model_index, index):
     def to_numpy_safe(tensor):
-        """Converte tensor para numpy e valida tipo."""
         if isinstance(tensor, tf.Tensor):
             tensor = tensor.numpy()
         tensor = np.asarray(tensor)
@@ -68,21 +56,17 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
         return tensor
 
     def argmax_if_logits(tensor):
-        """Aplica argmax se tensor tiver canal de classe."""
         return np.argmax(tensor, axis=-1) if tensor.ndim >= 3 and tensor.shape[-1] > 1 else tensor
 
     try:
-        # Garante pasta de saída
         os.makedirs("images", exist_ok=True)
 
-        # Conversões seguras
         input_tensor = to_numpy_safe(input_tensor)
         expected_output = to_numpy_safe(expected_output).astype(np.int32)
         predicted_output = to_numpy_safe(predicted_output)
         predicted_output = argmax_if_logits(predicted_output).astype(np.int32)
 
-        # Processa input_img para visualização
-        if input_tensor.ndim == 4:  # [H, W, T, C]
+        if input_tensor.ndim == 4:
             input_img = argmax_if_logits(input_tensor[:, :, 0, :])
         elif input_tensor.ndim == 3:
             input_img = argmax_if_logits(input_tensor)
@@ -91,7 +75,6 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
         else:
             raise ValueError(f"[ERROR] input_tensor shape inválido: {input_tensor.shape}")
 
-        # Corrige shape da predição se necessário
         if predicted_output.ndim == 1 and expected_output.ndim == 2:
             if predicted_output.size == expected_output.shape[0]:
                 predicted_output = np.tile(predicted_output[:, None], (1, expected_output.shape[1]))
@@ -102,17 +85,28 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
             else:
                 raise ValueError("[ERROR] Shape de predição incompatível com o esperado.")
 
-        # Validação final
         if not all(img.ndim == 2 for img in [input_img, expected_output, predicted_output]):
             raise ValueError("[ERROR] Todos os dados esperados no formato 2D (H, W).")
 
-        # Gera heatmap de acerto
-        heatmap = (predicted_output == expected_output).astype(np.int32)
-        accuracy = np.mean(heatmap)
+        # Métricas
+        # Color Match: onde o expected é diferente de zero e o valor bate exatamente
+        valid_color_mask = expected_output != 0
+        pixel_color_perfect = np.mean((predicted_output == expected_output)[valid_color_mask])
 
-        # Plotagem
-        fig, axs = plt.subplots(1, 4, figsize=(18, 4))
-        titles = ["Input", "Expected Output", "Prediction", f"Accuracy ({accuracy:.1%})"]
+        # Shape Match: compara presença (>0) em toda a imagem
+        pixel_shape_perfect = np.mean((predicted_output > 0) == (expected_output > 0))
+
+
+        heatmap = ((predicted_output > 0) == (expected_output > 0)).astype(np.int32)
+
+        # Plot
+        fig, axs = plt.subplots(1, 4, figsize=(22, 4))
+        titles = [
+            "Input",
+            "Expected Output",
+            f"Prediction\n(Color Match: {pixel_color_perfect:.2%})",
+            f"Shape Match\n(Presence: {pixel_shape_perfect:.2%})"
+        ]
         images = [input_img, expected_output, predicted_output, heatmap]
         cmaps = ["viridis", "viridis", "viridis", "gray"]
 
@@ -130,6 +124,7 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
 
     except Exception as e:
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
+
 
 
 

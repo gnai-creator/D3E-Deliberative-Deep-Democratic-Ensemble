@@ -21,15 +21,35 @@ def flip_pair(pair):
 
 
 # --- MAIN AUGMENTATION FUNCTION ---
-def augment_data_rotation_flip(pair):
-    augmented = [pair]
-    # Rotations
-    for k in range(1, 4):
-        augmented.append(rotate_pair(pair, k))
-    # Flip
-    augmented.append(flip_pair(pair))
+def augment_dataset_rotation_flip(X_data, y_data):
+    """
+    Aplica rotação (90, 180, 270) e flip horizontal em cada par (x, y).
 
-    return augmented
+    Args:
+        X_data (list or array): Lista de matrizes de entrada
+        y_data (list or array): Lista de matrizes de saída
+
+    Returns:
+        X_aug (list): Entradas aumentadas
+        y_aug (list): Saídas aumentadas
+    """
+    X_aug, y_aug = [], []
+
+    for x, y in zip(X_data, y_data):
+        pair = {"input": x, "output": y}
+        augmented = [pair]
+        # Rotations
+        for k in range(1, 4):
+            augmented.append(rotate_pair(pair, k))
+        # Flip
+        augmented.append(flip_pair(pair))
+
+        for aug in augmented:
+            X_aug.append(np.array(aug["input"]))
+            y_aug.append(np.array(aug["output"]))
+
+    return X_aug, y_aug
+
 
 def augment_with_class_replacement(X_data, y_data, pad_value=-1, num_classes=10):
     """

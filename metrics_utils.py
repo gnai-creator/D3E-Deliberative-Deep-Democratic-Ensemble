@@ -72,13 +72,16 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
         return np.argmax(tensor, axis=-1) if tensor.ndim >= 3 and tensor.shape[-1] > 1 else tensor
 
     try:
+        # Garante pasta de saída
+        os.makedirs("images", exist_ok=True)
+
         # Conversões seguras
         input_tensor = to_numpy_safe(input_tensor)
         expected_output = to_numpy_safe(expected_output).astype(np.int32)
         predicted_output = to_numpy_safe(predicted_output)
         predicted_output = argmax_if_logits(predicted_output).astype(np.int32)
 
-        # Processa input_img
+        # Processa input_img para visualização
         if input_tensor.ndim == 4:  # [H, W, T, C]
             input_img = argmax_if_logits(input_tensor[:, :, 0, :])
         elif input_tensor.ndim == 3:
@@ -103,7 +106,7 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
         if not all(img.ndim == 2 for img in [input_img, expected_output, predicted_output]):
             raise ValueError("[ERROR] Todos os dados esperados no formato 2D (H, W).")
 
-        # Gera heatmap
+        # Gera heatmap de acerto
         heatmap = (predicted_output == expected_output).astype(np.int32)
         accuracy = np.mean(heatmap)
 

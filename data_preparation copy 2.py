@@ -2,7 +2,6 @@ import tensorflow as tf
 import numpy as np
 from runtime_utils import log, pad_to_shape
 from sklearn.model_selection import train_test_split
-from data_augmentation import augment_dataset_rotation_flip, augment_with_class_replacement  # <- AUGMENTAÇÃO IMPORTADA
 
 def get_dataset(block_index, task_ids, train_challenges, block_size, pad_value, vocab_size):
     start = block_index * block_size
@@ -64,16 +63,12 @@ def get_dataset(block_index, task_ids, train_challenges, block_size, pad_value, 
         X_train_final, X_val_final, y_train_final, y_val_final, sw_train, sw_val = train_test_split(
             X_all.numpy(), y_all_clean.numpy(), sample_weight.numpy(), test_size=0.2, random_state=42
         )
-    
-    X_aug, y_aug = augment_dataset_rotation_flip(X_train_final, y_train_final)
-    X_aug, y_aug = augment_with_class_replacement(X_aug, y_aug, num_classes=10)
 
-    
     # Retorno como tensores
     return (
-        tf.convert_to_tensor(X_aug, dtype=tf.float32),
+        tf.convert_to_tensor(X_train_final, dtype=tf.float32),
         tf.convert_to_tensor(X_val_final, dtype=tf.float32),
-        tf.convert_to_tensor(y_aug, dtype=tf.int32),
+        tf.convert_to_tensor(y_train_final, dtype=tf.int32),
         tf.convert_to_tensor(y_val_final, dtype=tf.int32),
         tf.convert_to_tensor(sw_train, dtype=tf.float32),
         tf.convert_to_tensor(sw_val, dtype=tf.float32),

@@ -2,8 +2,9 @@ import os
 import tensorflow as tf
 import tensorflow.keras as keras
 from runtime_utils import log
-from losses import FocalLoss
+from losses import focal_loss
 from core import SageAxiom
+
 
 def model_compilation(index, learning_rate, vocab_size, block_index, result_dir):
     base_model = SageAxiom(hidden_dim=128)
@@ -22,19 +23,24 @@ def model_compilation(index, learning_rate, vocab_size, block_index, result_dir)
     if os.path.exists(model_path + "_weights.h5"):
         model.load_weights(model_path + "_weights.h5")
 
-    focal_loss = FocalLoss(
-        gamma=1.0,
-        alpha=[0.25] + [0.75] * 9,
-    )
+
 
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
-        loss={  "main_output":  focal_loss,
-                "aux_output":  focal_loss
+        loss={  "main_output":  focal_loss(
+                                    gamma=1.0,
+                                    alpha=[0.25, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75],
+                                    
+                                
+                                ),
+                "aux_output":  focal_loss(
+                                    gamma=1.0,
+                                    alpha=[0.25, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75],
+                                
+                                )
         },
-        loss_weights={"main_output": 0.8, "aux_output": 0.2},
-        metrics={"main_output": [tf.keras.metrics.SparseCategoricalAccuracy(name="acc")],
-             "aux_output":  [tf.keras.metrics.SparseCategoricalAccuracy(name="acc_aux")]}
+        loss_weights={"main_output": 0.75, "aux_output": 0.25},
+        metrics=["accuracy"]
     )
 
 

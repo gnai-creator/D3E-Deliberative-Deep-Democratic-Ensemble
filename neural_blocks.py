@@ -4,27 +4,34 @@ import math
 NUM_CLASSES = 10
 
 class OutputRefinement(tf.keras.layers.Layer):
-    def __init__(self, hidden_dim, num_classes=NUM_CLASSES, **kwargs):
+    def __init__(self, hidden_dim, num_classes=NUM_CLASSES, scale=0.5, **kwargs):
         super().__init__(**kwargs)
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
-        self.conv = tf.keras.Sequential([
+        self.scale = scale
+        self.refine_net = tf.keras.Sequential([
             tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
             tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
-            tf.keras.layers.Conv2D(num_classes, 1)
+            tf.keras.layers.Conv2D(num_classes, 1)  # Output delta
         ])
 
     def call(self, x):
-        return self.conv(x)
+        residual = self.refine_net(x)
+        return x + self.scale * residual  # Add adjustment to logits
 
     def get_config(self):
         config = super().get_config()
-        config.update({"hidden_dim": self.hidden_dim, "num_classes": self.num_classes})
+        config.update({
+            "hidden_dim": self.hidden_dim,
+            "num_classes": self.num_classes,
+            "scale": self.scale
+        })
         return config
 
     @classmethod
     def from_config(cls, config):
         return cls(**config)
+
 
 
 class PositionalEncoding2D(tf.keras.layers.Layer):

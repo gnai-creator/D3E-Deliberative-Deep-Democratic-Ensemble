@@ -16,6 +16,14 @@ from sage_debate_loop import conversational_loop
 from losses import masked_loss_with_smoothing
 from data_preparation import get_dataset
 from model_compile import model_compilation
+from metrics import compute_metrics
+from callbacks import MetricsCallback
+
+import random
+tf.random.set_seed(42)
+np.random.seed(42)
+random.seed(42)
+os.environ["TF_DETERMINISTIC_OPS"] = "1"
 
 PAD_VALUE = -1
 
@@ -42,7 +50,8 @@ EPOCHS = 60
 RESULTS_DIR = "results"
 MODELS_PER_TASK = 1
 BLOCK_SIZE = 1
-LEN_TRAINING = 5
+LEN_TRAINING = 25
+MAX_BLOCKS = 1
 HOURS = 1
 MAX_TRAINING_TIME = HOURS * 60 * 60
 MAX_EVAL_TIME = HOURS * 2 * 60 * 60 / MODELS_PER_TASK
@@ -61,7 +70,6 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # Preparar tasks
 task_ids = list(train_challenges.keys())
-MAX_BLOCKS = len(task_ids)/ LEN_TRAINING
 
 start_time = time.time()
 scores = {}
@@ -151,7 +159,8 @@ for i in range(LEN_TRAINING):
                 verbose=1,
                 callbacks=[
                     EarlyStopping(monitor="val_loss", patience=PATIENCE, restore_best_weights=True),
-                    ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=rl_learning_rate)
+                    ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=RL_PATIENCE, min_lr=rl_learning_rate),
+                    MetricsCallback(x, y_val_final,num_classes=10)
                 ]
             )
 

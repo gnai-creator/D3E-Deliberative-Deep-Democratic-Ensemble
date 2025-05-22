@@ -47,8 +47,9 @@ class SageAxiom(tf.keras.Model):
             layers.BatchNormalization(),
             layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
             layers.BatchNormalization(),
-            layers.Conv2D(hidden_dim, 1, activation='relu'),
-            layers.Conv2D(NUM_CLASSES, 1)
+            # REMOVIDO o relu antes da saída
+            layers.Conv2D(hidden_dim, 1),  # linear
+            layers.Conv2D(NUM_CLASSES, 1)  # final logits, sem ativação
         ])
         self.refiner = OutputRefinement(hidden_dim, num_classes=NUM_CLASSES)
 
@@ -89,12 +90,12 @@ class SageAxiom(tf.keras.Model):
             x_t = self.rotation(x_t)
             x_t = self.encoder(x_t, training=training)
             x_t = self.norm(x_t, training=training)
-            frames = frames.write(t, x_t)  # <- uso correto
+            frames = frames.write(t, x_t)
 
         x_encoded = tf.transpose(frames.stack(), perm=[1, 0, 2, 3, 4])  # [B, T, H, W, C]
-
         x_encoded_avg = tf.reduce_mean(x_encoded, axis=1)  # [B, H, W, C]
 
+        # Context encoding
         x_flat = tf.keras.layers.GlobalAveragePooling2D()(x_encoded_avg)
         x_flat = self.pool_dense1(x_flat)
         state = self.agent_dense(x_flat)
@@ -102,48 +103,41 @@ class SageAxiom(tf.keras.Model):
         memory_tensor = tf.expand_dims(state, axis=0)
         memory_context = self.memory_attention(memory_tensor, state)
         full_context = tf.concat([state, memory_context], axis=-1)
-
         context = tf.reshape(full_context, [batch_size, 1, 1, 2 * self.hidden_dim])
         context = self._tile_context(context)
 
+        # Attention over downsampled space
         downsampled = tf.keras.layers.AveragePooling2D(pool_size=2)(x_encoded_avg)
         shape = tf.shape(downsampled)
-        h = tf.gather(shape, 1)
-        w = tf.gather(shape, 2)
-        seq_len = tf.math.multiply(h, w)
+        h, w = shape[1], shape[2]
+        seq_len = h * w
 
         attn_input = tf.reshape(downsampled, [batch_size, seq_len, self.hidden_dim])
-
-        attn_output = self.attn(
-            query=attn_input,
-            key=attn_input,
-            value=attn_input,
-            training=training
-        )
+        attn_output = self.attn(query=attn_input, key=attn_input, value=attn_input, training=training)
         attn_output = self.attn_norm(attn_output + attn_input)
-
         attn_output_reshaped = tf.reshape(attn_output, [batch_size, h, w, self.hidden_dim])
         attn_upsampled = tf.image.resize(attn_output_reshaped, size=[30, 30], method='bilinear')
 
         x_encoded_resized = tf.image.resize(x_encoded_avg, size=[30, 30], method='bilinear')
-        fused = tf.nn.relu(tf.add(attn_upsampled, x_encoded_resized))
+        fused = tf.nn.relu(attn_upsampled + x_encoded_resized)
 
+        # Refinement blocks
         for _ in range(2):
             block = self.attn_conv(fused)
             block = self.refine_norm(block + fused)
             fused = tf.nn.relu(fused + block)
 
+        # Final logits directly from decoder
         logits = self.decoder(fused, training=training)
+
+        # Opção: use isso se quiser testar a refiner depois
         final_logits = self.refiner(logits, training=training)
-        # tf.print("Logits unique:", tf.unique(tf.argmax(logits, axis=-1))[0])
-        # tf.print("Final logits unique:", tf.unique(tf.argmax(final_logits, axis=-1))[0])
-        # tf.print("Unique values in logits before argmax:", tf.unique(tf.argmax(logits, axis=-1))[0])
-        # temp_output = self.decoder.layers[-1](fused)
-        # tf.print("Logits últimos convs:", tf.reduce_max(temp_output, axis=[1,2]))
+        # final_logits = logits
+
+        # DEBUG OUTPUT
+        # tf.print("Logits shape:", tf.shape(logits))
+        # tf.print("Classes únicas:", tf.unique(tf.argmax(logits, axis=-1))[0])
 
         return final_logits, logits
-        # return {
-        #     "main_output": final_logits,
-        #     "aux_output": logits
-        # }
+
 

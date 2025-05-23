@@ -34,10 +34,10 @@ It does not generalize across tasks. It conquers each one individually, like a s
 
 ```python
 from shape_locator_net import SimuV1
-from compiler import compile_shape_locator
+from model_compile import compile_model
 
 model = SimuV1(hidden_dim=256)
-model = compile_shape_locator(model, lr=1e-3)
+model = compile_model(model, lr=1e-3)
 
 model.fit(x_train, y_train, epochs=60, ...)
 preds = model(x_test, training=False)

@@ -37,9 +37,9 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
         h_out, w_out = output_grid.shape
         t_h_in, t_w_in = test_input_grid.shape
 
-        input_tensor = np.full((30, 30), pad_value, dtype=np.int32)
-        output_tensor = np.full((30, 30), pad_value, dtype=np.int32)
-        test_input_tensor = np.full((30,30), pad_value, dtype=np.int32)
+        input_tensor = np.full((max_h, max_w), pad_value, dtype=np.int32)
+        output_tensor = np.full((max_h, max_w), pad_value, dtype=np.int32)
+        test_input_tensor = np.full((max_h,max_w), pad_value, dtype=np.int32)
 
         input_tensor[:h_in, :w_in] = input_grid
         output_tensor[:h_out, :w_out] = output_grid 

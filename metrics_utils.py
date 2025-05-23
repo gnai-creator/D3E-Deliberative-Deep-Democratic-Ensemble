@@ -239,13 +239,6 @@ def ensure_numpy(x):
         return np.array(x)
 
 
-
-
-
-
-
-
-
 def plot_prediction_test(input_tensor, predicted_output, task_id, filename="output", index=0, pad_value=0):
     try:
         if isinstance(input_tensor, tf.Tensor):
@@ -273,15 +266,18 @@ def plot_prediction_test(input_tensor, predicted_output, task_id, filename="outp
         if predicted_output.ndim == 3 and predicted_output.shape[-1] == 1:
             predicted_output = predicted_output[:, :, 0]
 
-        if predicted_output.shape != input_img.shape:
-            log(f"[WARN] Ajustando predicted_output de {predicted_output.shape} para {input_img.shape}")
-            padded_pred = np.full_like(input_img, pad_value)
-            h, w = min(predicted_output.shape[0], input_img.shape[0]), min(predicted_output.shape[1], input_img.shape[1])
-            padded_pred[:h, :w] = predicted_output[:h, :w]
-            predicted_output = padded_pred
+        # Align shapes for plotting
+        h = max(input_img.shape[0], predicted_output.shape[0])
+        w = max(input_img.shape[1], predicted_output.shape[1])
+        def pad(x, h, w):
+            padded = np.full((h, w), pad_value, dtype=x.dtype)
+            padded[:x.shape[0], :x.shape[1]] = x
+            return padded
+
+        input_img = pad(input_img, h, w)
+        predicted_output = pad(predicted_output, h, w)
 
         sns.set(style="whitegrid")
-
         fig, axs = plt.subplots(1, 2, figsize=(6, 3))
         titles = ["Input", "Prediction"]
         images = [input_img, predicted_output]
@@ -291,14 +287,18 @@ def plot_prediction_test(input_tensor, predicted_output, task_id, filename="outp
             ax.imshow(img, cmap=cmap, vmin=0, vmax=9)
             ax.set_title(title)
             ax.axis("off")
+
         file = f"Prediction TEST - Model Task {task_id}"
         plt.suptitle(file, fontsize=10)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
+        os.makedirs("images/test", exist_ok=True)
         full_filename = f"images/test/{file}.png"
         plt.savefig(full_filename, dpi=150)
         plt.close()
 
+        from runtime_utils import log
         log(f"[INFO] Debug visual salvo: {full_filename}")
 
     except Exception as e:
+        from runtime_utils import log
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")

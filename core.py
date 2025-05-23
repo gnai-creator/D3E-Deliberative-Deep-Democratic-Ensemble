@@ -1,13 +1,13 @@
 import tensorflow as tf
 from tensorflow.keras import layers
 from neural_blocks import (
-    LearnedColorPermutation,
-    LearnedFlip,
-    DiscreteRotation,
-    PositionalEncoding2D,
-    AttentionOverMemory,
-    FractalBlock,
-    DynamicClassPermuter
+    LearnedColorPermutation, #ok
+    LearnedFlip, # ok
+    DiscreteRotation, #ok
+    PositionalEncoding2D, # ok
+    AttentionOverMemory, # Ok
+    FractalBlock, # Ok
+    DynamicClassPermuter # OK
 )
 
 NUM_CLASSES = 10

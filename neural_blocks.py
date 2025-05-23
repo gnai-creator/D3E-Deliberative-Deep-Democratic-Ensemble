@@ -3,38 +3,8 @@ import tensorflow_addons as tfa
 import math
 NUM_CLASSES = 10
 
-class OutputRefinement(tf.keras.layers.Layer):
-    def __init__(self, hidden_dim, num_classes=NUM_CLASSES, scale=0.5, **kwargs):
-        super().__init__(**kwargs)
-        self.hidden_dim = hidden_dim
-        self.num_classes = num_classes
-        self.scale = scale
-        self.refine_net = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
-            tf.keras.layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
-            tf.keras.layers.Conv2D(num_classes, 1)  # Output delta
-        ])
 
-    def call(self, x):
-        residual = self.refine_net(x)
-        return x + self.scale * residual  # Add adjustment to logits
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            "hidden_dim": self.hidden_dim,
-            "num_classes": self.num_classes,
-            "scale": self.scale
-        })
-        return config
-
-    @classmethod
-    def from_config(cls, config):
-        return cls(**config)
-
-
-
-class PositionalEncoding2D(tf.keras.layers.Layer):
+class PositionalEncoding2D(tf.keras.layers.Layer): #ok
     def __init__(self, channels, **kwargs):
         super().__init__(**kwargs)
         self.channels = channels
@@ -60,7 +30,7 @@ class PositionalEncoding2D(tf.keras.layers.Layer):
         return cls(**config)
 
 
-class FractalBlock(tf.keras.layers.Layer):
+class FractalBlock(tf.keras.layers.Layer): # ok
     def __init__(self, dim, **kwargs):
         super().__init__(**kwargs)
         self.dim = dim
@@ -90,58 +60,9 @@ class FractalBlock(tf.keras.layers.Layer):
         return cls(**config)
 
 
-class EnhancedEncoder(tf.keras.layers.Layer):
-    def __init__(self, dim, **kwargs):
-        super().__init__(**kwargs)
-        self.dim = dim
-        self.blocks = [FractalBlock(dim) for _ in range(4)]
-        self.out = tf.keras.layers.Conv2D(dim, 3, padding='same', activation='relu')
-
-    def call(self, x):
-        for block in self.blocks:
-            x = block(x)
-        return self.out(x)
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({"dim": self.dim})
-        return config
-
-    @classmethod
-    def from_config(cls, config):
-        return cls(**config)
 
 
-class LearnedTranslation(tf.keras.layers.Layer):
-    def __init__(self, max_offset=28, **kwargs):
-        super().__init__(**kwargs)
-        self.offset_layer = tf.keras.layers.Dense(2)
-        self.max_offset = max_offset
-
-    def call(self, x, y):  # y = output size
-        B, H, W, C = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], tf.shape(x)[3]
-        mean_feat = tf.reduce_mean(x, axis=[1, 2])  # [B, C]
-        offsets = self.offset_layer(mean_feat)      # [B, 2]
-        offsets = tf.clip_by_value(offsets, 0, self.max_offset)
-        offsets = tf.cast(offsets, tf.int32)
-
-        def translate(img, offset):
-            dy, dx = offset[0], offset[1]
-            pad_top = dy
-            pad_left = dx
-            pad_bottom = tf.maximum(0, y - tf.shape(img)[0] - dy)
-            pad_right = tf.maximum(0, y - tf.shape(img)[1] - dx)
-            paddings = [[pad_top, pad_bottom], [pad_left, pad_right], [0, 0]]
-            padded = tf.pad(img, paddings)
-            padded = padded[:y, :y, :]  # crop to desired size
-            return padded
-
-        return tf.map_fn(lambda args: translate(args[0], args[1]), (x, offsets), dtype=x.dtype)
-
-
-    
-
-class LearnedFlip(tf.keras.layers.Layer):
+class LearnedFlip(tf.keras.layers.Layer): # ok
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.logits_layer = tf.keras.layers.Dense(4)  # [no flip, h, v, hv]
@@ -168,7 +89,7 @@ class LearnedFlip(tf.keras.layers.Layer):
 
 
 
-class DiscreteRotation(tf.keras.layers.Layer):
+class DiscreteRotation(tf.keras.layers.Layer): # ok
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.classifier = tf.keras.layers.Dense(4)
@@ -185,35 +106,9 @@ class DiscreteRotation(tf.keras.layers.Layer):
 
         rotated = tf.map_fn(rotate_single, (x, k), dtype=x.dtype)
         return rotated
-    
-class ColorTransposer(tf.keras.layers.Layer):
-    def __init__(self, num_classes, use_softmax=True, reg_strength=0.01):
-        super().__init__()
-        self.num_classes = num_classes
-        self.use_softmax = use_softmax
-        self.reg_strength = reg_strength
-
-        initial_weights = tf.eye(num_classes) + tf.random.normal(
-            (num_classes, num_classes), stddev=0.01
-        )
-        self.permutation_weights = tf.Variable(initial_weights, trainable=True)
-
-    def call(self, x):
-        weights = self.permutation_weights
-        if self.use_softmax:
-            weights = tf.nn.softmax(weights, axis=-1)
-
-        # Regularização L2 para manter próximo da identidade
-        identity = tf.eye(self.num_classes)
-        reg_loss = tf.reduce_sum(tf.square(weights - identity))
-        self.add_loss(self.reg_strength * reg_loss)
-
-        return tf.stop_gradient(tf.einsum('bhwc,cd->bhwd', x, weights)) + 0.0 * tf.einsum('bhwc,cd->bhwd', x, weights)
 
 
-
-
-class LearnedColorPermutation(tf.keras.layers.Layer):
+class LearnedColorPermutation(tf.keras.layers.Layer): # ok
     def __init__(self, num_classes, reg_strength=0.01, name="learned_color_permutation"):
         super().__init__(name=name)
         self.num_classes = num_classes
@@ -241,9 +136,6 @@ class LearnedColorPermutation(tf.keras.layers.Layer):
             self.add_metric(std, name="perm_std")
 
         return output
-
-
-
 
 
 class LearnedRotation(tf.keras.layers.Layer):
@@ -296,103 +188,6 @@ class AttentionOverMemory(tf.keras.layers.Layer):
     def from_config(cls, config):
         return cls(**config)
     
-
-class TemporalEncoding(tf.keras.layers.Layer):
-    def __init__(self, hidden_dim, input_channels):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.input_channels = input_channels
-        self.linear = tf.keras.layers.Dense(hidden_dim)
-        self.align = tf.keras.layers.Dense(input_channels) if hidden_dim != input_channels else None
-
-    def call(self, x, time_index):
-        time_emb = self.linear(tf.cast(time_index[:, tf.newaxis], tf.float32))  # [B, hidden]
-        time_emb = tf.reshape(time_emb, [-1, 1, 1, self.hidden_dim])
-
-        if self.align is not None:
-            time_emb = self.align(time_emb)
-
-        return x + time_emb
-
-
-class ClassEmbeddingMatcher(tf.keras.layers.Layer):
-    """
-    Transforma representações contínuas em predições discretas de classe
-    via similaridade com vetores de classe (embeddings).
-
-    - Entrada: Tensor contínuo [B, H, W, D]
-    - Saída: Logits [B, H, W, C], onde C = num_classes
-    """
-    def __init__(self, num_classes, embedding_dim, use_temperature=True):
-        super().__init__()
-        self.num_classes = num_classes
-        self.embedding_dim = embedding_dim
-        self.use_temperature = use_temperature
-        self.class_embeddings = self.add_weight(
-            shape=(num_classes, embedding_dim),
-            initializer="glorot_uniform",
-            trainable=True,
-            name="class_embeddings"
-        )
-        if self.use_temperature:
-            self.temperature = self.add_weight(
-                shape=(),
-                initializer=tf.keras.initializers.Constant(1.0),
-                trainable=True,
-                name="temperature"
-            )
-
-    def call(self, x):
-        # x: [B, H, W, D]
-        # Reshape para [B*H*W, D]
-        orig_shape = tf.shape(x)
-        flat_x = tf.reshape(x, [-1, self.embedding_dim])  # [N, D]
-
-        # Normalize embeddings and inputs
-        norm_x = tf.nn.l2_normalize(flat_x, axis=-1)  # [N, D]
-        norm_classes = tf.nn.l2_normalize(self.class_embeddings, axis=-1)  # [C, D]
-
-        # Similaridade coseno: [N, C]
-        logits = tf.matmul(norm_x, norm_classes, transpose_b=True)
-
-        if self.use_temperature:
-            logits = logits / self.temperature
-
-        # Volta pro shape [B, H, W, C]
-        new_shape = tf.concat([orig_shape[:-1], [self.num_classes]], axis=0)
-        logits = tf.reshape(logits, new_shape)
-        return logits
-
-
-class ConditionalClassPermuter(tf.keras.layers.Layer):
-    """
-    Aplica uma máscara de permissão de classe baseada no 'tipo de shape' latente.
-
-    Assumimos que o modelo primeiro gera logits para classes latentes (ou embeddings),
-    e depois isso é mapeado para classes reais, mas só onde for permitido.
-    """
-    def __init__(self, class_mask, use_logit_penalty=True):
-        """
-        class_mask: tensor shape [NUM_CLASSES], ou [1, 1, 1, NUM_CLASSES]
-        que indica quais classes são permitidas. Pode ser aprendida ou fixa.
-        """
-        super().__init__()
-        self.class_mask = tf.constant(class_mask, dtype=tf.float32)
-        self.use_logit_penalty = use_logit_penalty
-
-    def call(self, logits):
-        """
-        logits: Tensor [B, H, W, NUM_CLASSES]
-        """
-        if self.use_logit_penalty:
-            large_neg = tf.constant(-1e9, dtype=logits.dtype)
-            penalty_mask = 1.0 - self.class_mask  # zeros onde permitido
-            penalty = penalty_mask * large_neg
-            return logits + penalty
-        else:
-            return logits * self.class_mask  # simplesmente zera onde proibido
-        
-
 class DynamicClassPermuter(tf.keras.layers.Layer):
     """
     Permutador de classe condicional baseado em shape type inferido.

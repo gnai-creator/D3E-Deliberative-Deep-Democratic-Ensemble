@@ -42,13 +42,20 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 task_ids = list(test_challenges.keys())
 start_time = time.time()
 submission_dict = []
+blacklist_blocks = [ 73 ]
 
 def test_challenge(model, X_test, raw_test_inputs, block_index, task_id, submission_dict):
     log(f"[TEST] Inicializando teste bloco {block_index} para task {task_id}")
     try:
         x_test_sample = tf.convert_to_tensor(X_test[0], dtype=tf.float32)
         x_test_sample = tf.expand_dims(x_test_sample, axis=0)
+        
+        x_test_sample = tf.convert_to_tensor(x_test_sample, dtype=tf.float32)
+        if x_test_sample.ndim == 4:
+            x_test_sample = tf.expand_dims(x_test_sample, axis=3)  # (B, H, W, 1, T)
+        
         preds = model(x_test_sample, training=False)
+
         y_test_logits = preds["class_logits"] if isinstance(preds, dict) else preds
         pred_np = tf.argmax(y_test_logits, axis=-1).numpy()[0]
 
@@ -70,6 +77,9 @@ def test_challenge(model, X_test, raw_test_inputs, block_index, task_id, submiss
 for _ in range(LEN_TRAINING):
     block_index = 72
     while block_index < MAX_BLOCKS and time.time() - start_time < MAX_TRAINING_TIME:
+        if block_index in blacklist_blocks:
+            block_index +=1
+            continue
         log(f"Treinando bloco {block_index:02d}")
         model = SimuV1(hidden_dim=256)
         model = compile_model(model, lr=LEARNING_RATE)

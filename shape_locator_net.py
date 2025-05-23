@@ -42,7 +42,13 @@ class ShapeLocatorNet(tf.keras.Model):
         self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
 
     def call(self, x, training=False):
-        x = x[:, :, :, -1, :]  # (B, H, W, C)
+        if x.shape.rank == 5:
+            x = x[:, :, :, -1, :]
+        elif x.shape.rank == 4:
+            pass
+        else:
+            tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
+            raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
         x = self.flip(x)
         x = self.rotation(x)

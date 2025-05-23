@@ -18,10 +18,21 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
         log(f"Treinando task_id: {task_id}")
 
         challenge = challenges[task_id]
-        input_grid = np.array(challenge["train"][0]["input"], dtype=np.int32)
-        output_grid = np.array(challenge["train"][0]["output"], dtype=np.int32)
-        test_input_grid = np.array(challenge["test"][0]["input"], dtype=np.int32)
+        try:
+            input_grid = np.array(challenge["train"][0]["input"], dtype=np.int32)
+            output_grid = np.array(challenge["train"][0]["output"], dtype=np.int32)
+            test_input_grid = np.array(challenge["test"][0]["input"], dtype=np.int32)
+            log(f"TRAIN TASK {task_id}  SHAPE: - {np.array(challenge['train'][0]['input']).shape}")
+            log(f"TEST TASK {task_id}  SHAPE: - {np.array(challenge['test'][0]['input']).shape}")
+        except Exception as e:
+            log(f"[BROKE]: {e}")
 
+        max_h = max(input_grid.shape[0], output_grid.shape[0], test_input_grid.shape[0])
+        max_w = max(input_grid.shape[1], output_grid.shape[1], test_input_grid.shape[1])
+        if max_h > 30 or max_w > 30:
+            log(f"[WARN] Grid maior que 30x30: {max_h}x{max_w} — pulando")
+            continue
+       
         h_in, w_in = input_grid.shape
         h_out, w_out = output_grid.shape
         t_h_in, t_w_in = test_input_grid.shape

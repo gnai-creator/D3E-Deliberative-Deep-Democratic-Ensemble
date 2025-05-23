@@ -14,7 +14,8 @@ from metrics_utils import plot_prediction_debug, plot_prediction_test
 from runtime_utils import log
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from data_preparation import get_dataset
-from shape_locator_net import ShapeLocatorNet, compile_shape_locator
+from core import SimuV1
+from model_compile import compile_model
 
 # Seed and env setup
 tf.random.set_seed(42)
@@ -50,37 +51,61 @@ task_ids = list(test_challenges.keys())
 start_time = time.time()
 submission_dict = []
 
+# model = SimuV1(hidden_dim=2048)
+# model = compile_model(model, lr=LEARNING_RATE)
+
 def transform_input(x):
     return tf.expand_dims(x, 0) if len(x.shape) == 4 else x
 
 def to_numpy_safe(x):
     return x.numpy() if isinstance(x, tf.Tensor) else np.array(x)
 
-def test_challenge(model, X_test, block_index, task_id):
+def test_challenge(model, X_test, block_index, task_id, submission_dict, EVAL_CYCLES=20, PAD_VALUE=0):
+    from metrics_utils import plot_prediction_test
+    from runtime_utils import log
+    import tensorflow as tf
+    import numpy as np
+    import traceback
+    import json
+
     log(f"[TEST] Inicializando teste bloco {block_index} para task {task_id}")
-    for cycle in range(EVAL_CYCLES):
-        try:
-            x_test_sample = X_test[:1]
-            preds = model.predict(x_test_sample)
-            pred_np = tf.argmax(preds["class_logits"], axis=-1).numpy().tolist()
-            plot_prediction_test(
-                X_test[0], pred_np[0],
-                filename=f"block_{block_index}_task_{task_id}_model_0",
-                index=cycle, pad_value=PAD_VALUE
-            )
-            submission_dict.append({"task_id": task_id, "prediction": pred_np})
-            with open("submission.json", "w") as f:
-                json.dump(submission_dict, f)
-        except Exception as e:
-            log(f"[ERROR] Erro ao gerar predicoes: {e}")
-            traceback.print_exc()
+
+    try:
+        
+        # Remove batch se necessário
+        x_test_sample = tf.convert_to_tensor(X_test[0], dtype=tf.float32)
+        x_test_sample = tf.expand_dims(x_test_sample, axis=0)  # (1, 30, 30, vocab)
+
+        preds = model(x_test_sample, training=False)  # use call para evitar bagunça de predict()
+        pred_np = tf.argmax(preds["class_logits"], axis=-1).numpy()[0]  # (30, 30)
+
+        plot_prediction_test(
+            X_test[0],  # ainda é one-hot (30, 30, 10)
+            pred_np,    # já é (30, 30)
+            task_id,
+            filename=f"block_{block_index}_task_{task_id}_model_0",
+            index=cycle,
+            pad_value=PAD_VALUE
+        )
+
+
+        submission_dict.append({"task_id": task_id, "prediction": pred_np})
+
+        with open("submission.json", "w") as f:
+            json.dump(submission_dict, f)
+
+    except Exception as e:
+        log(f"[ERROR] Erro ao gerar predicoes: {e}")
+        traceback.print_exc()
+
 
 for _ in range(LEN_TRAINING):
     block_index = 0
     while block_index < MAX_BLOCKS and time.time() - start_time < MAX_TRAINING_TIME:
         log(f"Treinando bloco {block_index:02d}")
-        model = ShapeLocatorNet(hidden_dim=256)
-        model = compile_shape_locator(model, lr=LEARNING_RATE)
+
+        model = SimuV1(hidden_dim=256)
+        model = compile_model(model, lr=LEARNING_RATE)
 
         X_train, X_val, Y_train, Y_val, _, _, X_test, info_train, info_val, task_id = get_dataset(
             block_index=block_index,
@@ -135,9 +160,9 @@ for _ in range(LEN_TRAINING):
 
                 log(f"Pixel Color Perfect: {pixel_color_perfect} - Pixel Shape Perfect {pixel_shape_perfect}")
 
-                if pixel_color_perfect >= 0.9 and pixel_shape_perfect >= 0.9:
+                if pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999:
                     bloco_resolvido = True
-                    test_challenge(model, X_test, block_index, task_id)
+                    test_challenge(model, X_test, block_index, task_id, submission_dict)
                     block_index += 1
                     break
 

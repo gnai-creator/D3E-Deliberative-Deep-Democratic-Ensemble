@@ -89,6 +89,11 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
         import seaborn as sns
         sns.set(style="whitegrid")
 
+        log(f"input_img.shape: {input_img.shape}")
+        log(f"predicted_output.shape: {predicted_output.shape}")
+        log(f"expected_output.shape: {expected_output.shape}")
+
+
         fig, axs = plt.subplots(1, 4, figsize=(22, 4))
         titles = [
             "Input",
@@ -225,32 +230,6 @@ def plot_confusion(y_true, y_pred, model_name):
 
 
 
-def plot_attempts_stats(task_times, attempts_per_task):
-    fig, ax1 = plt.subplots(figsize=(12, 6))
-    tasks = list(task_times.keys())
-    times = [task_times[t] for t in tasks]
-    attempts = [attempts_per_task[t] for t in tasks]
-
-    color = 'tab:blue'
-    ax1.set_xlabel('Task ID')
-    ax1.set_ylabel('Tempo (s)', color=color)
-    ax1.bar(tasks, times, color=color, alpha=0.6, label="Tempo")
-    ax1.tick_params(axis='y', labelcolor=color)
-
-    ax2 = ax1.twinx()
-    color = 'tab:red'
-    ax2.set_ylabel('Tentativas', color=color)
-    ax2.plot(tasks, attempts, color=color, marker='o', label="Tentativas")
-    ax2.tick_params(axis='y', labelcolor=color)
-
-    fig.tight_layout()
-    plt.title("Tempo e Tentativas por Task")
-    plt.xticks(rotation=45)
-    plt.savefig("images/task_performance_overview.png")
-    plt.close()
-    log("[INFO] Gráfico de performance salvo: images/task_performance_overview.png")
-
-
 def ensure_numpy(x):
     if isinstance(x, tf.Tensor):
         return x.numpy()
@@ -265,43 +244,61 @@ def ensure_numpy(x):
 
 
 
-def plot_logit_distribution(logits, model_index="model"):
-    # logits: Tensor com shape [1, H, W, num_classes]
-    logits_np = logits.numpy().reshape(-1, logits.shape[-1])  # [H*W, num_classes]
-    plt.figure(figsize=(12, 6))
-    sns.violinplot(data=logits_np, inner='point')
-    plt.title(f"Distribuição dos logits por classe - {model_index}")
-    plt.xlabel("Classe")
-    plt.ylabel("Valor do Logit")
-    plt.tight_layout()
-    filename = f"images/logit_distribution_{model_index}.png"
-    plt.savefig(filename)
-    plt.close()
-    print(f"[INFO] Logit distribution salva em {filename}")
 
 
-def plot_prediction_test(input_grid, predicted_grid, filename="output", index=0, pad_value=0):
-    fig, axes = plt.subplots(1, 2, figsize=(6, 3))
+def plot_prediction_test(input_tensor, predicted_output, task_id, filename="output", index=0, pad_value=0):
+    try:
+        if isinstance(input_tensor, tf.Tensor):
+            input_tensor = input_tensor.numpy()
+        if isinstance(predicted_output, tf.Tensor):
+            predicted_output = predicted_output.numpy()
 
-    # Convert input to RGB-ish for visual sanity (you may change this)
-    def colorize(grid):
-        color_map = plt.get_cmap("tab10")  # Up to 10 classes
-        rgb = color_map(grid % 10)[..., :3]  # Use modulo in case values > 10
-        rgb[grid == pad_value] = [1, 1, 1]  # White out padding
-        return rgb
+        input_tensor = np.asarray(input_tensor)
+        predicted_output = np.asarray(predicted_output).astype(np.int32)
 
-    input_rgb = colorize(input_grid.squeeze())
-    pred_rgb = colorize(np.array(predicted_grid).squeeze())
+        # Convert one-hot input to class indices if needed
+        if input_tensor.ndim == 4 and input_tensor.shape[-1] == 10:
+            input_img = np.argmax(input_tensor, axis=-1)[0]
+        elif input_tensor.ndim == 3 and input_tensor.shape[-1] == 10:
+            input_img = np.argmax(input_tensor, axis=-1)
+        elif input_tensor.ndim == 2:
+            input_img = input_tensor
+        elif input_tensor.ndim == 3 and input_tensor.shape[-1] == 1:
+            input_img = input_tensor[:, :, 0]
+        else:
+            input_img = input_tensor.copy()
 
-    axes[0].imshow(input_rgb)
-    axes[0].set_title("Input")
-    axes[0].axis("off")
+        if predicted_output.ndim == 4:
+            predicted_output = predicted_output[0]
+        if predicted_output.ndim == 3 and predicted_output.shape[-1] == 1:
+            predicted_output = predicted_output[:, :, 0]
 
-    axes[1].imshow(pred_rgb)
-    axes[1].set_title("Prediction")
-    axes[1].axis("off")
+        if predicted_output.shape != input_img.shape:
+            log(f"[WARN] Ajustando predicted_output de {predicted_output.shape} para {input_img.shape}")
+            padded_pred = np.full_like(input_img, pad_value)
+            h, w = min(predicted_output.shape[0], input_img.shape[0]), min(predicted_output.shape[1], input_img.shape[1])
+            padded_pred[:h, :w] = predicted_output[:h, :w]
+            predicted_output = padded_pred
 
-    os.makedirs("results", exist_ok=True)
-    out_path = os.path.join("images/results", f"{filename}_test_{index}.png")
-    plt.savefig(out_path)
-    plt.close(fig)
+        sns.set(style="whitegrid")
+
+        fig, axs = plt.subplots(1, 2, figsize=(6, 3))
+        titles = ["Input", "Prediction"]
+        images = [input_img, predicted_output]
+        cmaps = ["viridis", "viridis"]
+
+        for ax, img, title, cmap in zip(axs, images, titles, cmaps):
+            ax.imshow(img, cmap=cmap, vmin=0, vmax=9)
+            ax.set_title(title)
+            ax.axis("off")
+        file = f"Prediction TEST - Model Task {task_id}"
+        plt.suptitle(file, fontsize=10)
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        full_filename = f"images/test/{file}.png"
+        plt.savefig(full_filename, dpi=150)
+        plt.close()
+
+        log(f"[INFO] Debug visual salvo: {full_filename}")
+
+    except Exception as e:
+        log(f"[ERROR] Falha ao gerar plot de debug: {e}")

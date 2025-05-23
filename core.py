@@ -8,7 +8,7 @@ from neural_blocks import (
     AttentionOverMemory, # Ok
     FractalBlock, # Ok
     DynamicClassPermuter, # OK
-    TrainableFocalExpansionLayer, # Ok
+    TrainableFocalExpansionLayer, # Novo!
 )
 
 NUM_CLASSES = 10
@@ -16,6 +16,7 @@ NUM_CLASSES = 10
 class SimuV1(tf.keras.Model):
     def __init__(self, hidden_dim=64):
         super().__init__()
+        self.focal_expand = TrainableFocalExpansionLayer() 
         self.flip = LearnedFlip()
         self.rotation = DiscreteRotation()
         self.input_proj = layers.Conv2D(hidden_dim, 1, activation='relu')
@@ -39,7 +40,7 @@ class SimuV1(tf.keras.Model):
 
         # Permutadores
         self.color_perm_train = LearnedColorPermutation(NUM_CLASSES)
-        self.permutation_eval = tf.range(NUM_CLASSES)  # identidade
+        self.permutation_eval = tf.range(NUM_CLASSES)
         self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
 
     def call(self, x, training=False):
@@ -51,11 +52,13 @@ class SimuV1(tf.keras.Model):
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        # 🔁 PREVER FLIP E ROTATION
-        flip_logits = self.flip.logits_layer(tf.reduce_mean(x, axis=[1, 2]))     # [B, 4]
-        rotation_logits = self.rotation.classifier(tf.reduce_mean(x, axis=[1, 2]))  # [B, 4]
+        # Foco espacial antecipado
+        x = self.focal_expand(x)  # Aplica camada de expansão focal antes de tudo
 
-        # APLICAÇÃO NÃO DIFERENCIÁVEL
+        #  PREVER FLIP E ROTATION
+        flip_logits = self.flip.logits_layer(tf.reduce_mean(x, axis=[1, 2]))
+        rotation_logits = self.rotation.classifier(tf.reduce_mean(x, axis=[1, 2]))
+
         flip_code = tf.argmax(flip_logits, axis=-1)
         rotation_code = tf.argmax(rotation_logits, axis=-1)
 
@@ -102,6 +105,3 @@ class SimuV1(tf.keras.Model):
             class_logits = tf.gather(raw_logits, self.permutation_eval, axis=-1)
 
         return class_logits
-
-
-

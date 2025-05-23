@@ -68,7 +68,7 @@ def test_challenge(model, X_test, raw_test_inputs, block_index, task_id, submiss
         traceback.print_exc()
 
 for _ in range(LEN_TRAINING):
-    block_index = 0
+    block_index = 72
     while block_index < MAX_BLOCKS and time.time() - start_time < MAX_TRAINING_TIME:
         log(f"Treinando bloco {block_index:02d}")
         model = SimuV1(hidden_dim=256)

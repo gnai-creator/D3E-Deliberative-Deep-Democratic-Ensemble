@@ -8,7 +8,8 @@ from neural_blocks import (
     AttentionOverMemory, # Ok
     FractalBlock, # Ok
     DynamicClassPermuter, # OK
-    TrainableFocalExpansionLayer, # Novo!
+    SpatialFocusTemporalMarking, # Novo!
+    ClassTemporalAlignmentBlock, # Novo bloco de alinhamento
 )
 
 NUM_CLASSES = 10
@@ -16,15 +17,18 @@ NUM_CLASSES = 10
 class SimuV1(tf.keras.Model):
     def __init__(self, hidden_dim=64):
         super().__init__()
-        self.focal_expand = TrainableFocalExpansionLayer() 
+        self.focal_expand = SpatialFocusTemporalMarking()
         self.flip = LearnedFlip()
         self.rotation = DiscreteRotation()
         self.input_proj = layers.Conv2D(hidden_dim, 1, activation='relu')
         self.pos_enc = PositionalEncoding2D(hidden_dim)
+        self.temporal_shape_encoder = ClassTemporalAlignmentBlock(hidden_dim)
+
         self.encoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
             layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
         ])
+
         self.fractal = FractalBlock(hidden_dim)
         self.attn_memory = AttentionOverMemory(hidden_dim)
 
@@ -33,29 +37,23 @@ class SimuV1(tf.keras.Model):
 
         self.decoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
-            layers.Conv2D(NUM_CLASSES, 1)  # logits finais
+            layers.Conv2D(NUM_CLASSES, 1)
         ])
 
         self.presence_head = layers.Conv2D(1, 1, activation='sigmoid')
 
-        # Permutadores
         self.color_perm_train = LearnedColorPermutation(NUM_CLASSES)
         self.permutation_eval = tf.range(NUM_CLASSES)
         self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
 
     def call(self, x, training=False):
-        if x.shape.rank == 5:
-            x = x[:, :, :, -1, :]
-        elif x.shape.rank == 4:
-            pass
-        else:
+        if x.shape.rank != 5:
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        # Foco espacial antecipado
-        x = self.focal_expand(x)  # Aplica camada de expansão focal antes de tudo
+        x = self.focal_expand(x)
+        x = x[:, :, :, :, -1]  # usa o último frame
 
-        #  PREVER FLIP E ROTATION
         flip_logits = self.flip.logits_layer(tf.reduce_mean(x, axis=[1, 2]))
         rotation_logits = self.rotation.classifier(tf.reduce_mean(x, axis=[1, 2]))
 
@@ -77,9 +75,9 @@ class SimuV1(tf.keras.Model):
         x = tf.map_fn(flip_op, (x, flip_code), dtype=x.dtype)
         x = tf.map_fn(rotate_single, (x, rotation_code), dtype=x.dtype)
 
-        # 🔁 CONTINUA PIPELINE
         x = self.input_proj(x)
         x = self.pos_enc(x)
+        x = self.temporal_shape_encoder(x)
         x = self.encoder(x)
         x = self.fractal(x)
 

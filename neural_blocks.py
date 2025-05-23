@@ -235,69 +235,56 @@ class DynamicClassPermuter(tf.keras.layers.Layer):
         return masked_logits
 
 
-class TrainableFocalExpansionLayer(tf.keras.layers.Layer):
-    def __init__(self, pad_value=0, **kwargs):
+class SpatialFocusTemporalMarking(tf.keras.layers.Layer):
+    def __init__(self, kernel_size=3, **kwargs):
         super().__init__(**kwargs)
-        self.pad_value = pad_value
+        self.kernel_size = kernel_size
+        self.kernel = tf.constant(1.0, shape=[kernel_size, kernel_size, 1, 1], dtype=tf.float32)
 
     def build(self, input_shape):
-        self.in_channels = input_shape[-1]
-        # Cria kernel 3x3 para dilatar cada canal separadamente
-        self.kernel = tf.constant(1.0, shape=[3, 3, self.in_channels, 1], dtype=tf.float32)
+        self.in_channels = input_shape[-2]
+        self.kernel = tf.tile(self.kernel, [1, 1, self.in_channels, 1])
         self.focal_value = self.add_weight(
             name="focal_value",
-            shape=[self.in_channels],  # Um valor por canal
+            shape=[self.in_channels],
             initializer=tf.keras.initializers.Constant(8.0),
-            trainable=True,
-            dtype=tf.float32
+            trainable=True
         )
 
     def call(self, inputs):
-        inputs_float = tf.cast(inputs, tf.float32)
+        inputs = tf.transpose(inputs, [0, 1, 2, 4, 3])  # (B,H,W,C,T)
+        b, h, w, c, t = tf.unstack(tf.shape(inputs))
+        inputs = tf.reshape(inputs, [b * t, h, w, c])
 
-        # Gera máscara booleana suavizada por canal
+        inputs_float = tf.cast(inputs, tf.float32)
         focal_value = tf.reshape(self.focal_value, [1, 1, 1, -1])
         diff = tf.abs(inputs_float - focal_value)
-        mask = tf.cast(diff < 0.5, tf.float32)  # [B, H, W, C]
+        mask = tf.cast(diff < 0.5, tf.float32)
 
-        # Dilata cada canal separadamente
-        dilated = tf.nn.depthwise_conv2d(mask, self.kernel, strides=[1, 1, 1, 1], padding='SAME')
+        dilated = tf.nn.depthwise_conv2d(mask, self.kernel,
+                                         strides=[1, 1, 1, 1], padding='SAME')
         dilated = tf.minimum(dilated, 1.0)
 
-        # Cria máscara para zonas com pad_value
-        pad_mask = tf.cast(tf.equal(inputs_float, self.pad_value), tf.float32)
-        write_mask = dilated * pad_mask
-
-        output = inputs_float + write_mask * (focal_value - self.pad_value)
-        return output
-
-    def get_config(self):
-        return {"pad_value": self.pad_value}
-
+        expanded = inputs_float + dilated * (focal_value - inputs_float)
+        expanded = tf.reshape(expanded, [b, t, h, w, c])
+        expanded = tf.transpose(expanded, [0, 2, 3, 4, 1])  # (B,H,W,C,T)
+        return expanded
 
 class ClassTemporalAlignmentBlock(tf.keras.layers.Layer):
     def __init__(self, hidden_dim, **kwargs):
         super().__init__(**kwargs)
+        self.hidden_dim = hidden_dim
         self.rnn = tf.keras.layers.Bidirectional(
             tf.keras.layers.GRU(hidden_dim, return_sequences=True)
         )
         self.class_proj = tf.keras.layers.Dense(hidden_dim)
 
     def call(self, x):
-        # x: [B, H, W, C] — one-hot ou logits
-
-        b, h, w, c = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], x.shape[3]
-
-        # Passo 1: Flatten spatial info
-        x_flat = tf.reshape(x, [b, h * w, c])  # [B, S, C]
-
-        # Passo 2: Projeta classes para embedding space
-        x_embed = self.class_proj(x_flat)  # [B, S, D]
-
-        # Passo 3: Roda RNN sobre a sequência
-        x_temporal = self.rnn(x_embed)  # [B, S, D]
-
-        # Passo 4: Reprojeta de volta pro espaço original
-        x_out = tf.reshape(x_temporal, [b, h, w, -1])
-
+        b = tf.shape(x)[0]
+        h = tf.shape(x)[1]
+        w = tf.shape(x)[2]
+        x_flat = tf.reshape(x, [b, h * w, x.shape[-1]])
+        x_embed = self.class_proj(x_flat)
+        x_temporal = self.rnn(x_embed)
+        x_out = tf.reshape(x_temporal, [b, h, w, self.hidden_dim * 2])  # Bidirectional = 2x hidden_dim
         return x_out

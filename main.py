@@ -10,8 +10,9 @@ import tensorflow.keras as keras
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, f1_score
 
+from metrics import pad_to_shape_batch
 from metrics_utils import plot_prediction_debug, plot_prediction_test
-from runtime_utils import log
+from runtime_utils import log, save_debug_result
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from data_preparation import get_dataset
 from core import SimuV1
@@ -61,13 +62,6 @@ def to_numpy_safe(x):
     return x.numpy() if isinstance(x, tf.Tensor) else np.array(x)
 
 def test_challenge(model, X_test, block_index, task_id, submission_dict, EVAL_CYCLES=20, PAD_VALUE=0):
-    from metrics_utils import plot_prediction_test
-    from runtime_utils import log
-    import tensorflow as tf
-    import numpy as np
-    import traceback
-    import json
-
     log(f"[TEST] Inicializando teste bloco {block_index} para task {task_id}")
 
     try:
@@ -91,8 +85,7 @@ def test_challenge(model, X_test, block_index, task_id, submission_dict, EVAL_CY
 
         submission_dict.append({"task_id": task_id, "prediction": pred_np})
 
-        with open("submission.json", "w") as f:
-            json.dump(submission_dict, f)
+        save_debug_result(submission_dict, "submission.json")
 
     except Exception as e:
         log(f"[ERROR] Erro ao gerar predicoes: {e}")
@@ -125,6 +118,31 @@ for _ in range(LEN_TRAINING):
         for cycle in range(CYCLES):
             if bloco_resolvido:
                 break
+            
+
+            log(f"X_train.shape {X_train.shape}")
+            log(f"Y_train.shape {Y_train.shape}")
+
+            # Chamada de forward pass para obter o shape da saída
+            pred_shape = model(X_train[:1], training=False)
+            pred_shape_hw = pred_shape.shape[1:3]  # height, width da saída
+
+            log(f"Model Output Shape: {pred_shape.shape}")
+            log(f"Y_train Shape: {Y_train.shape}")
+
+            if Y_train.shape[:2] != pred_shape_hw:
+                Y_train = pad_to_shape_batch(Y_train, pred_shape_hw, pad_value=0)
+                Y_val = pad_to_shape_batch(Y_val, pred_shape_hw, pad_value=0)
+
+            # Checagem defensiva contra shapes incompatíveis
+            if Y_train.shape[:2] != pred_shape_hw:
+                log(f"Shape mismatch detected! Model expects output shape {pred_shape_hw} but Y_train has shape {Y_train.shape[:2]}. Check your preprocessing/padding.")
+                raise ValueError(
+                    f"Shape mismatch detected! Model expects output shape {pred_shape_hw}, "
+                    f"but Y_train has shape {Y_train.shape[:2]}. Check your preprocessing/padding."
+                )
+
+
             model.fit(
                 x=X_train,
                 y=Y_train,
@@ -138,8 +156,11 @@ for _ in range(LEN_TRAINING):
             )
 
             try:
+                
                 x_val_sample = transform_input(X_val[:1])
+
                 preds = model.predict(x_val_sample)
+                
                 y_val_logits = preds["class_logits"]
                 y_val_pred = tf.argmax(y_val_logits, axis=-1).numpy()[0]
                 y_val_expected = to_numpy_safe(Y_val[:1][0])

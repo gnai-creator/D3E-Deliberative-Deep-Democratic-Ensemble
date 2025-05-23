@@ -26,6 +26,27 @@ def log(msg):
     print(msg)
     logging.info(msg)
 
+def make_serializable(obj):
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, (np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, dict):
+        return {k: make_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_serializable(v) for v in obj]
+    return obj
+
+
+
+# Example usage inside plot_prediction_debug or plot_prediction_test (or wherever JSON is dumped):
+
+def save_debug_result(data, filepath):
+    serializable_data = make_serializable(data)
+    with open(filepath, "w") as f:
+        json.dump(serializable_data, f, indent=2)
 
 
 def pad_to_shape(tensor, target_shape=(30, 30), pad_value=0):

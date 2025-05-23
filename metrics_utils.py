@@ -7,45 +7,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import tensorflow as tf
 from sklearn.metrics import confusion_matrix, classification_report
-from runtime_utils import log
+from runtime_utils import log, make_serializable
 
 # Cria diretório para imagens
 os.makedirs("images", exist_ok=True)
 sns.set(style="whitegrid", font_scale=1.2)
-
-
-
-def plot_training_input(input_tensor, model_name):
-    """
-    Visualiza a primeira amostra de input em [B, H, W, C] como imagem com argmax no canal.
-    Se for [H, W, C], usa direto. Se for [B, H, W, C], usa o primeiro item do batch.
-    """
-    input_tensor = tf.convert_to_tensor(input_tensor)
-
-    if len(input_tensor.shape) == 4:
-        # Assume [B, H, W, C]
-        input_tensor = input_tensor[0]
-    elif len(input_tensor.shape) != 3:
-        raise ValueError(
-            f"[ERROR] input_tensor deve ter shape [H, W, C] ou [B, H, W, C], mas tem {input_tensor.shape}"
-        )
-
-    # input_tensor: [H, W, C] com one-hot codificado
-    input_visual = tf.argmax(input_tensor, axis=-1).numpy().astype(np.int32)  # [H, W]
-
-    plt.figure(figsize=(4, 4))
-    plt.imshow(input_visual, cmap='viridis')
-    plt.title("Input Visualizado - argmax por canal")
-    plt.colorbar()
-
-    filename = f"images/input_visual_{model_name}.png"
-    plt.savefig(filename)
-    plt.close()
-
-    log(f"[INFO] Input visualizado salvo: {filename}")
-
-
-
 
 
 def plot_prediction_debug(input_tensor, expected_output, predicted_output, model_index, index, pad_value=0):
@@ -123,57 +89,6 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
 
 
-
-
-
-def plot_raw_input_preview(tensor_raw, model_name):
-
-
-    try:
-        tensor_raw = tf.convert_to_tensor(tensor_raw)
-
-        if tensor_raw.shape.rank not in (2, 3):
-            log(f"[ERROR] Tensor com shape inválido para visualização: {tensor_raw.shape}")
-            return
-
-        # Se for 3D com canal maior que 1, converter usando argmax
-        if tensor_raw.shape.rank == 3 and tensor_raw.shape[-1] > 1:
-            tensor_raw = tf.argmax(tensor_raw, axis=-1)
-
-        array = tensor_raw.numpy().astype(np.int32)
-
-        plt.figure(figsize=(4, 4))
-        plt.imshow(array, cmap="viridis", interpolation="nearest")
-        plt.title("Input Original (com padding)")
-        plt.colorbar()
-        filename = f"images/input_preview_raw_{model_name}.png"
-        plt.savefig(filename)
-        plt.close()
-        log(f"[INFO] Prévia do input bruto salva: {filename}")
-
-    except Exception as e:
-        log(f"[ERROR] Falha ao plotar input bruto: {e}")
-
-
-
-
-
-
-def plot_history(history, model_name):
-    plt.figure(figsize=(10, 5))
-    for key in history.history:
-        plt.plot(history.history[key], label=key)
-    plt.title("SageAxiom Training History")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss/Metric")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    filename = f"images/training_plot_{model_name}.png"
-    plt.savefig(filename)
-    plt.close()
-    log(f"[INFO] Plot do treinamento salvo: {filename}")
-
 def plot_confusion(y_true, y_pred, model_name):
 
 
@@ -217,7 +132,8 @@ def plot_confusion(y_true, y_pred, model_name):
     )
 
     with open("images/per_class_metrics.json", "w") as f:
-        json.dump(report, f, indent=2)
+        json.dump(make_serializable(report), f, indent=2)
+
     log("[INFO] Relatório de métricas por classe salvo (sem classe 0): images/per_class_metrics.json")
 
 

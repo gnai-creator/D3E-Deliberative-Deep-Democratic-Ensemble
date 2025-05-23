@@ -85,8 +85,7 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
 
         heatmap = ((predicted_output > 0) == (expected_output > 0)).astype(np.int32)
 
-        import matplotlib.pyplot as plt
-        import seaborn as sns
+        
         sns.set(style="whitegrid")
 
         log(f"input_img.shape: {input_img.shape}")
@@ -115,13 +114,12 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
         plt.savefig(filename, dpi=150)
         plt.close()
 
-        from runtime_utils import log
+       
         log(f"[INFO] Debug visual salvo: {filename}")
 
         return pixel_color_perfect, pixel_shape_perfect
 
     except Exception as e:
-        from runtime_utils import log
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
 
 
@@ -129,9 +127,7 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
 
 
 def plot_raw_input_preview(tensor_raw, model_name):
-    import matplotlib.pyplot as plt
-    import tensorflow as tf
-    import numpy as np
+
 
     try:
         tensor_raw = tf.convert_to_tensor(tensor_raw)
@@ -179,11 +175,7 @@ def plot_history(history, model_name):
     log(f"[INFO] Plot do treinamento salvo: {filename}")
 
 def plot_confusion(y_true, y_pred, model_name):
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    from sklearn.metrics import confusion_matrix, classification_report
-    import json
+
 
     # Sempre flattens seguros
     y_true_flat = np.array(y_true).reshape(-1)
@@ -296,9 +288,7 @@ def plot_prediction_test(input_tensor, predicted_output, task_id, filename="outp
         plt.savefig(full_filename, dpi=150)
         plt.close()
 
-        from runtime_utils import log
         log(f"[INFO] Debug visual salvo: {full_filename}")
 
     except Exception as e:
-        from runtime_utils import log
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")

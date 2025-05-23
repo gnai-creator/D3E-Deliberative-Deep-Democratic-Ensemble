@@ -65,31 +65,36 @@ def test_challenge(model, X_test, block_index, task_id, submission_dict, EVAL_CY
     log(f"[TEST] Inicializando teste bloco {block_index} para task {task_id}")
 
     try:
-        
         # Remove batch se necessário
         x_test_sample = tf.convert_to_tensor(X_test[0], dtype=tf.float32)
-        x_test_sample = tf.expand_dims(x_test_sample, axis=0)  # (1, 30, 30, vocab)
+        x_test_sample = tf.expand_dims(x_test_sample, axis=0)
 
-        preds = model(x_test_sample, training=False)  # use call para evitar bagunça de predict()
-        pred_np = tf.argmax(preds["class_logits"], axis=-1).numpy()[0]  # (30, 30)
+        preds = model(x_test_sample, training=False)
+
+        # Compatível com versões com/sem dict
+        if isinstance(preds, dict):
+            y_test_logits = preds["class_logits"]
+        else:
+            y_test_logits = preds
+
+        pred_np = tf.argmax(y_test_logits, axis=-1).numpy()[0]
 
         plot_prediction_test(
-            X_test[0],  # ainda é one-hot (30, 30, 10)
-            pred_np,    # já é (30, 30)
+            X_test[0],  # one-hot (H, W, vocab)
+            pred_np,    # classes (H, W)
             task_id,
             filename=f"block_{block_index}_task_{task_id}_model_0",
             index=cycle,
             pad_value=PAD_VALUE
         )
 
-
         submission_dict.append({"task_id": task_id, "prediction": pred_np})
-
         save_debug_result(submission_dict, "submission.json")
 
     except Exception as e:
         log(f"[ERROR] Erro ao gerar predicoes: {e}")
         traceback.print_exc()
+
 
 
 for _ in range(LEN_TRAINING):
@@ -125,23 +130,25 @@ for _ in range(LEN_TRAINING):
 
             # Chamada de forward pass para obter o shape da saída
             pred_shape = model(X_train[:1], training=False)
-            pred_shape_hw = pred_shape.shape[1:3]  # height, width da saída
 
-            log(f"Model Output Shape: {pred_shape.shape}")
+            if isinstance(pred_shape, dict):
+                pred_grid = pred_shape["class_logits"]
+            else:
+                pred_grid = pred_shape
+
+            pred_shape_hw = pred_grid.shape[1:3]
+
+            log(f"Model Output Shape: {pred_grid.shape}")
             log(f"Y_train Shape: {Y_train.shape}")
 
-            if Y_train.shape[:2] != pred_shape_hw:
+            # Garante que Y_train tenha shape (B, H, W)
+            if Y_train.ndim == 2:
+                log(f"[WARN] Y_train shape was {Y_train.shape}, reshaping...")
+                Y_train = Y_train[np.newaxis, :, :]
+
+            if Y_train.shape[1:3] != pred_shape_hw:
                 Y_train = pad_to_shape_batch(Y_train, pred_shape_hw, pad_value=0)
                 Y_val = pad_to_shape_batch(Y_val, pred_shape_hw, pad_value=0)
-
-            # Checagem defensiva contra shapes incompatíveis
-            if Y_train.shape[:2] != pred_shape_hw:
-                log(f"Shape mismatch detected! Model expects output shape {pred_shape_hw} but Y_train has shape {Y_train.shape[:2]}. Check your preprocessing/padding.")
-                raise ValueError(
-                    f"Shape mismatch detected! Model expects output shape {pred_shape_hw}, "
-                    f"but Y_train has shape {Y_train.shape[:2]}. Check your preprocessing/padding."
-                )
-
 
             model.fit(
                 x=X_train,
@@ -156,12 +163,16 @@ for _ in range(LEN_TRAINING):
             )
 
             try:
-                
                 x_val_sample = transform_input(X_val[:1])
 
                 preds = model.predict(x_val_sample)
-                
-                y_val_logits = preds["class_logits"]
+
+                # Compatível com versões que ainda retornam dicionário
+                if isinstance(preds, dict):
+                    y_val_logits = preds["class_logits"]
+                else:
+                    y_val_logits = preds
+
                 y_val_pred = tf.argmax(y_val_logits, axis=-1).numpy()[0]
                 y_val_expected = to_numpy_safe(Y_val[:1][0])
 
@@ -178,6 +189,7 @@ for _ in range(LEN_TRAINING):
                     model_index=f"block_{block_index}_task_{task_id}_model_0",
                     index=cycle, pad_value=PAD_VALUE
                 )
+
 
                 log(f"Pixel Color Perfect: {pixel_color_perfect} - Pixel Shape Perfect {pixel_shape_perfect}")
 

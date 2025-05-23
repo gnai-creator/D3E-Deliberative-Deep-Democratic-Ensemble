@@ -200,7 +200,7 @@ def plot_prediction_test(input_tensor, predicted_output, task_id, filename="outp
         plt.suptitle(file, fontsize=10)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         os.makedirs("images/test", exist_ok=True)
-        full_filename = f"images/test/{file}.png"
+        full_filename = f"images/test/{filename}_{file}.png"
         plt.savefig(full_filename, dpi=150)
         plt.close()
 

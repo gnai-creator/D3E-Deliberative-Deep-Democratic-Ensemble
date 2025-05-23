@@ -77,15 +77,21 @@ class SimuV1(tf.keras.Model):
         raw_logits = self.permuter(x, raw_logits)  # aplica filtro baseado no shape latente
 
         # Treino vs inferência
+        # if training:
+        #     class_logits = self.color_perm_train(raw_logits, training=True)
+        #     return class_logits
+        # else:
+        #     class_logits = tf.gather(raw_logits, self.permutation_eval, axis=-1)
+        #     presence_map = self.presence_head(x)
+        #     return {
+        #         "class_logits": class_logits,
+        #         "presence_map": presence_map
+        #     }
+        # Treino vs inferência
         if training:
             class_logits = self.color_perm_train(raw_logits, training=True)
             return class_logits
         else:
-            class_logits = tf.gather(raw_logits, self.permutation_eval, axis=-1)
-            presence_map = self.presence_head(x)
-            return {
-                "class_logits": class_logits,
-                "presence_map": presence_map
-            }
+            return tf.gather(raw_logits, self.permutation_eval, axis=-1)
 
 

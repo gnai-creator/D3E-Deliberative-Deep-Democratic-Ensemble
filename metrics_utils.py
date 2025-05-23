@@ -7,16 +7,12 @@ import seaborn as sns
 import tensorflow as tf
 from sklearn.metrics import confusion_matrix, classification_report
 from runtime_utils import log, make_serializable
-from metrics import match_grid_orientation
 
 os.makedirs("images", exist_ok=True)
 sns.set(style="whitegrid", font_scale=1.2)
 
 
 def plot_confusion(y_true, y_pred, model_name):
-
-
-    # Sempre flattens seguros
     y_true_flat = np.array(y_true).reshape(-1)
     y_pred_flat = np.array(y_pred).reshape(-1)
 
@@ -25,7 +21,6 @@ def plot_confusion(y_true, y_pred, model_name):
         y_true_flat = y_true_flat[:min_len]
         y_pred_flat = y_pred_flat[:min_len]
 
-    # Ignora PAD (-1) e classe 0
     mask = (y_true_flat != -1) & (y_true_flat != 0)
     y_true_filtered = y_true_flat[mask]
     y_pred_filtered = y_pred_flat[mask]
@@ -40,7 +35,7 @@ def plot_confusion(y_true, y_pred, model_name):
     plt.figure(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
                 xticklabels=remaining_classes, yticklabels=remaining_classes)
-    plt.title("SageAxiom Confusion Matrix (sem classe 0)")
+    plt.title("Confusion Matrix (sem classe 0)")
     plt.xlabel("Predicted")
     plt.ylabel("True")
     plt.tight_layout()
@@ -61,7 +56,6 @@ def plot_confusion(y_true, y_pred, model_name):
     log("[INFO] Relatório de métricas por classe salvo (sem classe 0): images/per_class_metrics.json")
 
 
-
 def ensure_numpy(x):
     if isinstance(x, tf.Tensor):
         return x.numpy()
@@ -70,25 +64,14 @@ def ensure_numpy(x):
     else:
         return np.array(x)
 
+
 def plot_prediction_debug(expected_output, predicted_output, raw_input=None, model_index="output", index=0, pad_value=0):
     try:
-        if isinstance(predicted_output, tf.Tensor):
-            predicted_output = predicted_output.numpy()
-        if isinstance(expected_output, tf.Tensor):
-            expected_output = expected_output.numpy()
-        predicted_output = np.asarray(predicted_output).astype(np.int32)
-        expected_output = np.asarray(expected_output).astype(np.int32)
+        predicted_output = ensure_numpy(predicted_output).astype(np.int32)
+        expected_output = ensure_numpy(expected_output).astype(np.int32)
 
-        # Usa raw_input se fornecido
         if raw_input is not None:
             input_img = np.asarray(raw_input)
-        
-        # Corrige orientação do predicted_output
-        if predicted_output.ndim == 3:
-            pred_logits = predicted_output[np.newaxis, :, :, np.newaxis]
-            exp_4d = expected_output[np.newaxis, :, :]
-            corrected = match_grid_orientation(exp_4d, pred_logits)
-            predicted_output = corrected[0, :, :, 0]
 
         h = max(input_img.shape[0], predicted_output.shape[0], expected_output.shape[0])
         w = max(input_img.shape[1], predicted_output.shape[1], expected_output.shape[1])
@@ -126,22 +109,11 @@ def plot_prediction_debug(expected_output, predicted_output, raw_input=None, mod
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
 
 
-
-def plot_prediction_test( predicted_output, task_id, filename="output", raw_input=None, index=0, pad_value=0):
+def plot_prediction_test(predicted_output, task_id, filename="output", raw_input=None, index=0, pad_value=0):
     try:
-        if isinstance(predicted_output, tf.Tensor):
-            predicted_output = predicted_output.numpy()
-        predicted_output = np.asarray(predicted_output).astype(np.int32)
-
+        predicted_output = ensure_numpy(predicted_output).astype(np.int32)
         if raw_input is not None:
             input_img = np.asarray(raw_input)
-        
-
-        # Corrige orientação da predição usando o input como referência
-        pred_logits = predicted_output[np.newaxis, :, :, np.newaxis]
-        dummy_expected = input_img[np.newaxis, :, :]
-        corrected = match_grid_orientation(dummy_expected, pred_logits)
-        predicted_output = corrected[0, :, :, 0]
 
         h = max(input_img.shape[0], predicted_output.shape[0])
         w = max(input_img.shape[1], predicted_output.shape[1])
@@ -166,4 +138,3 @@ def plot_prediction_test( predicted_output, task_id, filename="output", raw_inpu
         log(f"[INFO] Debug visual salvo: {full_filename}")
     except Exception as e:
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
-

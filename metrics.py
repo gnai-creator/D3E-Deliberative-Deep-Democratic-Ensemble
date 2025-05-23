@@ -14,28 +14,32 @@ def pad_to_shape(grid, target_shape=(30, 30), pad_value=0):
 
 
 def match_grid_orientation(y_true, y_pred_logits):
-    """
-    Detects if model output is transposed compared to y_true and aligns it.
+    tf.debugging.assert_rank(y_pred_logits, 4, message="Expected y_pred_logits to be rank 4")
+    tf.debugging.assert_rank(y_true, 3, message="Expected y_true to be rank 3")
 
-    Parameters:
-        y_true: np.ndarray or tf.Tensor of shape (B, H, W) or (H, W)
-        y_pred_logits: tf.Tensor of shape (B, H, W, C) or (B, W, H, C)
+    shape_pred = tf.shape(y_pred_logits)
+    shape_true = tf.shape(y_true)
 
-    Returns:
-        tf.Tensor: aligned logits with shape matching y_true
-    """
-    if isinstance(y_true, tf.Tensor):
-        y_true_shape = tf.shape(y_true)
-        h_true, w_true = y_true_shape[-2], y_true_shape[-1]
-    else:
-        h_true, w_true = y_true.shape[-2:]
+    h_pred, w_pred = shape_pred[1], shape_pred[2]
+    h_true, w_true = shape_true[1], shape_true[2]
 
-    h_pred, w_pred = y_pred_logits.shape[1], y_pred_logits.shape[2]
+    should_transpose = tf.logical_and(
+        tf.not_equal(h_true, h_pred),
+        tf.logical_and(
+            tf.equal(h_true, w_pred),
+            tf.equal(w_true, h_pred)
+        )
+    )
 
-    # Heuristic: only transpose if H and W are obviously swapped and the difference is large enough
-    if abs(h_true - h_pred) + abs(w_true - w_pred) > 0 and (h_true, w_true) == (w_pred, h_pred):
-        return tf.transpose(y_pred_logits, perm=[0, 2, 1, 3])
-    return y_pred_logits
+    y_pred_aligned = tf.cond(
+        should_transpose,
+        lambda: tf.transpose(y_pred_logits, perm=[0, 2, 1, 3]),
+        lambda: y_pred_logits
+    )
+
+    return y_pred_aligned
+
+
 
 
 
@@ -45,13 +49,6 @@ def pad_to_shape_batch(grids, target_shape, pad_value=0):
     padded_batch = [pad_to_shape(grid, target_shape, pad_value) for grid in grids]
     return np.stack(padded_batch)
 
-
-
-# Example in main.py after checking shape mismatch:
-# if Y_train.shape[:2] != pred_shape_hw:
-#     Y_train = pad_to_shape_batch(Y_train, pred_shape_hw, pad_value=0)
-#     Y_val = pad_to_shape_batch(Y_val, pred_shape_hw, pad_value=0)
-
 def align_shapes(a, b, pad_value=0):
     H = max(a.shape[0], b.shape[0])
     W = max(a.shape[1], b.shape[1])
@@ -60,3 +57,40 @@ def align_shapes(a, b, pad_value=0):
         padded[:x.shape[0], :x.shape[1]] = x
         return padded
     return pad_to(a, H, W), pad_to(b, H, W)
+
+
+class OrientationAwareSparseCategoricalAccuracy(tf.keras.metrics.SparseCategoricalAccuracy):
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_pred = match_grid_orientation(y_true, y_pred)
+        return super().update_state(y_true, y_pred, sample_weight)
+
+class ShapeAccuracy(tf.keras.metrics.Metric):
+    def __init__(self, name="shape_acc", **kwargs):
+        super().__init__(name=name, **kwargs)
+        self._accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        self._accuracy.update_state(y_true, y_pred, sample_weight)
+
+    def result(self):
+        return self._accuracy.result()
+
+    def reset_states(self):
+        self._accuracy.reset_states()
+
+    
+    def variables(self):
+        return self._accuracy._variables  # ou use _checkpoint_dependencies para versões mais novas
+
+    def trainable_variables(self):
+        return self._accuracy._trainable_variables
+
+
+
+
+
+
+
+
+
+

@@ -71,7 +71,7 @@ for _ in range(LEN_TRAINING):
     block_index = 0
     while block_index < MAX_BLOCKS and time.time() - start_time < MAX_TRAINING_TIME:
         log(f"Treinando bloco {block_index:02d}")
-        model = SimuV1(hidden_dim=512)
+        model = SimuV1(hidden_dim=256)
         model = compile_model(model, lr=LEARNING_RATE)
 
         X_train, X_val, Y_train, Y_val, _, _, X_test, info_train, info_val, task_id, raw_inputs, raw_test_inputs = get_dataset(
@@ -95,24 +95,14 @@ for _ in range(LEN_TRAINING):
 
             model.fit(
                 x=X_train,
-                y={
-                    "class_logits": Y_train,
-                    "flip_logits": flip_targets,
-                    "rotation_logits": rotation_targets
-                },
-                validation_data=(
-                    X_val,
-                    {
-                        "class_logits": Y_val,
-                        "flip_logits": flip_val_targets,
-                        "rotation_logits": rotation_val_targets
-                    }
-                ),
+                y=Y_train,
+                validation_data=(X_val, Y_val),
                 batch_size=BATCH_SIZE,
                 epochs=EPOCHS,
                 callbacks=[
-                    EarlyStopping(monitor="val_class_logits_shape_acc", patience=PATIENCE, restore_best_weights=True),
-                    ReduceLROnPlateau(monitor="val_class_logits_loss", factor=FACTOR, patience=2, min_lr=RL_LEARNING_RATE)
+                        EarlyStopping(monitor="val_shape_acc", patience=PATIENCE, restore_best_weights=True),
+                        ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=2, min_lr=RL_LEARNING_RATE)
+
                 ],
                 verbose=2
             )
@@ -137,6 +127,14 @@ for _ in range(LEN_TRAINING):
                     expected_output=y_val_expected,
                     predicted_output=y_val_pred,
                     model_index=f"block_{block_index}_task_{task_id}_model_0",
+                    index=cycle,
+                    pad_value=PAD_VALUE
+                )
+                plot_prediction_debug(
+                    raw_input=raw_inputs[0],
+                    expected_output=y_val_expected,
+                    predicted_output=y_val_pred,
+                    model_index=f"AAASSSSXXX",
                     index=cycle,
                     pad_value=PAD_VALUE
                 )

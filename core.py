@@ -7,7 +7,8 @@ from neural_blocks import (
     PositionalEncoding2D, # ok
     AttentionOverMemory, # Ok
     FractalBlock, # Ok
-    DynamicClassPermuter # OK
+    DynamicClassPermuter, # OK
+    TrainableFocalExpansionLayer, # Ok
 )
 
 NUM_CLASSES = 10
@@ -100,12 +101,7 @@ class SimuV1(tf.keras.Model):
         else:
             class_logits = tf.gather(raw_logits, self.permutation_eval, axis=-1)
 
-        # 🔁 RETORNA SAÍDAS MÚLTIPLAS
-        return {
-            "class_logits": class_logits,
-            "flip_logits": flip_logits,
-            "rotation_logits": rotation_logits
-        }
+        return class_logits
 
 
 

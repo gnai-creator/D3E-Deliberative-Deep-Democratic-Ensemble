@@ -233,3 +233,51 @@ class DynamicClassPermuter(tf.keras.layers.Layer):
         masked_logits = class_logits * shape_class_mask
 
         return masked_logits
+
+
+class TrainableFocalExpansionLayer(tf.keras.layers.Layer):
+    def __init__(self, pad_value=0, **kwargs):
+        super().__init__(**kwargs)
+        self.pad_value = pad_value
+        self.kernel = tf.constant(1.0, shape=[3, 3, 1, 1])  # 3x3 dilate kernel
+
+    def build(self, input_shape):
+        # Learnable scalar (but we clip it to [0, 9] range)
+        self.focal_value = self.add_weight(
+            name="focal_value",
+            shape=(),
+            initializer=tf.keras.initializers.Constant(8.0),
+            trainable=True,
+            dtype=tf.float32
+        )
+
+    def call(self, inputs):
+        if len(inputs.shape) == 3:
+            inputs = tf.expand_dims(inputs, -1)
+
+        inputs_float = tf.cast(inputs, tf.float32)
+
+        # Create mask: inputs ≈ focal_value (we use soft approximation)
+        threshold = 0.5  # Accept difference < 0.5
+        diff = tf.abs(inputs_float - self.focal_value)
+        mask = tf.cast(diff < threshold, tf.float32)
+
+        # Dilate that mask (3x3)
+        dilated = tf.nn.conv2d(mask, self.kernel, strides=1, padding='SAME')
+        dilated = tf.minimum(dilated, 1.0)
+
+        # Only apply to pad_value zones
+        pad_mask = tf.cast(tf.equal(inputs_float, self.pad_value), tf.float32)
+        write_mask = dilated * pad_mask
+
+        # Write focal_value where needed
+        output = inputs_float + write_mask * (self.focal_value - self.pad_value)
+        return tf.stop_gradient(output)  # Remove if you want gradients to flow back
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "pad_value": self.pad_value,
+        })
+        return config
+

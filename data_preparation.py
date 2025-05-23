@@ -2,23 +2,22 @@ import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from runtime_utils import log
+from metrics import standardize_grid_shapes, pad_to_30x30_top_left, pad_to_30x30_top_left_single
 
 def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_size):
     start_idx = block_index * block_size
     end_idx = start_idx + block_size
     block_task_ids = task_ids[start_idx:end_idx]
 
+    raw_inputs = []
+    raw_test_inputs = []
     X = []
     Y = []
     X_test = []
     info = []
-    raw_inputs = []
-    raw_test_inputs = []
 
     for task_id in block_task_ids:
-
         log(f"Treinando task_id: {task_id}")
-
         challenge = challenges[task_id]
         try:
             input_grid = np.array(challenge["train"][0]["input"], dtype=np.int32)
@@ -27,40 +26,32 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
             raw_inputs.append(input_grid)
             raw_test_inputs.append(test_input_grid)
 
-            log(f"TRAIN TASK {task_id}  SHAPE: - {np.array(challenge['train'][0]['input']).shape}")
-            log(f"TEST TASK {task_id}  SHAPE: - {np.array(challenge['test'][0]['input']).shape}")
+            log(f"TRAIN TASK {task_id}  SHAPE: - {input_grid.shape}")
+            log(f"TEST TASK {task_id}  SHAPE: - {test_input_grid.shape}")
         except Exception as e:
             log(f"[BROKE]: {e}")
+            continue
 
         max_h = max(input_grid.shape[0], output_grid.shape[0], test_input_grid.shape[0])
         max_w = max(input_grid.shape[1], output_grid.shape[1], test_input_grid.shape[1])
         if max_h > 30 or max_w > 30:
             log(f"[WARN] Grid maior que 30x30: {max_h}x{max_w} — pulando")
             continue
-       
-        h_in, w_in = input_grid.shape
-        h_out, w_out = output_grid.shape
-        t_h_in, t_w_in = test_input_grid.shape
 
-        input_tensor = np.full((max_h, max_w), pad_value, dtype=np.int32)
-        output_tensor = np.full((max_h, max_w), pad_value, dtype=np.int32)
-        test_input_tensor = np.full((max_h,max_w), pad_value, dtype=np.int32)
-
-        input_tensor[:h_in, :w_in] = input_grid
-        output_tensor[:h_out, :w_out] = output_grid 
-        test_input_tensor[:t_h_in, :t_w_in] = test_input_grid
-
-        input_onehot = tf.one_hot(input_tensor, depth=vocab_size)
-        test_input_onehot = tf.one_hot(test_input_tensor, depth=vocab_size)
-
-        X.append(input_onehot.numpy())
-        Y.append(output_tensor)
-        X_test.append(test_input_onehot.numpy())
+        X.append(input_grid)
+        Y.append(output_grid)
+        X_test.append(test_input_grid)
         info.append({"task_id": task_id})
 
-    X = np.stack(X)  # (B, 30, 30, vocab_size)
-    Y = np.stack(Y)  # (B, 30, 30)
-    X_test = np.stack(X_test)
+    X, Y = standardize_grid_shapes(X, Y)
+    X, Y = pad_to_30x30_top_left(X, Y)
+    X_test, _ = standardize_grid_shapes(X_test, Y)
+    X_test = pad_to_30x30_top_left_single(X=X_test)
+
+ 
+
+    X = tf.one_hot(X, depth=vocab_size).numpy()
+    X_test = tf.one_hot(X_test, depth=vocab_size).numpy()
 
     if len(X) > 1:
         X_train, X_val, Y_train, Y_val, info_train, info_val = train_test_split(
@@ -88,5 +79,3 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
         raw_inputs,
         raw_test_inputs
     )
-
-

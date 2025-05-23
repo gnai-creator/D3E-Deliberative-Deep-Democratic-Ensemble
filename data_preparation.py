@@ -12,6 +12,8 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
     Y = []
     X_test = []
     info = []
+    raw_inputs = []
+    raw_test_inputs = []
 
     for task_id in block_task_ids:
 
@@ -22,6 +24,9 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
             input_grid = np.array(challenge["train"][0]["input"], dtype=np.int32)
             output_grid = np.array(challenge["train"][0]["output"], dtype=np.int32)
             test_input_grid = np.array(challenge["test"][0]["input"], dtype=np.int32)
+            raw_inputs.append(input_grid)
+            raw_test_inputs.append(test_input_grid)
+
             log(f"TRAIN TASK {task_id}  SHAPE: - {np.array(challenge['train'][0]['input']).shape}")
             log(f"TEST TASK {task_id}  SHAPE: - {np.array(challenge['test'][0]['input']).shape}")
         except Exception as e:
@@ -79,7 +84,9 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
         tf.convert_to_tensor(X_test, dtype=tf.float32),
         info_train,
         info_val,
-        task_id
+        task_id,
+        raw_inputs,
+        raw_test_inputs
     )
 
 

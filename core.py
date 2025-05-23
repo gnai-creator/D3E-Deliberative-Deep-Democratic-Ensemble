@@ -50,14 +50,35 @@ class SimuV1(tf.keras.Model):
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        x = self.flip(x)
-        x = self.rotation(x)
+        # 🔁 PREVER FLIP E ROTATION
+        flip_logits = self.flip.logits_layer(tf.reduce_mean(x, axis=[1, 2]))     # [B, 4]
+        rotation_logits = self.rotation.classifier(tf.reduce_mean(x, axis=[1, 2]))  # [B, 4]
+
+        # APLICAÇÃO NÃO DIFERENCIÁVEL
+        flip_code = tf.argmax(flip_logits, axis=-1)
+        rotation_code = tf.argmax(rotation_logits, axis=-1)
+
+        def flip_op(args):
+            img, code = args
+            return tf.case([
+                (tf.equal(code, 1), lambda: tf.image.flip_left_right(img)),
+                (tf.equal(code, 2), lambda: tf.image.flip_up_down(img)),
+                (tf.equal(code, 3), lambda: tf.image.flip_up_down(tf.image.flip_left_right(img)))
+            ], default=lambda: img)
+
+        def rotate_single(args):
+            img, k_val = args
+            return tf.image.rot90(img, k=tf.cast(k_val, tf.int32))
+
+        x = tf.map_fn(flip_op, (x, flip_code), dtype=x.dtype)
+        x = tf.map_fn(rotate_single, (x, rotation_code), dtype=x.dtype)
+
+        # 🔁 CONTINUA PIPELINE
         x = self.input_proj(x)
         x = self.pos_enc(x)
         x = self.encoder(x)
         x = self.fractal(x)
 
-        # Memory attention
         pooled = tf.reduce_mean(x, axis=[1, 2])
         memory = tf.expand_dims(pooled, axis=1)
         memory_out = self.attn_memory(memory, pooled)
@@ -65,33 +86,26 @@ class SimuV1(tf.keras.Model):
         memory_out = tf.tile(memory_out, [1, tf.shape(x)[1], tf.shape(x)[2], 1])
         x = x + memory_out
 
-        # MultiHeadAttention refinamento
         b, h, w, c = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], x.shape[-1]
         x_flat = tf.reshape(x, [b, h * w, c])
         x_attn = self.mha(x_flat, x_flat)
         x_attn = self.norm(x_attn + x_flat)
         x = tf.reshape(x_attn, [b, h, w, x_attn.shape[-1]])
 
-        # Logits
-        raw_logits = self.decoder(x)  # antes de qualquer permutação
-        raw_logits = self.permuter(x, raw_logits)  # aplica filtro baseado no shape latente
+        raw_logits = self.decoder(x)
+        raw_logits = self.permuter(x, raw_logits)
 
-        # Treino vs inferência
-        # if training:
-        #     class_logits = self.color_perm_train(raw_logits, training=True)
-        #     return class_logits
-        # else:
-        #     class_logits = tf.gather(raw_logits, self.permutation_eval, axis=-1)
-        #     presence_map = self.presence_head(x)
-        #     return {
-        #         "class_logits": class_logits,
-        #         "presence_map": presence_map
-        #     }
-        # Treino vs inferência
         if training:
             class_logits = self.color_perm_train(raw_logits, training=True)
-            return class_logits
         else:
-            return tf.gather(raw_logits, self.permutation_eval, axis=-1)
+            class_logits = tf.gather(raw_logits, self.permutation_eval, axis=-1)
+
+        # 🔁 RETORNA SAÍDAS MÚLTIPLAS
+        return {
+            "class_logits": class_logits,
+            "flip_logits": flip_logits,
+            "rotation_logits": rotation_logits
+        }
+
 
 

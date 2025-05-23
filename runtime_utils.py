@@ -39,10 +39,6 @@ def make_serializable(obj):
         return [make_serializable(v) for v in obj]
     return obj
 
-
-
-# Example usage inside plot_prediction_debug or plot_prediction_test (or wherever JSON is dumped):
-
 def save_debug_result(data, filepath):
     serializable_data = make_serializable(data)
     with open(filepath, "w") as f:
@@ -78,12 +74,6 @@ def pad_to_shape(tensor, target_shape=(30, 30), pad_value=0):
 
     return tf.pad(tensor, paddings=paddings, constant_values=pad_value)
 
-
-
-
-
-
-
 def profile_time(start, label):
     elapsed = time.time() - start
     mins, secs = divmod(elapsed, 60)
@@ -92,3 +82,9 @@ def profile_time(start, label):
 
 def ensure_batch_dim(tensor):
     return tf.expand_dims(tensor, axis=0) if tensor.shape.rank == 3 else tensor
+
+def transform_input(x):
+    return tf.expand_dims(x, 0) if len(x.shape) == 4 else x
+
+def to_numpy_safe(x):
+    return x.numpy() if isinstance(x, tf.Tensor) else np.array(x)

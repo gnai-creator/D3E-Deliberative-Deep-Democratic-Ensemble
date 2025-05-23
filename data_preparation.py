@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
+from runtime_utils import log
 
 def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_size):
     start_idx = block_index * block_size
@@ -9,29 +10,41 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
 
     X = []
     Y = []
+    X_test = []
     info = []
 
     for task_id in block_task_ids:
+
+        log(f"Treinando task_id: {task_id}")
+
         challenge = challenges[task_id]
         input_grid = np.array(challenge["train"][0]["input"], dtype=np.int32)
         output_grid = np.array(challenge["train"][0]["output"], dtype=np.int32)
+        test_input_grid = np.array(challenge["test"][0]["input"], dtype=np.int32)
 
         h_in, w_in = input_grid.shape
         h_out, w_out = output_grid.shape
+        t_h_in, t_w_in = test_input_grid.shape
 
         input_tensor = np.full((30, 30), pad_value, dtype=np.int32)
         output_tensor = np.full((30, 30), pad_value, dtype=np.int32)
+        test_input_tensor = np.full((30,30), pad_value, dtype=np.int32)
 
         input_tensor[:h_in, :w_in] = input_grid
-        output_tensor[:h_out, :w_out] = output_grid  # mantém valores originais!
+        output_tensor[:h_out, :w_out] = output_grid 
+        test_input_tensor[:t_h_in, :t_w_in] = test_input_grid
 
         input_onehot = tf.one_hot(input_tensor, depth=vocab_size)
+        test_input_onehot = tf.one_hot(test_input_tensor, depth=vocab_size)
+
         X.append(input_onehot.numpy())
         Y.append(output_tensor)
+        X_test.append(test_input_onehot.numpy())
         info.append({"task_id": task_id})
 
     X = np.stack(X)  # (B, 30, 30, vocab_size)
     Y = np.stack(Y)  # (B, 30, 30)
+    X_test = np.stack(X_test)
 
     if len(X) > 1:
         X_train, X_val, Y_train, Y_val, info_train, info_val = train_test_split(
@@ -52,6 +65,10 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
         tf.convert_to_tensor(Y_val, dtype=tf.int32),
         tf.convert_to_tensor(sw_train, dtype=tf.float32),
         tf.convert_to_tensor(sw_val, dtype=tf.float32),
+        tf.convert_to_tensor(X_test, dtype=tf.float32),
         info_train,
         info_val,
+        task_id
     )
+
+

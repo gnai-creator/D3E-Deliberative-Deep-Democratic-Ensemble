@@ -113,6 +113,8 @@ def plot_prediction_debug(input_tensor, expected_output, predicted_output, model
         from runtime_utils import log
         log(f"[INFO] Debug visual salvo: {filename}")
 
+        return pixel_color_perfect, pixel_shape_perfect
+
     except Exception as e:
         from runtime_utils import log
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
@@ -276,3 +278,30 @@ def plot_logit_distribution(logits, model_index="model"):
     plt.savefig(filename)
     plt.close()
     print(f"[INFO] Logit distribution salva em {filename}")
+
+
+def plot_prediction_test(input_grid, predicted_grid, filename="output", index=0, pad_value=0):
+    fig, axes = plt.subplots(1, 2, figsize=(6, 3))
+
+    # Convert input to RGB-ish for visual sanity (you may change this)
+    def colorize(grid):
+        color_map = plt.get_cmap("tab10")  # Up to 10 classes
+        rgb = color_map(grid % 10)[..., :3]  # Use modulo in case values > 10
+        rgb[grid == pad_value] = [1, 1, 1]  # White out padding
+        return rgb
+
+    input_rgb = colorize(input_grid.squeeze())
+    pred_rgb = colorize(np.array(predicted_grid).squeeze())
+
+    axes[0].imshow(input_rgb)
+    axes[0].set_title("Input")
+    axes[0].axis("off")
+
+    axes[1].imshow(pred_rgb)
+    axes[1].set_title("Prediction")
+    axes[1].axis("off")
+
+    os.makedirs("results", exist_ok=True)
+    out_path = os.path.join("images/results", f"{filename}_test_{index}.png")
+    plt.savefig(out_path)
+    plt.close(fig)

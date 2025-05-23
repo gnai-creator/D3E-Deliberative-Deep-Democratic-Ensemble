@@ -14,6 +14,7 @@ from neural_blocks import (
 
 NUM_CLASSES = 10
 
+
 class SimuV1(tf.keras.Model):
     def __init__(self, hidden_dim=64):
         super().__init__()
@@ -51,7 +52,7 @@ class SimuV1(tf.keras.Model):
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        x = self.focal_expand(x)
+        # x = self.focal_expand(x)
         x = x[:, :, :, :, -1]  # usa o último frame
 
         flip_logits = self.flip.logits_layer(tf.reduce_mean(x, axis=[1, 2]))
@@ -77,6 +78,7 @@ class SimuV1(tf.keras.Model):
 
         x = self.input_proj(x)
         x = self.pos_enc(x)
+        x = self.focal_expand(x)
         x = self.temporal_shape_encoder(x)
         x = self.encoder(x)
         x = self.fractal(x)

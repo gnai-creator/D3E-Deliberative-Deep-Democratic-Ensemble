@@ -235,40 +235,43 @@ class DynamicClassPermuter(tf.keras.layers.Layer):
         return masked_logits
 
 
+
 class SpatialFocusTemporalMarking(tf.keras.layers.Layer):
     def __init__(self, kernel_size=3, **kwargs):
         super().__init__(**kwargs)
         self.kernel_size = kernel_size
-        self.kernel = tf.constant(1.0, shape=[kernel_size, kernel_size, 1, 1], dtype=tf.float32)
+        self.focal_value = None
 
     def build(self, input_shape):
-        self.in_channels = input_shape[-2]
-        self.kernel = tf.tile(self.kernel, [1, 1, self.in_channels, 1])
-        self.focal_value = self.add_weight(
-            name="focal_value",
-            shape=[self.in_channels],
-            initializer=tf.keras.initializers.Constant(8.0),
-            trainable=True
-        )
+        self.base_kernel = tf.constant(1.0, shape=[self.kernel_size, self.kernel_size, 1, 1], dtype=tf.float32)
 
     def call(self, inputs):
-        inputs = tf.transpose(inputs, [0, 1, 2, 4, 3])  # (B,H,W,C,T)
-        b, h, w, c, t = tf.unstack(tf.shape(inputs))
-        inputs = tf.reshape(inputs, [b * t, h, w, c])
+        # Espera entrada 4D: [B,H,W,C]
+        if inputs.shape.rank != 4:
+            raise ValueError(f"SpatialFocusTemporalMarking espera entrada 4D, recebeu: {inputs.shape}")
 
         inputs_float = tf.cast(inputs, tf.float32)
-        focal_value = tf.reshape(self.focal_value, [1, 1, 1, -1])
-        diff = tf.abs(inputs_float - focal_value)
+        in_channels = tf.shape(inputs_float)[-1]
+
+        if self.focal_value is None:
+            self.focal_value = self.add_weight(
+                name="focal_value",
+                shape=[inputs.shape[-1]],
+                initializer=tf.keras.initializers.Constant(8.0),
+                trainable=True
+            )
+
+        fv = tf.reshape(self.focal_value, [1, 1, 1, -1])
+        diff = tf.abs(inputs_float - fv)
         mask = tf.cast(diff < 0.5, tf.float32)
 
-        dilated = tf.nn.depthwise_conv2d(mask, self.kernel,
-                                         strides=[1, 1, 1, 1], padding='SAME')
+        kernel = tf.tile(self.base_kernel, [1, 1, in_channels, 1])
+        dilated = tf.nn.depthwise_conv2d(mask, kernel, strides=[1, 1, 1, 1], padding='SAME')
         dilated = tf.minimum(dilated, 1.0)
 
-        expanded = inputs_float + dilated * (focal_value - inputs_float)
-        expanded = tf.reshape(expanded, [b, t, h, w, c])
-        expanded = tf.transpose(expanded, [0, 2, 3, 4, 1])  # (B,H,W,C,T)
+        expanded = inputs_float + dilated * (fv - inputs_float)
         return expanded
+    
 
 class ClassTemporalAlignmentBlock(tf.keras.layers.Layer):
     def __init__(self, hidden_dim, **kwargs):

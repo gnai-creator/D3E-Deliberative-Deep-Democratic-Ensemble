@@ -13,6 +13,7 @@ MODEL_CONFIGS = {
     2: (SimuV3, 128),
     3: (SimuV4, 256),
     4: (SimuV5, 128),
+    5: (SimuV5, 256),
 }
 
 def load_model(index, learning_rate):

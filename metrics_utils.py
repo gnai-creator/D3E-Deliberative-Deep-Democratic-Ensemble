@@ -74,7 +74,8 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
 
         for ax in axes:
             ax.axis("off")
-
+        save_dir = os.path.dirname(save_path)
+        os.makedirs(save_dir, exist_ok=True)
         plt.tight_layout()
         plt.savefig(save_path)
         print(f"[INFO] Resultado do teste salvo em: {save_path}")
@@ -83,7 +84,7 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
     except Exception as e:
         print("[ERROR] Falha ao gerar plot de teste:", str(e))
 
-def salvar_voto_visual(votos, iteracao, saida_dir="votos_visuais"):
+def salvar_voto_visual(votos, iteracao, block_idx, saida_dir="votos_visuais"):
     os.makedirs(saida_dir, exist_ok=True)
     num_modelos = len(votos)
     votos_classes = [np.argmax(ensure_numpy(v), axis=-1)[0] for v in votos if v is not None]
@@ -104,7 +105,10 @@ def salvar_voto_visual(votos, iteracao, saida_dir="votos_visuais"):
 
     fig, axes = plt.subplots(1, num_modelos + 1, figsize=(4 * (num_modelos + 1), 4))
 
-    nomes = [f"Jurada {i+1}" if i < 3 else "Advogada" if i == 3 else "Juíza" for i in range(num_modelos)]
+    cargos = {0: "Jurada 1", 1: "Jurada 2", 2: "Jurada 3", 3: "Advogada", 4: "Juíza", 5: "Suprema Juíza"}
+    nomes = [cargos.get(i, f"Modelo {i}") for i in range(num_modelos)]
+
+
 
     for ax, voto, nome in zip(axes[:-1], votos_classes, nomes):
         sns.heatmap(voto, ax=ax, cbar=False, cmap="viridis", square=True)
@@ -116,7 +120,7 @@ def salvar_voto_visual(votos, iteracao, saida_dir="votos_visuais"):
     axes[-1].axis("off")
 
     plt.suptitle(f"Predições dos Modelos - Iteração {iteracao}", fontsize=12)
-    filepath = os.path.join(saida_dir, f"votos_iter_{iteracao:02d}.png")
+    filepath = os.path.join(saida_dir, f"{block_idx} - votos_iter_{iteracao:02d}.png")
     plt.tight_layout()
     plt.savefig(filepath)
     plt.close()

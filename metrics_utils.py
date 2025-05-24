@@ -237,27 +237,73 @@ def salvar_voto_visual(votos, iteracao, saida_dir="votos_visuais"):
     log(f"[VISUAL] Salvo mapa de votos + consenso em {filepath}")
 
 def gerar_video_time_lapse(pasta="votos_visuais", model_idx=0, output="court_drama.mp4", fps=1):
-    arquivos = sorted(glob.glob(f"{pasta}/votos_iter_*.png"))
-    if not arquivos:
-        log("[VISUAL] Nenhuma imagem de iteração encontrada para gerar o vídeo.")
-        return
+    """
+    Gera um vídeo a partir das imagens de iteração salvas na pasta.
 
-    log(f"[VIDEO] Gerando vídeo a partir de {len(arquivos)} quadros...")
-    filename = model_idx + "_" + output
-    with imageio.get_writer(filename, fps=fps) as writer:
-        for img_path in arquivos:
-            img = imageio.imread(img_path)
-            writer.append_data(img)
+    Args:
+        pasta (str): Caminho da pasta com as imagens.
+        model_idx (int): Índice do modelo para nomear o vídeo.
+        output (str): Nome base do vídeo final.
+        fps (int): Quadros por segundo do vídeo.
 
-    log(f"[VIDEO] Time-lapse salvo em: {filename}")
+    Returns:
+        str or None: Caminho do vídeo gerado ou None se falhar.
+    """
+    try:
+        if not isinstance(pasta, str):
+            raise ValueError(f"[ERRO] Argumento 'pasta' deve ser uma string. Recebido: {pasta}")
+
+        arquivos = sorted(glob.glob(os.path.join(pasta, "votos_iter_*.png")))
+        if not arquivos:
+            log("[VISUAL] Nenhuma imagem de iteração encontrada para gerar o vídeo.")
+            return None
+
+        os.makedirs("videos", exist_ok=True)
+        filename = f"videos/julgamento_block_{model_idx}.mp4"
+
+        log(f"[VIDEO] Gerando vídeo com {len(arquivos)} quadros...")
+        with imageio.get_writer(filename, fps=fps) as writer:
+            for img_path in arquivos:
+                img = imageio.imread(img_path)
+                writer.append_data(img)
+
+        log(f"[VIDEO] Time-lapse salvo em: {filename}")
+        return filename
+
+    except Exception as e:
+        log(f"[ERRO] Falha ao gerar vídeo: {e}")
+        return None
 
 
 
-def embutir_trilha_sonora(video_path="court_drama.mp4",model_idx=0, musica_path="intergalactic.mp3", output="court_with_sound.mp4"):
-    video = mpy.VideoFileClip(video_path)
-    audio = mpy.AudioFileClip(musica_path).set_duration(video.duration)
-    final = video.set_audio(audio)
-    filename = model_idx  + "_" + output
 
-    final.write_videofile(filename, codec='libx264', audio_codec='aac')
-    log(f"[AUDIO] Vídeo com trilha salvo em: {filename}")
+
+def embutir_trilha_sonora(video_path="court_drama.mp4", model_idx=0, musica_path="intergalactic.mp3", output="court_with_sound.mp4"):
+    """
+    Adiciona trilha sonora a um vídeo existente.
+
+    Args:
+        video_path (str or int): Caminho do vídeo ou índice do modelo.
+        model_idx (int): Índice do modelo para nomear a saída.
+        musica_path (str): Caminho do arquivo de áudio.
+        output (str): Nome base do arquivo de saída com som.
+    """
+    try:
+        # Corrige se for passado um inteiro
+        if isinstance(video_path, int):
+            video_path = f"videos/julgamento_block_{video_path}.mp4"
+
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"Arquivo de vídeo não encontrado: {video_path}")
+
+        video = mpy.VideoFileClip(video_path)
+        audio = mpy.AudioFileClip(musica_path).set_duration(video.duration)
+        final = video.set_audio(audio)
+
+        filename = f"{model_idx}_{output}" if isinstance(model_idx, int) else output
+        final.write_videofile(filename, codec='libx264', audio_codec='aac')
+        log(f"[AUDIO] Vídeo com trilha salvo em: {filename}")
+
+    except Exception as e:
+        log(f"[ERROR] Falha ao embutir trilha sonora: {e}")
+

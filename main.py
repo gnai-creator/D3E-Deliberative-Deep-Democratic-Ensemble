@@ -17,7 +17,7 @@ from court_logic import arc_court
 def corte_esta_completa(models):
     return isinstance(models, list) and len(models) == 5 and all(m is not None for m in models)
 
-def test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submission_dict):
+def test_challenge(models, X_test, model_idx, raw_test_inputs, block_index, task_id, submission_dict):
     log(f"[TEST] Inicializando teste bloco {block_index} para task {task_id}")
     try:
         x_test_sample = tf.convert_to_tensor(X_test[0], dtype=tf.float32)
@@ -33,8 +33,11 @@ def test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submis
         
         preds = arc_court(models, x_input_outros)
 
-        gerar_video_time_lapse(block_index)
-        embutir_trilha_sonora(block_index)
+        video_path = gerar_video_time_lapse(model_idx=model_idx)
+        if video_path:
+            embutir_trilha_sonora(video_path=video_path, model_idx=model_idx)
+
+        
         
         y_test_logits = preds["class_logits"] if isinstance(preds, dict) else preds
         pred_np = tf.argmax(y_test_logits, axis=-1).numpy()[0]
@@ -206,7 +209,7 @@ if __name__ == "__main__":
                             models.append(model)
 
                         if corte_esta_completa(models):
-                            test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submission_dict)
+                            test_challenge(models, X_test, model_idx, raw_test_inputs, block_index, task_id, submission_dict)
                             block_index += 1
 
                         model_idx += 1

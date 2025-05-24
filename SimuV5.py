@@ -131,8 +131,11 @@ class SimuV5(tf.keras.Model):
         x = tf.reshape(x_attn, [b, h, w, x_attn.shape[-1]])
 
         raw_logits = self.decoder(x)
+        # tf.print("[DEBUG] raw_logits:", tf.reduce_mean(raw_logits))
 
         if training:
-            return self.color_perm_train(raw_logits, training=True)
+            output = self.color_perm_train(raw_logits, training=True)
+            # tf.print("[DEBUG] final output mean:", tf.reduce_mean(output))
+            return output
         else:
             return raw_logits

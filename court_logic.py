@@ -62,6 +62,11 @@ def arc_court(models, input_tensor_outros, max_iters=5, tol=0.98, epochs=3):
         log(f"[LOG] Entrada juíza final shape: {entrada_juiza_final.shape}")
 
         voto_juiza = juiza(entrada_juiza_final, training=False)
+        if tf.reduce_sum(voto_juiza) == 0:
+            log("[WARN] Juíza retornou apenas zeros na predição final.")
+        else:
+            log(f"[OK] Juíza produziu saída válida com shape: {voto_juiza.shape}")
+
         votos_models.append(voto_juiza)
         log(f"[LOG] Voto final da juíza shape: {voto_juiza.shape}")
 

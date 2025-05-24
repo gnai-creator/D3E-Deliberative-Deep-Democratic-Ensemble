@@ -12,10 +12,10 @@ from metrics_utils import plot_prediction_debug, plot_prediction_test
 from runtime_utils import log, save_debug_result, transform_input, to_numpy_safe
 from data_preparation import get_dataset
 from model_loader import load_model
+from court_logic import arc_court
 
 
-
-def test_challenge(model, X_test, raw_test_inputs, block_index, task_id, submission_dict):
+def test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submission_dict):
     log(f"[TEST] Inicializando teste bloco {block_index} para task {task_id}")
     try:
         x_test_sample = tf.convert_to_tensor(X_test[0], dtype=tf.float32)
@@ -25,7 +25,7 @@ def test_challenge(model, X_test, raw_test_inputs, block_index, task_id, submiss
         if x_test_sample.ndim == 4:
             x_test_sample = tf.expand_dims(x_test_sample, axis=3)  # (B, H, W, 1, T)
         
-        preds = model(x_test_sample, training=False)
+        preds = arc_court(models, x_test_sample)
 
         y_test_logits = preds["class_logits"] if isinstance(preds, dict) else preds
         pred_np = tf.argmax(y_test_logits, axis=-1).numpy()[0]
@@ -104,13 +104,15 @@ if __name__ == "__main__":
             for i in range(N_MODELS) :
                 
                 model = load_model(i)
+                if model not in models:
+                    models.append(model)
 
                 for cycle in range(CYCLES):
                     log(f"Cycle {cycle}")
                     log(f"X_train.shape: {X_train.shape}")
                     log(f"Y_train.shape: {Y_train.shape}")
 
-                    model.fit(
+                    models[i].fit(
                         x=X_train,
                         y=Y_train,
                         validation_data=(X_val, Y_val),
@@ -161,7 +163,7 @@ if __name__ == "__main__":
 
                         log(f"Pixel Color Perfect: {pixel_color_perfect} - Pixel Shape Perfect {pixel_shape_perfect}")
                         if pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999:
-                            test_challenge(model, X_test, raw_test_inputs, block_index, task_id, submission_dict)
+                            test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submission_dict)
                             block_index += 1
                             break
 

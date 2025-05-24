@@ -11,7 +11,7 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from metrics_utils import plot_prediction_debug, plot_prediction_test
 from runtime_utils import log, save_debug_result, transform_input, to_numpy_safe
 from data_preparation import get_dataset
-from core import SimuV1
+from SimuV1 import SimuV1
 from model_compile import compile_model
 
 if __name__ == "__main__":

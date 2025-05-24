@@ -1,70 +1,54 @@
-# SimuV1: A Cortex-Inspired Pattern Resolver
+# 🧠 SimuV1 ARC Judiciary System
 
-> SimuV1 (short for "Simulated Visual Cortex V1") is a neural architecture inspired by the early layers of biological vision, adapted to tackle the ARC Challenge like it's a series of sacred mosaics.
+**"If the human mind can deliberate, so can a swarm of pixel-obsessed neural networks."**
 
-Built for grid-based reasoning. Forged in the fire of convolutional obsession. Forget image classification — this thing is here to understand abstract visual logic like a nervous system with a grudge.
+SimuV1 é uma arquitetura visual neural projetada para o Abstraction and Reasoning Corpus (ARC). Após resolver mais de **205 desafios de ARC-AGI-2**, evoluímos para uma nova abordagem inspirada em sistemas judiciais, votações e metacognição.  
+Bem-vindo ao **ARC Judiciary System**.
 
-## What is SimuV1?
+## 🧬 Estrutura do Sistema
 
-SimuV1 is a pattern abstraction and replication engine tailored to solve ARC (Abstraction and Reasoning Corpus) tasks. It is a specialized visual processor that learns how to "see" logic — tiling, symmetry, transformations — with minimal data.
+O sistema é composto por **5 redes neurais distintas** com papéis específicos:
 
-It does not generalize across tasks. It conquers each one individually, like a slightly deranged craftsman reinventing the wheel 125 times and making it sharper every time.
+| Rede | Papel | Descrição |
+|------|-------|-----------|
+| **IA1–IA3** | Juradas | Continuam treinando com base nas previsões da IA4. Cada uma possui variações arquiteturais ou de dados. |
+| **IA4** | Advogada | Gera previsões iniciais baseadas apenas nos inputs de teste. |
+| **IA5** | Juíza | Avalia os outputs de IA1–IA3 com base em distância semântica e um campo especial chamado `juízo`. Decide qual output é o mais confiável. |
 
-## Features
+## 🌀 O Ciclo
 
-* **Fractal Convolutional Backbone**
-  Multi-scale `FractalBlock` modules for expressive pattern encoding.
+1. Treinamento inicial com dados de treino (train[0]["input"] e train[0]["output"]).
+2. IA4 realiza **inference** no conjunto de testes.
+3. Suas previsões alimentam o treinamento supervisionado de IA1–IA3.
+4. IA1–IA3 devolvem previsões + confiança (`juízo ∈ [0, 1]`).
+5. IA5 avalia as previsões usando critérios de consenso e confiança.
+6. Se pelo menos 3 outputs possuem `juízo ≥ 0.9`, o voto é aceito.
+7. Votação final entre as 5 redes define a resposta.
 
-* **Learned Color Permutations**
-  Because ARC loves arbitrary palette shuffles and SimuV1 eats those for breakfast.
+## 🧠 Sobre o Juízo
 
-* **Symmetry-aware Preprocessing**
-  With `LearnedFlip` and `DiscreteRotation`, the model learns what to ignore and what to mirror.
+A dimensão `juízo` é um campo contínuo que representa a autoconfiança da IA sobre sua própria resposta.  
+Ele é aprendido durante o treinamento via uma *critic head* que tenta prever a loss esperada.
 
-* **Spatial Attention Over Learned Memory**
-  A tiny, angry transformer core that yells "FOCUS!" at the visual field.
+## 🎯 Objetivo
 
-* **Presence Head**
-  Predicts where objects should exist. Not unlike the part of your brain that says “that’s weird” when a thing disappears.
+- Resolver **todas as 400 tarefas do ARC-AGI-2**.
+- Sem vazamento de dados.
+- Apenas inferência legítima com generalização.
 
-* **Grid Input / Grid Output**
-  Everything’s a grid. Inputs, outputs, internal neuroses. And yes, it assumes you like padding.
+## 📼 Registro
 
-## Usage
+Todo o processo foi registrado em vídeo:
+- SimuV1 resolvendo 205 tarefas: [YouTube Link](https://www.youtube.com/watch?v=o3It0tT4kGk)
 
-```python
-from shape_locator_net import SimuV1
-from model_compile import compile_model
+## ⚖️ Filosofia
 
-model = SimuV1(hidden_dim=256)
-model = compile_model(model, lr=1e-3)
+> "Você não programa esse sistema. Você educa ele."
 
-model.fit(x_train, y_train, epochs=60, ...)
-preds = model(x_test, training=False)
-```
+Este projeto trata mais de criar uma **mente deliberativa coletiva** do que um simples modelo de classificação. É um passo em direção à inteligência artificial interpretável, cooperativa e autocrítica.
 
-## Performance
+---
 
-* Solves over **124 out of 125 ARC test tasks**
-* Typical task convergence in **5–20 training cycles**
-* Collapses gracefully when exposed to unexpected grid shapes or reality
+**Status:** Em desenvolvimento contínuo.  
+**Contato:** via GitHub Issues ou ~visões neurais telepáticas~ futuras releases.
 
-## Limitations
-
-* **No inter-task generalization** — each task is learned from scratch with fresh weights, just like your goldfish when it forgets it already swam past the castle.
-* **Shape-specific** — SimuV1 expects well-behaved inputs, and will politely explode otherwise.
-* **Not a general AI** — but it plays one surprisingly well.
-
-## Philosophy
-
-> SimuV1 doesn’t think. It **recognizes**.
-> It doesn’t understand. It **recursively adapts**.
-> It doesn’t generalize. It **perfects each microcosm, one tiled hallucination at a time**.
-
-## Naming Notes
-
-SimuV1 is named after:
-
-* **Simulated Visual Cortex V1** — the real-world module responsible for early-stage visual processing.
-* The **simplicity** and **rigidity** of early perception.
-* And because “CortexMcGridFace” didn’t make it past the branding meeting.

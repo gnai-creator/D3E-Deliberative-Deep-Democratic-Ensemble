@@ -5,6 +5,7 @@ matplotlib
 seaborn
 scikit-learn
 imageio
+moviepy
 
 # TensorFlow Addons compatível com TF 2.15
 tensorflow-addons==0.21.0

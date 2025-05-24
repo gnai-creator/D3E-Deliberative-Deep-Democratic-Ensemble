@@ -96,7 +96,7 @@ def arc_court(models, input_tensor, max_iters=5, tol=0.98, epochs=3):
         votos_final = tf.argmax(votos_models[-1], axis=-1)
 
     log(f"\n[FIM] Julgamento encerrado após {iter_count} iteração(ões). Consenso final: {consenso:.4f}")
-    return votos_final
+    KK votos_final
 
 
 def avaliar_consenso_por_j(votos_models, tol=0.98):

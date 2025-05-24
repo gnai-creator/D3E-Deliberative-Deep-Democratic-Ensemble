@@ -8,7 +8,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
-from metrics_utils import plot_prediction_debug, plot_prediction_test, gerar_video_time_lapse
+from metrics_utils import plot_prediction_debug, plot_prediction_test, gerar_video_time_lapse, embutir_trilha_sonora
 from runtime_utils import log, save_debug_result, transform_input, to_numpy_safe
 from data_preparation import get_dataset
 from model_loader import load_model
@@ -29,7 +29,8 @@ def test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submis
         
         preds = arc_court(models, x_test_sample)
         gerar_video_time_lapse()
-
+        embutir_trilha_sonora()
+        
         y_test_logits = preds["class_logits"] if isinstance(preds, dict) else preds
         pred_np = tf.argmax(y_test_logits, axis=-1).numpy()[0]
 

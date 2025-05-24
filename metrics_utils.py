@@ -7,6 +7,9 @@ import seaborn as sns
 import tensorflow as tf
 from sklearn.metrics import confusion_matrix, classification_report
 from runtime_utils import log, make_serializable
+import imageio
+import glob
+from moviepy.editor import VideoFileClip, AudioFileClip
 
 os.makedirs("images", exist_ok=True)
 sns.set(style="whitegrid", font_scale=1.2)
@@ -140,8 +143,7 @@ def plot_prediction_test(predicted_output, task_id, filename="output", raw_input
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
 
 
-import imageio
-import glob
+
 
 def gerar_video_time_lapse(pasta="votos_visuais", output="court_drama.mp4", fps=1):
     arquivos = sorted(glob.glob(f"{pasta}/votos_iter_*.png"))
@@ -157,3 +159,12 @@ def gerar_video_time_lapse(pasta="votos_visuais", output="court_drama.mp4", fps=
             writer.append_data(img)
 
     log(f"[VIDEO] Time-lapse salvo em: {output}")
+
+
+
+def embutir_trilha_sonora(video_path="court_drama.mp4", musica_path="intergalactic.mp3", output_path="court_with_sound.mp4"):
+    video = VideoFileClip(video_path)
+    audio = AudioFileClip(musica_path).set_duration(video.duration)
+    final = video.set_audio(audio)
+    final.write_videofile(output_path, codec='libx264', audio_codec='aac')
+    log(f"[AUDIO] Vídeo com trilha salvo em: {output_path}")

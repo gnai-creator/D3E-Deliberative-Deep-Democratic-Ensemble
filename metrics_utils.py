@@ -65,7 +65,7 @@ def ensure_numpy(x):
         return np.array(x)
 
 
-def plot_prediction_debug(expected_output, predicted_output, raw_input=None, model_index="output", index=0, pad_value=0):
+def plot_prediction_debug(expected_output, predicted_output, raw_input=None, model_index="output", task_id="", index=0, pad_value=0):
     try:
         predicted_output = ensure_numpy(predicted_output).astype(np.int32)
         expected_output = ensure_numpy(expected_output).astype(np.int32)
@@ -97,7 +97,7 @@ def plot_prediction_debug(expected_output, predicted_output, raw_input=None, mod
             ax.set_title(title)
             ax.axis("off")
 
-        plt.suptitle(f"Prediction Debug - Model {model_index}", fontsize=14)
+        plt.suptitle(f"Prediction Debug - Model {model_index} - {index} - Task: {task_id}", fontsize=14)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         filename = f"images/prediction_debug_{model_index}.png"
         plt.savefig(filename, dpi=150)

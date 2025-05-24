@@ -107,7 +107,7 @@ if __name__ == "__main__":
             rotation_targets = np.zeros((Y_train.shape[0],), dtype=np.int32)
             flip_val_targets = np.zeros((Y_val.shape[0],), dtype=np.int32)
             rotation_val_targets = np.zeros((Y_val.shape[0],), dtype=np.int32)
-            models = []
+            models = [None] * N_MODELS 
 
             for i in range(N_MODELS) :
                 
@@ -116,11 +116,7 @@ if __name__ == "__main__":
                     log(f"[ERROR] Modelo {i} retornou None do load_model. Pulando.")
                     continue
 
-                if len(models) <= i:
-                    models.append(model)
-                else:
-                    models[i] = model
-
+                models[i] = model
                 for cycle in range(CYCLES):
                     log(f"Cycle {cycle}")
                     log(f"X_train.shape: {X_train.shape}")

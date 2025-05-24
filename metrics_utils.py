@@ -21,7 +21,7 @@ def ensure_numpy(x):
 
 def prepare_display_image(img, pad_value, h, w):
     img = ensure_numpy(img)
-    print(f"[DEBUG] prepare_display_image - input shape: {img.shape}")
+    # print(f"[DEBUG] prepare_display_image - input shape: {img.shape}")
     if img.ndim == 5:
         img = img[0, :, :, 0, :]  # [B, H, W, C, J] → [H, W, J]
         return img

@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-JUDGE = 2
+JUDGE = 4
 CHANNELS = 1
 
 def add_judge_channel(input_grid, juizo_value):

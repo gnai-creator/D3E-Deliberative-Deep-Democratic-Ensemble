@@ -40,13 +40,14 @@ def arc_court(models, input_tensor, max_iters=5, tol=0.98, epochs=3):
         log(f"[INFO] Juradas emitiram opiniões, cada uma com shape: {saidas_juradas[0].shape}")
 
         # 4. Juíza aprende com concatenação das saídas (juradas + advogada)
-        input_juiza = tf.concat(saidas_juradas + [y_advogada_logits], axis=-1)  # [B, H, W, C * 4]
+        input_juiza = tf.stack(saidas_juradas + [y_advogada_logits], axis=-1)  # [B, H, W, C, 4]
         juiza.fit(x=input_juiza, y=y_advogada_classes, epochs=epochs, verbose=0)
         log(f"[TREINO] Juíza treinada com opiniões de juradas e advogada")
 
         # 5. Todos votam
         votos_models = [model(input_tensor, training=False) for model in juradas + [advogada]]
-        entrada_juiza_final = tf.concat(votos_models, axis=-1)
+        entrada_juiza_final = tf.stack(votos_models, axis=-1)
+
         voto_juiza = juiza(entrada_juiza_final, training=False)
         votos_models.append(voto_juiza)
 

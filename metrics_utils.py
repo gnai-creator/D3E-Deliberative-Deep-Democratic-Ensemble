@@ -87,29 +87,48 @@ def prepare_display_image(img, pad_value, h, w):
     return img
 
 def plot_prediction_debug(expected_output, predicted_output, raw_input=None, model_index="output", task_id="", index=0, pad_value=0):
+    """
+    Gera uma imagem com a comparação entre entrada, saída esperada e saída prevista,
+    junto com uma máscara de acertos por presença (shape) e cor (classe).
+    Retorna métricas de acurácia pixel a pixel.
+    """
     try:
+        # Converte tensores para numpy, se necessário
         predicted_output = ensure_numpy(predicted_output).astype(np.int32)
         expected_output = ensure_numpy(expected_output).astype(np.int32)
         input_img = np.asarray(raw_input) if raw_input is not None else np.zeros_like(expected_output)
 
+        # Garante formato 2D removendo canais desnecessários
+        if predicted_output.ndim == 3 and predicted_output.shape[-1] == 1:
+            predicted_output = predicted_output[:, :, 0]
+        if expected_output.ndim == 3 and expected_output.shape[-1] == 1:
+            expected_output = expected_output[:, :, 0]
+
+        # Considera todos os pixels como válidos (inclusive classe 0)
+        valid_mask = np.ones_like(expected_output, dtype=bool)
+
+        assert valid_mask.shape == predicted_output.shape, f"Máscara inválida: {valid_mask.shape} vs {predicted_output.shape}"
+
+        # Cálculo das métricas principais (forçando casting para float para evitar truncamento inteiro)
+        correct_pixels = (predicted_output == expected_output)[valid_mask]
+        pixel_color_perfect = np.sum(correct_pixels) / correct_pixels.size
+
+        correct_shape = ((predicted_output > 0) == (expected_output > 0))[valid_mask]
+        pixel_shape_perfect = np.sum(correct_shape) / correct_shape.size
+
+        # Calcula altura e largura máximas para padding
         h = max(input_img.shape[0], predicted_output.shape[0], expected_output.shape[0])
         w = max(input_img.shape[1], predicted_output.shape[1], expected_output.shape[1])
 
+        # Padroniza os arrays para mesma dimensão para visualização
         input_img = prepare_display_image(input_img, pad_value, h, w)
         predicted_output = prepare_display_image(predicted_output, pad_value, h, w)
         expected_output = prepare_display_image(expected_output, pad_value, h, w)
 
-        valid_mask = expected_output != pad_value
-        if valid_mask.ndim > 2:
-            valid_mask = np.squeeze(valid_mask)
-        if valid_mask.shape != predicted_output.shape:
-            raise ValueError(f"Máscara inválida: {valid_mask.shape} vs {predicted_output.shape}")
-
-        pixel_color_perfect = np.mean((predicted_output == expected_output)[valid_mask])
-        pixel_shape_perfect = np.mean((predicted_output > 0)[valid_mask] == (expected_output > 0)[valid_mask])
-
+        # Mapa binário de acertos de presença
         heatmap = ((predicted_output > 0) == (expected_output > 0)).astype(np.int32)
 
+        # Construção visual do plot
         fig, axs = plt.subplots(1, 4, figsize=(22, 4))
         for ax, img, title, cmap in zip(
             axs,
@@ -123,18 +142,33 @@ def plot_prediction_debug(expected_output, predicted_output, raw_input=None, mod
 
         plt.suptitle(f"Prediction Debug - Model {model_index} - {index} - Task: {task_id}", fontsize=14)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
+
         filename = f"images/prediction_debug_{model_index}.png"
         plt.savefig(filename, dpi=150)
         plt.close()
         log(f"[INFO] Debug visual salvo: {filename}")
+
         return pixel_color_perfect, pixel_shape_perfect
+
     except Exception as e:
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
 
+
 def plot_prediction_test(predicted_output, task_id, filename="output", raw_input=None, index=0, pad_value=0):
+    """
+    Gera um gráfico de comparação entre entrada e predição final em fase de teste,
+    útil para inspeção qualitativa dos resultados.
+    """
     try:
+        # Garante numpy e tipo inteiro para a previsão
         predicted_output = ensure_numpy(predicted_output).astype(np.int32)
         input_img = np.asarray(raw_input) if raw_input is not None else np.zeros_like(predicted_output)
+
+        # Garante formato 2D removendo canais desnecessários
+        if predicted_output.ndim == 3 and predicted_output.shape[-1] == 1:
+            predicted_output = predicted_output[:, :, 0]
+        if input_img.ndim == 3 and input_img.shape[-1] == 1:
+            input_img = input_img[:, :, 0]
 
         h = max(input_img.shape[0], predicted_output.shape[0])
         w = max(input_img.shape[1], predicted_output.shape[1])
@@ -142,6 +176,7 @@ def plot_prediction_test(predicted_output, task_id, filename="output", raw_input
         input_img = prepare_display_image(input_img, pad_value, h, w)
         predicted_output = prepare_display_image(predicted_output, pad_value, h, w)
 
+        # Cria subplots com input e saída prevista
         fig, axs = plt.subplots(1, 2, figsize=(6, 3))
         for ax, img, title in zip(axs, [input_img, predicted_output], ["Input", "Prediction"]):
             ax.imshow(img, cmap="viridis", vmin=0, vmax=9)
@@ -151,12 +186,15 @@ def plot_prediction_test(predicted_output, task_id, filename="output", raw_input
         plt.suptitle(f"Prediction TEST - Model Task {index} ID: {task_id}", fontsize=10)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         os.makedirs("images/test", exist_ok=True)
+
         full_filename = f"images/test/{filename}_Prediction_TEST_Task_{task_id}.png"
         plt.savefig(full_filename, dpi=150)
         plt.close()
         log(f"[INFO] Debug visual salvo: {full_filename}")
+
     except Exception as e:
         log(f"[ERROR] Falha ao gerar plot de teste: {e}")
+
 
 
 

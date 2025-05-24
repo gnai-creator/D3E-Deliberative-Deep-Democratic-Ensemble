@@ -91,10 +91,16 @@ if __name__ == "__main__":
 
     for _ in range(LEN_TRAINING):
         block_index = 0
+        model_idx = 0
+        models = []
+
         while block_index < MAX_BLOCKS and time.time() - start_time < MAX_TRAINING_TIME:
             if block_index in blacklist_blocks:
                 block_index +=1
                 continue
+            if model_idx > 4:
+                model_idx = 0
+
             log(f"Treinando bloco {block_index:02d}")
             
 
@@ -104,98 +110,95 @@ if __name__ == "__main__":
             )
 
   
-            models = []
 
             log(f"[INFO] SHAPE X TRAIN : {X_train.shape}")
             log(f"[INFO] SHAPE Y Val : {Y_val.shape}")
             log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")
-            model_idx = 0
-            while model_idx < N_MODELS:
+            
                 
+            try:
+                model = load_model(model_idx, LEARNING_RATE)
+                if model is None:
+                    raise ValueError(f"[FATAL] Modelo {model_idx} não foi carregado corretamente.")
+            except Exception as e:
+                log(f"[FATAL] Falha ao carregar o modelo {model_idx}: {e}")
+                raise
+            
+            for cycle in range(CYCLES):
+                log(f"Cycle {cycle} MODEL : {model_idx}")
+                log(f"X_train.shape: {X_train.shape}")
+                log(f"Y_train.shape: {Y_train.shape}")
+
+                model.fit(
+                    x=X_train,
+                    y=Y_train,
+                    validation_data=(X_val, Y_val),
+                    batch_size=BATCH_SIZE,
+                    epochs=EPOCHS,
+                    callbacks=[
+                            EarlyStopping(monitor="val_shape_acc", patience=PATIENCE, restore_best_weights=True),
+                            ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=2, min_lr=RL_LEARNING_RATE)
+
+                    ],
+                    verbose=0
+                )
+
                 try:
-                    model = load_model(model_idx, LEARNING_RATE)
-                    if model is None:
-                        raise ValueError(f"[FATAL] Modelo {model_idx} não foi carregado corretamente.")
-                    models.append(model)
-                except Exception as e:
-                    log(f"[FATAL] Falha ao carregar o modelo {model_idx}: {e}")
-                    raise
-                
-                for cycle in range(CYCLES):
-                    log(f"Cycle {cycle} MODEL : {model_idx}")
-                    log(f"X_train.shape: {X_train.shape}")
-                    log(f"Y_train.shape: {Y_train.shape}")
+                    x_val_sample = transform_input(X_val[:1])
+                    preds = model.predict(x_val_sample)
+                    y_val_logits = preds["class_logits"] if isinstance(preds, dict) else preds
+                    y_val_pred = tf.argmax(y_val_logits, axis=-1).numpy()[0]
+                    y_val_expected = to_numpy_safe(Y_val[:1][0])
 
-                    models[model_idx].fit(
-                        x=X_train,
-                        y=Y_train,
-                        validation_data=(X_val, Y_val),
-                        batch_size=BATCH_SIZE,
-                        epochs=EPOCHS,
-                        callbacks=[
-                                EarlyStopping(monitor="val_shape_acc", patience=PATIENCE, restore_best_weights=True),
-                                ReduceLROnPlateau(monitor="val_loss", factor=FACTOR, patience=2, min_lr=RL_LEARNING_RATE)
+                    valid_mask = (y_val_expected != PAD_VALUE)
 
-                        ],
-                        verbose=2
-                    )
-
-                    try:
-                        x_val_sample = transform_input(X_val[:1])
-                        preds = model.predict(x_val_sample)
-                        y_val_logits = preds["class_logits"] if isinstance(preds, dict) else preds
-                        y_val_pred = tf.argmax(y_val_logits, axis=-1).numpy()[0]
-                        y_val_expected = to_numpy_safe(Y_val[:1][0])
-
-                        valid_mask = (y_val_expected != PAD_VALUE)
-
-                        # Corrige máscara se estiver com um eixo extra (ex: (30,30,1) → (30,30))
-                        if valid_mask.shape != y_val_pred.shape:
-                            try:
-                                valid_mask = np.squeeze(valid_mask)
-                                if valid_mask.shape != y_val_pred.shape:
-                                    raise ValueError("Shape incompatível após squeeze.")
-                            except Exception:
-                                log(f"[ERROR] Falha ao ajustar máscara: mask shape {valid_mask.shape}, pred shape {y_val_pred.shape}")
-                                continue
-
-                        if np.sum(valid_mask) == 0:
-                            log(f"[WARN] Nenhum pixel válido para comparação. Task: {task_id}")
+                    # Corrige máscara se estiver com um eixo extra (ex: (30,30,1) → (30,30))
+                    if valid_mask.shape != y_val_pred.shape:
+                        try:
+                            valid_mask = np.squeeze(valid_mask)
+                            if valid_mask.shape != y_val_pred.shape:
+                                raise ValueError("Shape incompatível após squeeze.")
+                        except Exception:
+                            log(f"[ERROR] Falha ao ajustar máscara: mask shape {valid_mask.shape}, pred shape {y_val_pred.shape}")
                             continue
 
-                        pixel_color_perfect = np.mean((y_val_pred == y_val_expected)[valid_mask])
-                        pixel_shape_perfect = np.mean((y_val_pred > 0) == (y_val_expected > 0))
+                    if np.sum(valid_mask) == 0:
+                        log(f"[WARN] Nenhum pixel válido para comparação. Task: {task_id}")
+                        continue
 
-                        plot_prediction_debug(
-                            raw_input=raw_inputs[0],
-                            expected_output=y_val_expected,
-                            predicted_output=y_val_pred,
-                            model_index=f"block_{block_index}_task_{task_id}_model_0",
-                            pad_value=PAD_VALUE,
-                            index=block_index,
-                            task_id=task_id
-                        )
-                        plot_prediction_debug(
-                            raw_input=raw_inputs[0],
-                            expected_output=y_val_expected,
-                            predicted_output=y_val_pred,
-                            model_index="AAASSSSXXX",
-                            pad_value=PAD_VALUE,
-                            index=block_index,
-                            task_id=task_id
-                        )
 
-                        log(f"🎯 Pixel Color Perfect: {pixel_color_perfect:.5f} - Pixel Shape Perfect: {pixel_shape_perfect:.5f}")
+                    pixel_color_perfect, pixel_shape_perfect = plot_prediction_debug(
+                        raw_input=raw_inputs[0],
+                        expected_output=y_val_expected,
+                        predicted_output=y_val_pred,
+                        model_index=f"block_{block_index}_task_{task_id}_model_{model_idx}",
+                        pad_value=PAD_VALUE,
+                        index=block_index,
+                        task_id=task_id
+                    )
+                    plot_prediction_debug(
+                        raw_input=raw_inputs[0],
+                        expected_output=y_val_expected,
+                        predicted_output=y_val_pred,
+                        model_index=f"AAASSSSXXX",
+                        pad_value=PAD_VALUE,
+                        index=block_index,
+                        task_id=task_id
+                    )
 
-                        if pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999 and corte_esta_completa(models):
+                    log(f"🎯 Pixel Color Perfect: {pixel_color_perfect:.5f} - Pixel Shape Perfect: {pixel_shape_perfect:.5f}")
+
+                    if pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999:
+                        if model not in models:
+                            models.append(model)
+
+                        if corte_esta_completa(models):
                             test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submission_dict)
                             block_index += 1
-                            break
 
-                        elif pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999:
-                            model_idx += 1
-                            break
+                        model_idx += 1
+                        break
 
-                    except Exception as e:
-                        log(f"[ERROR] Erro ao avaliar bloco {block_index}: {e}")
-                        traceback.print_exc()
+                except Exception as e:
+                    log(f"[ERROR] Erro ao avaliar bloco {block_index}: {e}")
+                    traceback.print_exc()

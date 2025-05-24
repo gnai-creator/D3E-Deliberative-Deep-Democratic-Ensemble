@@ -1,5 +1,5 @@
 # Dummy shape usado nos testes para ativação prévia dos modelos
-DUMMY_INPUT_SHAPE = (1, 30, 30, 1, 2)
+DUMMY_INPUT_SHAPE = (1, 30, 30, 1, 4)
 
 import tensorflow as tf
 from model_compile import compile_model

@@ -76,7 +76,7 @@ if __name__ == "__main__":
     MAX_TRAINING_TIME = 4 * 60 * 60
     N_MODELS = 5
 
-    with open("data/arc-agi_test_challenges.json") as f:
+    with open("arc-agi_test_challenges.json") as f:
         test_challenges = json.load(f)
 
     os.makedirs(RESULTS_DIR, exist_ok=True)

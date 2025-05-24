@@ -1,13 +1,10 @@
 import tensorflow as tf
 import numpy as np
 from runtime_utils import log
-import matplotlib.pyplot as plt
-import seaborn as sns
-import os
 from metrics_utils import salvar_voto_visual
 
 
-def arc_court(models, input_tensor, max_iters=5, tol=0.98, epochs=3):
+def arc_court(models, input_tensor_outros, max_iters=5, tol=0.98, epochs=3):
     if len(models) < 5:
         raise ValueError("Corte incompleta: recebi menos de 5 modelos.")
 
@@ -22,26 +19,26 @@ def arc_court(models, input_tensor, max_iters=5, tol=0.98, epochs=3):
     log(f"[INÍCIO] Tribunal iniciado com {len(models)} modelos.")
     log(f"[INFO] Tolerância de consenso definida em {tol:.2f}")
 
-    while consenso < 1.0 :  # and iter_count < max_iters:
-        log(f"\n[ITER {iter_count+1}] Iniciando rodada de julgamento")
+    while consenso < 1.0 and iter_count < max_iters:
+        log(f"\n[ITER {iter_count + 1}] Iniciando rodada de julgamento")
 
         # 1. Advogada faz predição
-        y_advogada_logits = advogada(input_tensor, training=False)
-        y_advogada_classes = tf.argmax(y_advogada_logits, axis=-1)  # [B, H, W]
+        y_advogada_logits = advogada(input_tensor_outros, training=False)
+        y_advogada_classes = tf.argmax(y_advogada_logits, axis=-1)
         log(f"[INFO] Advogada previu classes com shape: {y_advogada_classes.shape}")
         log(f"[DEBUG] Saída da advogada (logits): {y_advogada_logits.shape}")
 
         # 2. Juradas aprendem com a advogada
         for idx, jurada in enumerate(juradas):
-            jurada.fit(x=input_tensor, y=y_advogada_classes, epochs=epochs, verbose=0)
-            log(f"[TREINO] Jurada {idx+1} treinada com saída da advogada")
+            jurada.fit(x=input_tensor_outros, y=y_advogada_classes, epochs=epochs, verbose=0)
+            log(f"[TREINO] Jurada {idx + 1} treinada com saída da advogada")
 
-        # 3. Juradas produzem suas predições
-        saidas_juradas = [jurada(input_tensor, training=False) for jurada in juradas]
+        # 3. Juradas produzem predições
+        saidas_juradas = [jurada(input_tensor_outros, training=False) for jurada in juradas]
         for i, sj in enumerate(saidas_juradas):
-            log(f"[INFO] Jurada {i+1} saída shape: {sj.shape}")
+            log(f"[INFO] Jurada {i + 1} saída shape: {sj.shape}")
 
-        # Padroniza todos os tensores para 10 canais
+        # 4. Padroniza todos os tensores para 10 canais
         def pad_to_10_channels(tensor):
             channels = tf.shape(tensor)[-1]
             padding = tf.maximum(0, 10 - channels)
@@ -50,45 +47,47 @@ def arc_court(models, input_tensor, max_iters=5, tol=0.98, epochs=3):
         juradas_padded = [pad_to_10_channels(j) for j in saidas_juradas]
         advogada_padded = pad_to_10_channels(y_advogada_logits)
 
-        for i, j in enumerate(juradas_padded):
-            log(f"[LOG] Jurada {i+1} (padded): {j.shape}")
-        log(f"[LOG] Advogada (padded): {advogada_padded.shape}")
+        # 5. Juíza aprende com concatenação dos canais (mantém 40)
+        input_juiza_concat = tf.concat(juradas_padded + [advogada_padded], axis=-1)  # [B, H, W, 40]
+        input_juiza_concat = tf.expand_dims(input_juiza_concat, axis=3)  # [B, H, W, 1, 40]
+        log(f"[LOG] Input juíza shape: {input_juiza_concat.shape}")
 
-        # 4. Juíza aprende com concatenação das saídas (juradas + advogada)
-        input_juiza = tf.stack(juradas_padded + [advogada_padded], axis=-1)  # [B, H, W, 10, 4]
-        log(f"[LOG] Input juíza shape: {input_juiza.shape}")
-
-        juiza.fit(x=input_juiza, y=y_advogada_classes, epochs=epochs, verbose=0)
+        juiza.fit(x=input_juiza_concat, y=y_advogada_classes, epochs=epochs, verbose=0)
         log(f"[TREINO] Juíza treinada com opiniões de juradas e advogada")
 
-        # 5. Todos votam
-        votos_models = [pad_to_10_channels(model(input_tensor, training=False)) for model in juradas + [advogada]]
-        entrada_juiza_final = tf.stack(votos_models, axis=-1)
+        # 6. Todos votam
+        votos_models = [pad_to_10_channels(model(input_tensor_outros, training=False)) for model in juradas + [advogada]]
+        entrada_juiza_final = tf.concat(votos_models, axis=-1)  # [B, H, W, 40]
+        entrada_juiza_final = tf.expand_dims(entrada_juiza_final, axis=3)  # [B, H, W, 1, 40]
         log(f"[LOG] Entrada juíza final shape: {entrada_juiza_final.shape}")
 
         voto_juiza = juiza(entrada_juiza_final, training=False)
         votos_models.append(voto_juiza)
         log(f"[LOG] Voto final da juíza shape: {voto_juiza.shape}")
 
-        # 6. Plotar Votos
+        # 7. Plotar votos
         salvar_voto_visual(votos_models, iter_count)
 
+        # 8. Avaliar consenso
         consenso = avaliar_consenso_por_j(votos_models, tol)
-        log(f"[CONSENSO] Iteração {iter_count+1}: Consenso = {consenso:.4f}")
+        log(f"[CONSENSO] Iteração {iter_count + 1}: Consenso = {consenso:.4f}")
+
+        # 9. Treinar advogada com saída da juíza
+        if iter_count > 0:
+            y_juiza_classes = tf.argmax(voto_juiza, axis=-1)
+            advogada.fit(x=input_tensor_outros, y=y_juiza_classes, epochs=epochs, verbose=0)
+            log("[TREINO] Advogada atualizada com voto da juíza")
 
         iter_count += 1
-        votos_final = tf.argmax(votos_models[-1], axis=-1)
+        votos_final = tf.argmax(voto_juiza, axis=-1)
 
     log(f"\n[FIM] Julgamento encerrado após {iter_count} iteração(ões). Consenso final: {consenso:.4f}")
     return votos_final
 
 
 def avaliar_consenso_por_j(votos_models, tol=0.98):
-    """
-    Avalia se pelo menos 3 modelos concordam na predição de classe por pixel.
-    """
-    votos_classe = [tf.argmax(v, axis=-1) for v in votos_models]  # lista de [B, H, W]
-    votos_stacked = tf.stack(votos_classe, axis=0)  # [num_modelos, B, H, W]
+    votos_classe = [tf.argmax(v, axis=-1) for v in votos_models]
+    votos_stacked = tf.stack(votos_classe, axis=0)  # [N, B, H, W]
 
     def contar_consenso(votos_pixel):
         uniques, _, count = tf.unique_with_counts(votos_pixel)
@@ -100,7 +99,7 @@ def avaliar_consenso_por_j(votos_models, tol=0.98):
             x,
             dtype=tf.int32
         ),
-        tf.transpose(votos_stacked, [1, 2, 3, 0]),  # [B, H, W, num_modelos]
+        tf.transpose(votos_stacked, [1, 2, 3, 0]),
         dtype=tf.int32
     )
 

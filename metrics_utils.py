@@ -236,26 +236,28 @@ def salvar_voto_visual(votos, iteracao, saida_dir="votos_visuais"):
     plt.close()
     log(f"[VISUAL] Salvo mapa de votos + consenso em {filepath}")
 
-def gerar_video_time_lapse(pasta="votos_visuais", output="court_drama.mp4", fps=1):
+def gerar_video_time_lapse(pasta="votos_visuais", model_idx=0, output="court_drama.mp4", fps=1):
     arquivos = sorted(glob.glob(f"{pasta}/votos_iter_*.png"))
     if not arquivos:
         log("[VISUAL] Nenhuma imagem de iteração encontrada para gerar o vídeo.")
         return
 
     log(f"[VIDEO] Gerando vídeo a partir de {len(arquivos)} quadros...")
-
-    with imageio.get_writer(output, fps=fps) as writer:
+    filename = model_idx + "_" + output
+    with imageio.get_writer(filename, fps=fps) as writer:
         for img_path in arquivos:
             img = imageio.imread(img_path)
             writer.append_data(img)
 
-    log(f"[VIDEO] Time-lapse salvo em: {output}")
+    log(f"[VIDEO] Time-lapse salvo em: {filename}")
 
 
 
-def embutir_trilha_sonora(video_path="court_drama.mp4", musica_path="intergalactic.mp3", output_path="court_with_sound.mp4"):
+def embutir_trilha_sonora(video_path="court_drama.mp4",model_idx=0, musica_path="intergalactic.mp3", output="court_with_sound.mp4"):
     video = mpy.VideoFileClip(video_path)
     audio = mpy.AudioFileClip(musica_path).set_duration(video.duration)
     final = video.set_audio(audio)
-    final.write_videofile(output_path, codec='libx264', audio_codec='aac')
-    log(f"[AUDIO] Vídeo com trilha salvo em: {output_path}")
+    filename = model_idx  + "_" + output
+
+    final.write_videofile(filename, codec='libx264', audio_codec='aac')
+    log(f"[AUDIO] Vídeo com trilha salvo em: {filename}")

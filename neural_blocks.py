@@ -103,10 +103,9 @@ class DiscreteRotation(tf.keras.layers.Layer):
 
 
 class LearnedColorPermutation(tf.keras.layers.Layer):
-    def __init__(self, num_classes, reg_strength=0.01, name="learned_color_permutation"):
-        super().__init__(name=name)
+    def __init__(self, num_classes, **kwargs):
+        super().__init__(**kwargs)
         self.num_classes = num_classes
-        self.reg_strength = reg_strength
 
     def build(self, input_shape):
         self.permutation_weights = self.add_weight(
@@ -117,20 +116,7 @@ class LearnedColorPermutation(tf.keras.layers.Layer):
         )
 
     def call(self, x, training=False):
-        weights = self.permutation_weights
-        output = tf.einsum('bhwc,cd->bhwd', x, weights)
-
-        if training:
-            identity = tf.eye(self.num_classes)
-            reg_loss = tf.reduce_sum(tf.square(tf.nn.softmax(weights, axis=-1) - identity))
-            self.add_loss(self.reg_strength * reg_loss)
-            soft_weights = tf.nn.softmax(weights, axis=-1)
-            self.add_metric(tf.reduce_mean(soft_weights), name="perm_mean")
-            std = tf.sqrt(tf.reduce_mean(tf.square(soft_weights - tf.reduce_mean(soft_weights))))
-            self.add_metric(std, name="perm_std")
-
-        return output
-
+        return tf.einsum('...c,cd->...d', x, self.permutation_weights)
 
 
 class LearnedRotation(tf.keras.layers.Layer):

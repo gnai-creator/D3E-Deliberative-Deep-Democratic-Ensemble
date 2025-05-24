@@ -15,7 +15,7 @@ from neural_blocks import (
 NUM_CLASSES = 10
 
 class SimuV5(tf.keras.Model):
-    def __init__(self, hidden_dim=32):
+    def __init__(self, hidden_dim=128):
         super().__init__()
         self.hidden_dim = hidden_dim
 
@@ -32,7 +32,6 @@ class SimuV5(tf.keras.Model):
 
         self.fractal = FractalBlock(hidden_dim)
         self.attn_memory = AttentionOverMemory(hidden_dim)
-
         self.mha = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=hidden_dim)
         self.norm = tf.keras.layers.LayerNormalization()
 
@@ -41,44 +40,58 @@ class SimuV5(tf.keras.Model):
             layers.Conv2D(NUM_CLASSES, 1)
         ])
 
-        self.presence_head = layers.Conv2D(1, 1, activation='sigmoid')
-
-        self.color_perm_train = LearnedColorPermutation(NUM_CLASSES)
-        self.permutation_eval = tf.range(NUM_CLASSES)
         self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
+        self.permutation_eval = tf.range(NUM_CLASSES)
+        self.color_perm_train = LearnedColorPermutation(NUM_CLASSES)
 
-        self.fallback_dense = tf.keras.layers.Dense(10)
-
-        # DUAS Dense(4) com shapes definidos para lidar com inputs diferentes
         self.from_40 = tf.keras.layers.Dense(4)
-        self.from_40.build((None, 40))
-
-        self.from_4 = tf.keras.layers.Dense(4)
-        self.from_4.build((None, 4))
-
         self.init_conv = layers.Conv2D(self.hidden_dim, 1, activation='relu')
-        self.init_conv.build((None, 30, 30, 40))  # 🧯 impede o colapso cósmico
+
+        # 🚨 Força criação de pesos com input realista
+        x = tf.zeros((1, 30, 30, 1, 40))
+        x = tf.reshape(x, [1, 30, 30, 40])
+        x = self.init_conv(x)
+        x = self.pos_enc(x)
+        x = self.focal_expand(x)
+        x = self.temporal_shape_encoder(x)
+        x = self.encoder(x)
+        x = self.fractal(x)
+
+        pooled = tf.reduce_mean(x, axis=[1, 2])
+        memory = tf.expand_dims(pooled, axis=1)
+        memory_out = self.attn_memory(memory, pooled)
+        memory_out = tf.reshape(memory_out, [-1, 1, 1, x.shape[-1]])
+        memory_out = tf.tile(memory_out, [1, x.shape[1], x.shape[2], 1])
+        x = x + memory_out
+
+        b, h, w, c = x.shape
+        x_flat = tf.reshape(x, [1, h * w, c])
+        x_attn = self.mha(x_flat, x_flat)
+        x_attn = self.norm(x_attn + x_flat)
+        x = tf.reshape(x_attn, [1, h, w, c])
+        _ = self.decoder(x)
+
+        # 💥 Aqui está o patch: ativa o sequential_2 (shape_type_predictor)
+        dummy_logits = tf.zeros((1, 30, 30, NUM_CLASSES))
+        _ = self.permuter(x, dummy_logits)
+
+        # Ativa color_perm_train
+        _ = self.color_perm_train(dummy_logits)
 
     def call(self, x, training=False):
         if x.shape.rank == 5:
             B, H, W, C, J = tf.unstack(tf.shape(x))
-            x = tf.reshape(x, [B, H, W, C * J])  # [B, H, W, 40]
-        elif x.shape.rank != 4:
+            x = tf.reshape(x, [B, H, W, C * J])
+        elif x.shape.rank == 4:
+            pass
+        else:
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        features = tf.reduce_mean(x, axis=[1, 2])  # [B, 40] ou [B, 4]
-
-        # 🧠 Escolha fora do grafo. Isso aqui é shape estático, não tf.cond.
-        if features.shape[-1] == 40:
-            features = self.from_40(features)
-        elif features.shape[-1] == 4:
-            features = self.from_4(features)
-        else:
-            raise ValueError(f"[ERRO] features com shape inesperado: {features.shape}")
+        features = tf.reduce_mean(x, axis=[1, 2])
+        features = self.from_40(features)
 
         flip_logits = self.flip.logits_layer(features)
         rotation_logits = self.rotation.classifier(features)
-
         flip_code = tf.argmax(flip_logits, axis=-1)
         rotation_code = tf.argmax(rotation_logits, axis=-1)
 
@@ -87,15 +100,15 @@ class SimuV5(tf.keras.Model):
             return tf.case([
                 (tf.equal(code, 1), lambda: tf.image.flip_left_right(img)),
                 (tf.equal(code, 2), lambda: tf.image.flip_up_down(img)),
-                (tf.equal(code, 3), lambda: tf.image.flip_up_down(tf.image.flip_left_right(img)))
+                (tf.equal(code, 3), lambda: tf.image.flip_up_down(tf.image.flip_left_right(img))),
             ], default=lambda: img)
 
-        def rotate_single(args):
+        def rotate_op(args):
             img, k_val = args
             return tf.image.rot90(img, k=tf.cast(tf.squeeze(k_val), tf.int32))
 
         x = tf.map_fn(flip_op, (x, flip_code), fn_output_signature=x.dtype)
-        x = tf.map_fn(rotate_single, (x, rotation_code), fn_output_signature=x.dtype)
+        x = tf.map_fn(rotate_op, (x, rotation_code), fn_output_signature=x.dtype)
 
         x = self.init_conv(x)
         x = self.pos_enc(x)
@@ -118,11 +131,8 @@ class SimuV5(tf.keras.Model):
         x = tf.reshape(x_attn, [b, h, w, x_attn.shape[-1]])
 
         raw_logits = self.decoder(x)
-        raw_logits = self.permuter(x, raw_logits)
 
         if training:
-            class_logits = self.color_perm_train(raw_logits, training=True)
+            return self.color_perm_train(raw_logits, training=True)
         else:
-            class_logits = tf.gather(raw_logits, self.permutation_eval, axis=-1)
-
-        return class_logits
+            return raw_logits

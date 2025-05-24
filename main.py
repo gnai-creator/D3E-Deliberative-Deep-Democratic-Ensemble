@@ -21,15 +21,20 @@ def test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submis
     log(f"[TEST] Inicializando teste bloco {block_index} para task {task_id}")
     try:
         x_test_sample = tf.convert_to_tensor(X_test[0], dtype=tf.float32)
-        x_test_sample = tf.expand_dims(x_test_sample, axis=0)
+        x_test_sample = tf.expand_dims(x_test_sample, axis=0)  # (1, 30, 30, 1, J)
+
+        if x_test_sample.shape[-1] == 40:
+            x_input_juiz = x_test_sample  # (B, H, W, 1, 40)
+            x_input_outros = tf.concat(tf.split(x_test_sample, num_or_size_splits=10, axis=-1)[:1], axis=-1)  # pega só os 4 primeiros canais
+        else:
+            x_input_outros = x_test_sample
+            x_input_juiz = tf.zeros((1, 30, 30, 1, 40), dtype=tf.float32)  # placeholder inútil
+
         
-        x_test_sample = tf.convert_to_tensor(x_test_sample, dtype=tf.float32)
-        if x_test_sample.ndim == 4:
-            x_test_sample = tf.expand_dims(x_test_sample, axis=3)  # (B, H, W, 1, T)
-        
-        preds = arc_court(models, x_test_sample)
-        gerar_video_time_lapse()
-        embutir_trilha_sonora()
+        preds = arc_court(models, x_input_outros)
+
+        gerar_video_time_lapse(block_index)
+        embutir_trilha_sonora(block_index)
         
         y_test_logits = preds["class_logits"] if isinstance(preds, dict) else preds
         pred_np = tf.argmax(y_test_logits, axis=-1).numpy()[0]
@@ -115,15 +120,22 @@ if __name__ == "__main__":
             log(f"[INFO] SHAPE X TRAIN : {X_train.shape}")
             log(f"[INFO] SHAPE Y Val : {Y_val.shape}")
             log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")
-            
+
+            model = load_model(model_idx, LEARNING_RATE)
+            if model is None:
+                raise ValueError(f"[FATAL] Modelo {model_idx} não foi carregado corretamente.")
+
+            # apenas para modelo 4
+            if model_idx == 4:
+                Y_train = tf.squeeze(Y_train, axis=-1)
+                Y_val = tf.squeeze(Y_val, axis=-1)
+
+                # model.build(input_shape=(None, 30, 30, 1, 40))
                 
-            try:
-                model = load_model(model_idx, LEARNING_RATE)
-                if model is None:
-                    raise ValueError(f"[FATAL] Modelo {model_idx} não foi carregado corretamente.")
-            except Exception as e:
-                log(f"[FATAL] Falha ao carregar o modelo {model_idx}: {e}")
-                raise
+
+            # inicialização normal para todos os modelos
+            _ = model(X_train, training=False)
+
             
             for cycle in range(CYCLES):
                 log(f"Cycle {cycle} MODEL : {model_idx}")

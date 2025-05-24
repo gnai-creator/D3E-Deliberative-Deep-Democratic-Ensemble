@@ -106,7 +106,8 @@ if __name__ == "__main__":
 
             X_train, X_val, Y_train, Y_val, _, _, X_test, info_train, info_val, task_id, raw_inputs, raw_test_inputs = get_dataset(
                 block_index=block_index, task_ids=task_ids, challenges=test_challenges,
-                block_size=BLOCK_SIZE, pad_value=PAD_VALUE, vocab_size=VOCAB_SIZE
+                block_size=BLOCK_SIZE, pad_value=PAD_VALUE, vocab_size=VOCAB_SIZE,
+                model_idx=model_idx
             )
 
   

@@ -18,6 +18,7 @@ class SimuV5(tf.keras.Model):
     def __init__(self, hidden_dim=32):
         super().__init__()
         self.hidden_dim = hidden_dim
+
         self.focal_expand = SpatialFocusTemporalMarking()
         self.flip = LearnedFlip()
         self.rotation = DiscreteRotation()
@@ -26,9 +27,7 @@ class SimuV5(tf.keras.Model):
 
         self.encoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
-            layers.Dropout(0.25),
             layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
-            layers.Dropout(0.25),
         ])
 
         self.fractal = FractalBlock(hidden_dim)
@@ -39,7 +38,6 @@ class SimuV5(tf.keras.Model):
 
         self.decoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
-            layers.Dropout(0.25),
             layers.Conv2D(NUM_CLASSES, 1)
         ])
 
@@ -50,26 +48,36 @@ class SimuV5(tf.keras.Model):
         self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
 
         self.fallback_dense = tf.keras.layers.Dense(10)
-        self.init_conv = layers.Conv2D(self.hidden_dim, 1, activation='relu', input_shape=(None, None, 2))
+
+        # DUAS Dense(4) com shapes definidos para lidar com inputs diferentes
+        self.from_40 = tf.keras.layers.Dense(4)
+        self.from_40.build((None, 40))
+
+        self.from_4 = tf.keras.layers.Dense(4)
+        self.from_4.build((None, 4))
+
+        self.init_conv = layers.Conv2D(self.hidden_dim, 1, activation='relu')
+        self.init_conv.build((None, 30, 30, 40))  # 🧯 impede o colapso cósmico
 
     def call(self, x, training=False):
-        if x.shape.rank != 5:
-            tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
+        if x.shape.rank == 5:
+            B, H, W, C, J = tf.unstack(tf.shape(x))
+            x = tf.reshape(x, [B, H, W, C * J])  # [B, H, W, 40]
+        elif x.shape.rank != 4:
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        B, H, W, C, J = tf.unstack(tf.shape(x))
-        x = tf.reshape(x, [B, H, W, tf.shape(x)[3] * tf.shape(x)[4]])  # ✅ Correto
+        features = tf.reduce_mean(x, axis=[1, 2])  # [B, 40] ou [B, 4]
 
+        # 🧠 Escolha fora do grafo. Isso aqui é shape estático, não tf.cond.
+        if features.shape[-1] == 40:
+            features = self.from_40(features)
+        elif features.shape[-1] == 4:
+            features = self.from_4(features)
+        else:
+            raise ValueError(f"[ERRO] features com shape inesperado: {features.shape}")
 
-        features = tf.reduce_mean(x, axis=[1, 2])
-
-        try:
-            flip_logits = self.flip.logits_layer(features)
-            rotation_logits = self.rotation.classifier(features)
-        except Exception:
-            features = self.fallback_dense(features)
-            flip_logits = self.flip.logits_layer(features)
-            rotation_logits = self.rotation.classifier(features)
+        flip_logits = self.flip.logits_layer(features)
+        rotation_logits = self.rotation.classifier(features)
 
         flip_code = tf.argmax(flip_logits, axis=-1)
         rotation_code = tf.argmax(rotation_logits, axis=-1)

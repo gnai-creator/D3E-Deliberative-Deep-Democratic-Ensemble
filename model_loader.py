@@ -1,6 +1,6 @@
 # Dummy shape usado nos testes para ativação prévia dos modelos
 DUMMY_INPUT_SHAPE = (1, 30, 30, 1, 4)
-
+DUMMY_JUDGE_INPUT_SHAPE = (1, 30, 30, 1, 40)
 import tensorflow as tf
 from model_compile import compile_model
 from SimuV1 import SimuV1
@@ -17,7 +17,9 @@ MODEL_CONFIGS = {
     4: (SimuV5, 128),
 }
 
-def dummy_input():
+def dummy_input(index):
+    if index == 4:
+        return tf.random.uniform(DUMMY_JUDGE_INPUT_SHAPE)
     return tf.random.uniform(DUMMY_INPUT_SHAPE)
 
 def load_model(index, learning_rate):
@@ -29,7 +31,7 @@ def load_model(index, learning_rate):
     model = compile_model(model, lr=learning_rate)
 
     try:
-        _ = model(dummy_input(), training=False)
+        _ = model(dummy_input(index), training=False)
     except Exception as e:
         raise RuntimeError(f"[FATAL] Falha ao ativar modelo {index}: {e}")
 

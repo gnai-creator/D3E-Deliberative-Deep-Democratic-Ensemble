@@ -1,12 +1,16 @@
 import numpy as np
 import tensorflow as tf
 
-JUDGE = 4
+JUDGE = 40
+OTHERS = 4
 CHANNELS = 1
 
-def add_judge_channel(input_grid, juizo_value):
+def add_judge_channel(input_grid, juizo_value, model_idx):
     h, w = input_grid.shape
-    grid_with_channel = np.zeros((h, w, CHANNELS, JUDGE), dtype=np.float32)
+    if model_idx == 4:
+        grid_with_channel = np.zeros((h, w, CHANNELS, JUDGE), dtype=np.float32)
+    else:
+        grid_with_channel = np.zeros((h, w, CHANNELS, OTHERS), dtype=np.float32)
 
     # Coloca input_grid no canal 0 de todos os CHANNELS
     grid_with_channel[:, :, 0, 0] = input_grid  # valor original

@@ -6,7 +6,7 @@ from metrics import standardize_grid_shapes, pad_to_30x30_top_left, pad_to_30x30
 
 
 
-def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_size):
+def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_size, model_idx):
     start_idx = block_index * block_size
     end_idx = start_idx + block_size
     block_task_ids = task_ids[start_idx:end_idx]
@@ -40,9 +40,9 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
             log(f"[WARN] Grid maior que 30x30: {max_h}x{max_w} — pulando")
             continue
 
-        X.append(add_judge_channel(input_grid, juizo_value=0))
-        Y.append(add_judge_channel(output_grid, juizo_value=1))
-        X_test.append(add_judge_channel(test_input_grid, juizo_value=0))
+        X.append(add_judge_channel(input_grid, juizo_value=0, model_idx=model_idx))
+        Y.append(add_judge_channel(output_grid, juizo_value=1, model_idx=model_idx))
+        X_test.append(add_judge_channel(test_input_grid, juizo_value=0, model_idx=model_idx))
         info.append({"task_id": task_id})
 
     X, Y = standardize_grid_shapes(X, Y)

@@ -26,9 +26,7 @@ class SimuV4(tf.keras.Model):
 
         self.encoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
-            layers.Dropout(0.25),
             layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
-            layers.Dropout(0.25),
         ])
 
         self.fractal = FractalBlock(hidden_dim)
@@ -39,7 +37,6 @@ class SimuV4(tf.keras.Model):
 
         self.decoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
-            layers.Dropout(0.25),
             layers.Conv2D(NUM_CLASSES, 1)
         ])
 

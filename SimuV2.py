@@ -1,15 +1,15 @@
 import tensorflow as tf
 from tensorflow.keras import layers
 from neural_blocks import (
-    LearnedColorPermutation, #ok
-    LearnedFlip, # ok
-    DiscreteRotation, #ok
-    PositionalEncoding2D, # ok
-    AttentionOverMemory, # Ok
-    FractalBlock, # Ok
-    DynamicClassPermuter, # OK
-    SpatialFocusTemporalMarking, # Novo!
-    ClassTemporalAlignmentBlock, # Novo bloco de alinhamento
+    LearnedColorPermutation,
+    LearnedFlip,
+    DiscreteRotation,
+    PositionalEncoding2D,
+    AttentionOverMemory,
+    FractalBlock,
+    DynamicClassPermuter,
+    SpatialFocusTemporalMarking,
+    ClassTemporalAlignmentBlock,
 )
 
 NUM_CLASSES = 10
@@ -27,7 +27,7 @@ class SimuV2(tf.keras.Model):
 
         self.encoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim, 5, padding='same', activation='relu'),
-        ])  # menos profundidade, convolução maior (kernel=5)
+        ])
 
         self.fractal = FractalBlock(hidden_dim)
         self.attn_memory = AttentionOverMemory(hidden_dim)
@@ -47,17 +47,24 @@ class SimuV2(tf.keras.Model):
         self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
 
     def call(self, x, training=False):
-        if x.shape.rank != 5:
+        if x.shape.rank == 5:
+            x = tf.expand_dims(x, axis=4)
+        elif x.shape.rank != 6:
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        x = x[:, :, :, :, -1]  # usa o último frame
+        # Reduz dimensão temporal e de julgamento para extrair features globais
+        features = tf.reduce_mean(x, axis=[1, 2, 3, 4])  # [B, C]
+        if features.shape[-1] != self.flip.logits_layer.input_shape[-1]:
+            features = tf.keras.layers.Dense(self.flip.logits_layer.input_shape[-1])(features)
 
-        flip_logits = self.flip.logits_layer(tf.reduce_mean(x, axis=[1, 2]))
-        rotation_logits = self.rotation.classifier(tf.reduce_mean(x, axis=[1, 2]))
+        flip_logits = self.flip.logits_layer(features)
+        rotation_logits = self.rotation.classifier(features)
 
         flip_code = tf.argmax(flip_logits, axis=-1)
         rotation_code = tf.argmax(rotation_logits, axis=-1)
+
+        x = tf.reduce_mean(x, axis=3)  # remove o eixo J
 
         def flip_op(args):
             img, code = args
@@ -69,7 +76,7 @@ class SimuV2(tf.keras.Model):
 
         def rotate_single(args):
             img, k_val = args
-            return tf.image.rot90(img, k=tf.cast(k_val, tf.int32))
+            return tf.image.rot90(img, k=tf.cast(tf.squeeze(k_val), tf.int32))
 
         x = tf.map_fn(flip_op, (x, flip_code), dtype=x.dtype)
         x = tf.map_fn(rotate_single, (x, rotation_code), dtype=x.dtype)

@@ -1,15 +1,15 @@
 import tensorflow as tf
 from tensorflow.keras import layers
 from neural_blocks import (
-    LearnedColorPermutation, #ok
-    LearnedFlip, # ok
-    DiscreteRotation, #ok
-    PositionalEncoding2D, # ok
-    AttentionOverMemory, # Ok
-    FractalBlock, # Ok
-    DynamicClassPermuter, # OK
-    SpatialFocusTemporalMarking, # Novo!
-    ClassTemporalAlignmentBlock, # Novo bloco de alinhamento
+    LearnedColorPermutation,
+    LearnedFlip,
+    DiscreteRotation,
+    PositionalEncoding2D,
+    AttentionOverMemory,
+    FractalBlock,
+    DynamicClassPermuter,
+    SpatialFocusTemporalMarking,
+    ClassTemporalAlignmentBlock,
 )
 
 NUM_CLASSES = 10
@@ -25,7 +25,6 @@ class SimuV5(tf.keras.Model):
         self.pos_enc = PositionalEncoding2D(hidden_dim)
         self.temporal_shape_encoder = ClassTemporalAlignmentBlock(hidden_dim)
 
-        # Encoder comparativo - concatena entrada com uma versão transformada
         self.encoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
             layers.Conv2D(hidden_dim, 3, padding='same', activation='relu')
@@ -37,11 +36,10 @@ class SimuV5(tf.keras.Model):
         self.mha = tf.keras.layers.MultiHeadAttention(num_heads=8, key_dim=hidden_dim)
         self.norm = tf.keras.layers.LayerNormalization()
 
-        # Cabeça para "juízo" — julgamento de classes baseado em comparações
         self.judgement_head = tf.keras.Sequential([
             layers.GlobalAveragePooling2D(),
             layers.Dense(hidden_dim, activation='relu'),
-            layers.Dense(NUM_CLASSES)
+            layers.Dense(1)
         ])
 
         self.presence_head = layers.Conv2D(1, 1, activation='sigmoid')
@@ -51,17 +49,23 @@ class SimuV5(tf.keras.Model):
         self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
 
     def call(self, x, training=False):
-        if x.shape.rank != 5:
+        if x.shape.rank == 5:
+            x = tf.expand_dims(x, axis=4)
+        elif x.shape.rank != 6:
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        x = x[:, :, :, :, -1]  # usa o último frame
+        features = tf.reduce_mean(x, axis=[1, 2, 3, 4])  # [B, C]
+        if features.shape[-1] != self.flip.logits_layer.input_shape[-1]:
+            features = tf.keras.layers.Dense(self.flip.logits_layer.input_shape[-1])(features)
 
-        flip_logits = self.flip.logits_layer(tf.reduce_mean(x, axis=[1, 2]))
-        rotation_logits = self.rotation.classifier(tf.reduce_mean(x, axis=[1, 2]))
+        flip_logits = self.flip.logits_layer(features)
+        rotation_logits = self.rotation.classifier(features)
 
         flip_code = tf.argmax(flip_logits, axis=-1)
         rotation_code = tf.argmax(rotation_logits, axis=-1)
+
+        x = x[:, :, :, :, -1]  # usa o último frame temporal [B, H, W, J, C]
 
         def flip_op(args):
             img, code = args
@@ -73,7 +77,7 @@ class SimuV5(tf.keras.Model):
 
         def rotate_single(args):
             img, k_val = args
-            return tf.image.rot90(img, k=tf.cast(k_val, tf.int32))
+            return tf.image.rot90(img, k=tf.cast(tf.squeeze(k_val), tf.int32))
 
         x = tf.map_fn(flip_op, (x, flip_code), dtype=x.dtype)
         x = tf.map_fn(rotate_single, (x, rotation_code), dtype=x.dtype)
@@ -98,7 +102,5 @@ class SimuV5(tf.keras.Model):
         x_attn = self.norm(x_attn + x_flat)
         x = tf.reshape(x_attn, [b, h, w, x_attn.shape[-1]])
 
-        # Passa pelo juízo final
         logits = self.judgement_head(x)
-
         return logits

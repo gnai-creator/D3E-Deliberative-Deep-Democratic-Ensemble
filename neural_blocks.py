@@ -4,21 +4,45 @@ import math
 NUM_CLASSES = 10
 
 
-class PositionalEncoding2D(tf.keras.layers.Layer): #ok
+class PositionalEncoding2D(tf.keras.layers.Layer):
     def __init__(self, channels, **kwargs):
         super().__init__(**kwargs)
         self.channels = channels
-        self.dense = tf.keras.layers.Dense(channels, activation='tanh')
+        self.encoding_dense = tf.keras.layers.Dense(channels, activation='tanh')
+        self.project_dense = tf.keras.layers.Dense(channels, activation='tanh')
 
     def call(self, x):
-        b, h, w, c = tf.unstack(tf.shape(x))
-        yy, xx = tf.meshgrid(tf.linspace(-1.0, 1.0, h), tf.linspace(-1.0, 1.0, w), indexing='ij')
-        pos = tf.stack([yy, xx], axis=-1)  # (h, w, 2)
-        pos = tf.expand_dims(pos, 0)
-        pos = tf.tile(pos, [b, 1, 1, 1])
-        encoded = self.dense(pos)
-        return x + encoded  # SOMA em vez de CONCAT
+        input_shape = tf.shape(x)
+        static_shape = x.shape
 
+        if static_shape.rank == 5:
+            x = x[:, :, :, 0, :]  # assume [B, H, W, J, C] → pega o primeiro juiz
+        elif static_shape.rank == 4:
+            pass  # já está em [B, H, W, C]
+        elif static_shape.rank == 3:
+            # para [B, T, C], aplicamos encoding 1D
+            B, T, C = input_shape[0], input_shape[1], input_shape[2]
+            pos = tf.linspace(-1.0, 1.0, T)
+            pos = tf.expand_dims(pos, -1)
+            pos = tf.tile(pos[None, :, :], [B, 1, 1])
+            encoded = self.encoding_dense(pos)
+            return x + encoded
+        else:
+            raise ValueError(f"[PositionalEncoding2D] Input rank não suportado: {static_shape.rank}")
+
+        B, H, W, C = input_shape[0], input_shape[1], input_shape[2], input_shape[3]
+        yy, xx = tf.meshgrid(tf.linspace(-1.0, 1.0, H), tf.linspace(-1.0, 1.0, W), indexing='ij')
+        pos = tf.stack([yy, xx], axis=-1)  # [H, W, 2]
+        pos = tf.expand_dims(pos, 0)  # [1, H, W, 2]
+        pos = tf.tile(pos, [B, 1, 1, 1])  # [B, H, W, 2]
+
+        encoded = self.encoding_dense(pos)  # [B, H, W, C]
+
+        # Garante que o número de canais seja compatível
+        if encoded.shape[-1] != tf.shape(x)[-1]:
+            encoded = self.project_dense(encoded)
+        encoded = tf.broadcast_to(encoded, tf.shape(x))
+        return x + encoded
 
     def get_config(self):
         config = super().get_config()
@@ -28,6 +52,9 @@ class PositionalEncoding2D(tf.keras.layers.Layer): #ok
     @classmethod
     def from_config(cls, config):
         return cls(**config)
+
+
+
 
 
 class FractalBlock(tf.keras.layers.Layer): # ok
@@ -89,7 +116,7 @@ class LearnedFlip(tf.keras.layers.Layer): # ok
 
 
 
-class DiscreteRotation(tf.keras.layers.Layer): # ok
+class DiscreteRotation(tf.keras.layers.Layer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.classifier = tf.keras.layers.Dense(4)
@@ -102,10 +129,12 @@ class DiscreteRotation(tf.keras.layers.Layer): # ok
         # Rotaciona cada imagem do batch de acordo com seu valor k
         def rotate_single(args):
             img, k_val = args
+            k_val = tf.reshape(k_val, [])  # força scalar
             return tf.image.rot90(img, k=tf.cast(k_val, tf.int32))
 
         rotated = tf.map_fn(rotate_single, (x, k), dtype=x.dtype)
         return rotated
+
 
 
 class LearnedColorPermutation(tf.keras.layers.Layer): # ok

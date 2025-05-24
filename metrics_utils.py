@@ -138,3 +138,22 @@ def plot_prediction_test(predicted_output, task_id, filename="output", raw_input
         log(f"[INFO] Debug visual salvo: {full_filename}")
     except Exception as e:
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
+
+
+import imageio
+import glob
+
+def gerar_video_time_lapse(pasta="votos_visuais", output="court_drama.mp4", fps=1):
+    arquivos = sorted(glob.glob(f"{pasta}/votos_iter_*.png"))
+    if not arquivos:
+        log("[VISUAL] Nenhuma imagem de iteração encontrada para gerar o vídeo.")
+        return
+
+    log(f"[VIDEO] Gerando vídeo a partir de {len(arquivos)} quadros...")
+
+    with imageio.get_writer(output, fps=fps) as writer:
+        for img_path in arquivos:
+            img = imageio.imread(img_path)
+            writer.append_data(img)
+
+    log(f"[VIDEO] Time-lapse salvo em: {output}")

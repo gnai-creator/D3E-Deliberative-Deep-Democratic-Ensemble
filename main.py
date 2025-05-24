@@ -8,7 +8,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
-from metrics_utils import plot_prediction_debug, plot_prediction_test
+from metrics_utils import plot_prediction_debug, plot_prediction_test, gerar_video_time_lapse
 from runtime_utils import log, save_debug_result, transform_input, to_numpy_safe
 from data_preparation import get_dataset
 from model_loader import load_model
@@ -28,6 +28,7 @@ def test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submis
             x_test_sample = tf.expand_dims(x_test_sample, axis=3)  # (B, H, W, 1, T)
         
         preds = arc_court(models, x_test_sample)
+        gerar_video_time_lapse()
 
         y_test_logits = preds["class_logits"] if isinstance(preds, dict) else preds
         pred_np = tf.argmax(y_test_logits, axis=-1).numpy()[0]
@@ -101,15 +102,12 @@ if __name__ == "__main__":
                 block_size=BLOCK_SIZE, pad_value=PAD_VALUE, vocab_size=VOCAB_SIZE
             )
 
-            if len(X_train.shape) == 4:
-                X_train = X_train[..., tf.newaxis, :]
-                X_val = X_val[..., tf.newaxis, :]
-
-            flip_targets = np.zeros((Y_train.shape[0],), dtype=np.int32)
-            rotation_targets = np.zeros((Y_train.shape[0],), dtype=np.int32)
-            flip_val_targets = np.zeros((Y_val.shape[0],), dtype=np.int32)
-            rotation_val_targets = np.zeros((Y_val.shape[0],), dtype=np.int32)
+  
             models = []
+
+            log(f"[INFO] SHAPE X TRAIN : {X_train.shape}")
+            log(f"[INFO] SHAPE Y Val : {Y_val.shape}")
+            log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")
 
             for i in range(N_MODELS) :
                 

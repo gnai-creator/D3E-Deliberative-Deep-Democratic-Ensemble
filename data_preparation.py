@@ -2,14 +2,9 @@ import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from runtime_utils import log
-from metrics import standardize_grid_shapes, pad_to_30x30_top_left, pad_to_30x30_top_left_single
+from metrics import standardize_grid_shapes, pad_to_30x30_top_left, pad_to_30x30_top_left_single, add_judge_channel
 
-def add_juizo_channel(input_grid, juizo_value):
-    h, w = input_grid.shape
-    grid_with_channel = np.zeros((h, w, 2), dtype=np.float32)
-    grid_with_channel[..., 0] = input_grid  # valor original
-    grid_with_channel[..., 1] = juizo_value  # canal de juízo
-    return grid_with_channel
+
 
 def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_size):
     start_idx = block_index * block_size
@@ -45,9 +40,9 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
             log(f"[WARN] Grid maior que 30x30: {max_h}x{max_w} — pulando")
             continue
 
-        X.append(add_juizo_channel(input_grid, juizo_value=0))
-        Y.append(add_juizo_channel(output_grid, juizo_value=1))
-        X_test.append(add_juizo_channel(test_input_grid, juizo_value=0))
+        X.append(add_judge_channel(input_grid, juizo_value=0))
+        Y.append(add_judge_channel(output_grid, juizo_value=1))
+        X_test.append(add_judge_channel(test_input_grid, juizo_value=0))
         info.append({"task_id": task_id})
 
     X, Y = standardize_grid_shapes(X, Y)

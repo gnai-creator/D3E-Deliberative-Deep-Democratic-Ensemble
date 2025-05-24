@@ -32,7 +32,7 @@ def arc_court(models, input_tensor, max_iters=5, tol=0.98, epochs=3):
         iter_count += 1
         votos_final = votos_models[-1]  # último voto do juiz é o final
 
-    return {"class_logits": votos_final}
+    return votos_final
 
 
 def avaliar_consenso_por_j(votos_models, tol=0.98):

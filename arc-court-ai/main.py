@@ -111,9 +111,15 @@ if __name__ == "__main__":
 
             for i in range(N_MODELS) :
                 
-                model = load_model(i)
-                if model not in models:
+                model = load_model(i, LEARNING_RATE)
+                if model is None:
+                    log(f"[ERROR] Modelo {i} retornou None do load_model. Pulando.")
+                    continue
+
+                if len(models) <= i:
                     models.append(model)
+                else:
+                    models[i] = model
 
                 for cycle in range(CYCLES):
                     log(f"Cycle {cycle}")

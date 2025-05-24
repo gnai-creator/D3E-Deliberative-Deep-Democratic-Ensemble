@@ -6,21 +6,12 @@ from models.SimuV5 import SimuV5
 from model_compile import compile_model
 
 
-def load_model(index):
-             
-    if index == 0:
-        model = SimuV1(hidden_dim=128)
-        model = compile_model(model, lr=LEARNING_RATE)
-    elif index == 1:
-        model = SimuV2(hidden_dim=256)
-        model = compile_model(model, lr=LEARNING_RATE)
-    elif index == 2:
-        model = SimuV3(hidden_dim=128)
-        model = compile_model(model, lr=LEARNING_RATE)
-    elif index == 3:
-        model = SimuV4(hidden_dim=256)
-        model = compile_model(model, lr=LEARNING_RATE)
+def load_model(index, learning_rate=0.001):
+
+    model_classes = [SimuV1, SimuV2, SimuV3, SimuV4, SimuV5]
+
+    if 0 <= index < len(model_classes):
+        model = compile_model(model_classes[index](), lr=learning_rate)
+        return model
     else:
-        model = SimuV5(hidden_dim=128)
-        model = compile_model(model, lr=LEARNING_RATE)
-                
+        return None

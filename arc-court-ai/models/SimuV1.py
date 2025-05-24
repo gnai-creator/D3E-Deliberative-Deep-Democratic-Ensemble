@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras import layers
-from neural_blocks import (
+from .neural_blocks import (
     LearnedColorPermutation, #ok
     LearnedFlip, # ok
     DiscreteRotation, #ok

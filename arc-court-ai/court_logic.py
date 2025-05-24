@@ -9,13 +9,14 @@ def arc_court(models, input_tensor, max_iters=5, tol=0.98, epochs=3):
     iter_count = 0
     votos_final = None
 
-    while consenso < 1.0:
+    while consenso < 1.0 : #and iter_count < max_iters:
         # 1. Advogada faz predição [B, W, H, J, T, C]
-        y_advogada = advogada(input_tensor, training=False)
+        y_advogada_logits = advogada(input_tensor, training=False)
+        y_advogada_classes = tf.argmax(y_advogada_logits, axis=-1)  # [B, W, H]
 
         # 2. Juradas aprendem com a advogada
         for jurada in juradas:
-            jurada.fit(x=input_tensor, y=y_advogada, epochs=epochs, verbose=0)
+            jurada.fit(x=input_tensor, y=y_advogada_classes, epochs=epochs, verbose=0)
 
         # 3. Juradas produzem suas predições
         saidas_juradas = [jurada(input_tensor, training=False) for jurada in juradas]
@@ -23,7 +24,7 @@ def arc_court(models, input_tensor, max_iters=5, tol=0.98, epochs=3):
         # 4. Juíza aprende com a concatenação das predições das juradas
         input_juiza = tf.concat(saidas_juradas, axis=-1)
         input_juiza = tf.expand_dims(input_juiza, axis=4)
-        juiza.fit(x=input_juiza, y=y_advogada, epochs=epochs, verbose=0)
+        juiza.fit(x=input_juiza, y=y_advogada_classes, epochs=epochs, verbose=0)
 
         # 5. Todos votam
         votos_models = [model(input_tensor, training=False) for model in juradas + [advogada, juiza]]

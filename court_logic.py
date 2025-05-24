@@ -4,7 +4,7 @@ from runtime_utils import log
 from metrics_utils import salvar_voto_visual
 
 
-def arc_court(models, input_tensor_outros, max_iters=5, tol=0.98, epochs=3):
+def arc_court(models, input_tensor_outros, max_iters=10, tol=0.98, epochs=60):
     if len(models) < 5:
         raise ValueError("Corte incompleta: recebi menos de 5 modelos.")
 
@@ -19,14 +19,13 @@ def arc_court(models, input_tensor_outros, max_iters=5, tol=0.98, epochs=3):
     log(f"[INÍCIO] Tribunal iniciado com {len(models)} modelos.")
     log(f"[INFO] Tolerância de consenso definida em {tol:.2f}")
 
-    while consenso < 1.0 and iter_count < max_iters:
+    while consenso < 1.0:
         log(f"\n[ITER {iter_count + 1}] Iniciando rodada de julgamento")
 
         # 1. Advogada faz predição
         y_advogada_logits = advogada(input_tensor_outros, training=False)
         y_advogada_classes = tf.argmax(y_advogada_logits, axis=-1)
         log(f"[INFO] Advogada previu classes com shape: {y_advogada_classes.shape}")
-        log(f"[DEBUG] Saída da advogada (logits): {y_advogada_logits.shape}")
 
         # 2. Juradas aprendem com a advogada
         for idx, jurada in enumerate(juradas):
@@ -35,8 +34,6 @@ def arc_court(models, input_tensor_outros, max_iters=5, tol=0.98, epochs=3):
 
         # 3. Juradas produzem predições
         saidas_juradas = [jurada(input_tensor_outros, training=False) for jurada in juradas]
-        for i, sj in enumerate(saidas_juradas):
-            log(f"[INFO] Jurada {i + 1} saída shape: {sj.shape}")
 
         # 4. Padroniza todos os tensores para 10 canais
         def pad_to_10_channels(tensor):
@@ -48,27 +45,30 @@ def arc_court(models, input_tensor_outros, max_iters=5, tol=0.98, epochs=3):
         advogada_padded = pad_to_10_channels(y_advogada_logits)
 
         # 5. Juíza aprende com concatenação dos canais (mantém 40)
-        input_juiza_concat = tf.concat(juradas_padded + [advogada_padded], axis=-1)  # [B, H, W, 40]
-        input_juiza_concat = tf.expand_dims(input_juiza_concat, axis=3)  # [B, H, W, 1, 40]
+        input_juiza_concat = tf.concat(juradas_padded + [advogada_padded], axis=-1)
+        input_juiza_concat = tf.expand_dims(input_juiza_concat, axis=3)
         log(f"[LOG] Input juíza shape: {input_juiza_concat.shape}")
 
-        juiza.fit(x=input_juiza_concat, y=y_advogada_classes, epochs=epochs, verbose=0)
+        juiza.fit(x=input_juiza_concat, y=y_advogada_classes, epochs=epochs * 3, verbose=0)
         log(f"[TREINO] Juíza treinada com opiniões de juradas e advogada")
 
         # 6. Todos votam
         votos_models = [pad_to_10_channels(model(input_tensor_outros, training=False)) for model in juradas + [advogada]]
-        entrada_juiza_final = tf.concat(votos_models, axis=-1)  # [B, H, W, 40]
-        entrada_juiza_final = tf.expand_dims(entrada_juiza_final, axis=3)  # [B, H, W, 1, 40]
-        log(f"[LOG] Entrada juíza final shape: {entrada_juiza_final.shape}")
-
+        entrada_juiza_final = tf.concat(votos_models, axis=-1)
+        entrada_juiza_final = tf.expand_dims(entrada_juiza_final, axis=3)
         voto_juiza = juiza(entrada_juiza_final, training=False)
+
+        # Diagnóstico
+        # log(f"[DEBUG] Juiza output preview: {tf.reduce_mean(voto_juiza)} {tf.reduce_max(voto_juiza)} {tf.shape(voto_juiza)}")
+        # y_pred_classes = tf.argmax(voto_juiza, axis=-1)
+        # log(f"[DEBUG] JUIZA PRED CLASSES: {tf.unique(tf.reshape(y_pred_classes, [-1]))}")
+
         if tf.reduce_sum(voto_juiza) == 0:
             log("[WARN] Juíza retornou apenas zeros na predição final.")
         else:
             log(f"[OK] Juíza produziu saída válida com shape: {voto_juiza.shape}")
 
         votos_models.append(voto_juiza)
-        log(f"[LOG] Voto final da juíza shape: {voto_juiza.shape}")
 
         # 7. Plotar votos
         salvar_voto_visual(votos_models, iter_count)

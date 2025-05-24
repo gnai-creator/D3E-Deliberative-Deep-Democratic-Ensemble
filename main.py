@@ -30,32 +30,32 @@ def test_challenge(models, X_test, model_idx, raw_test_inputs, block_index, task
             x_input_outros = x_test_sample
             x_input_juiz = tf.zeros((1, 30, 30, 1, 40), dtype=tf.float32)  # placeholder inútil
 
-        
+        log(f"[TEST] Preview raw input: {np.unique(raw_test_inputs[0])}")
         preds = arc_court(models, x_input_outros)
 
-        video_path = gerar_video_time_lapse(model_idx=model_idx)
+        video_path = gerar_video_time_lapse(block_idx=block_index)
         if video_path:
-            embutir_trilha_sonora(video_path=video_path, model_idx=model_idx)
+            embutir_trilha_sonora(video_path=video_path, block_idx=block_index)
 
         
         
         y_test_logits = preds["class_logits"] if isinstance(preds, dict) else preds
-        pred_np = tf.argmax(y_test_logits, axis=-1).numpy()[0]
+        pred_np = y_test_logits
+        if isinstance(pred_np, tf.Tensor):
+            pred_np = pred_np.numpy()
+        log(f"[DEBUG] predicted_output shape before plot: {pred_np.shape}")
+
 
         plot_prediction_test(
             raw_input=raw_test_inputs[0],
-            predicted_output=pred_np,
-            task_id=task_id,
-            filename=f"block_{block_index}_task_{task_id}_model_0",
-            index=block_index,
+            predicted_output=pred_np,            
+            save_path=f"images/test/TEST block_{block_index}_task_{task_id}_model_{model_idx}",
             pad_value=PAD_VALUE
         )
         plot_prediction_test(
             raw_input=raw_test_inputs[0],
             predicted_output=pred_np,
-            task_id=task_id,
-            filename=f"PREDICT TEST JUDGE RESULTS AAASSSSXXX",
-            index=block_index,
+            save_path=f"images/test/PREDICT TEST JUDGE RESULTS AAASSSSXXX",
             pad_value=PAD_VALUE
         )
 

@@ -26,16 +26,14 @@ class SimuV3(tf.keras.Model):
         self.temporal_shape_encoder = ClassTemporalAlignmentBlock(hidden_dim)
 
         self.encoder = tf.keras.Sequential([
-            layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
-            layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
+            layers.Conv2D(hidden_dim, 3, padding='same', activation='relu')
+            # simplificada, sem segunda convolução
         ])
 
         self.fractal = FractalBlock(hidden_dim)
         self.attn_memory = AttentionOverMemory(hidden_dim)
 
-        self.mha = tf.keras.layers.MultiHeadAttention(num_heads=8, key_dim=hidden_dim)
-        self.norm = tf.keras.layers.LayerNormalization()
-
+        # atenção removida, simplificação
         self.decoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
             layers.Conv2D(NUM_CLASSES, 1)
@@ -52,7 +50,6 @@ class SimuV3(tf.keras.Model):
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        # x = self.focal_expand(x)
         x = x[:, :, :, :, -1]  # usa o último frame
 
         flip_logits = self.flip.logits_layer(tf.reduce_mean(x, axis=[1, 2]))
@@ -90,11 +87,7 @@ class SimuV3(tf.keras.Model):
         memory_out = tf.tile(memory_out, [1, tf.shape(x)[1], tf.shape(x)[2], 1])
         x = x + memory_out
 
-        b, h, w, c = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], x.shape[-1]
-        x_flat = tf.reshape(x, [b, h * w, c])
-        x_attn = self.mha(x_flat, x_flat)
-        x_attn = self.norm(x_attn + x_flat)
-        x = tf.reshape(x_attn, [b, h, w, x_attn.shape[-1]])
+        # atenção removida, segue direto
 
         raw_logits = self.decoder(x)
         raw_logits = self.permuter(x, raw_logits)

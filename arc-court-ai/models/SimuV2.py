@@ -26,9 +26,8 @@ class SimuV2(tf.keras.Model):
         self.temporal_shape_encoder = ClassTemporalAlignmentBlock(hidden_dim)
 
         self.encoder = tf.keras.Sequential([
-            layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
-            layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
-        ])
+            layers.Conv2D(hidden_dim, 5, padding='same', activation='relu'),
+        ])  # menos profundidade, convolução maior (kernel=5)
 
         self.fractal = FractalBlock(hidden_dim)
         self.attn_memory = AttentionOverMemory(hidden_dim)
@@ -37,7 +36,7 @@ class SimuV2(tf.keras.Model):
         self.norm = tf.keras.layers.LayerNormalization()
 
         self.decoder = tf.keras.Sequential([
-            layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
+            layers.Conv2D(hidden_dim // 2, 5, padding='same', activation='relu'),
             layers.Conv2D(NUM_CLASSES, 1)
         ])
 
@@ -52,7 +51,6 @@ class SimuV2(tf.keras.Model):
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        # x = self.focal_expand(x)
         x = x[:, :, :, :, -1]  # usa o último frame
 
         flip_logits = self.flip.logits_layer(tf.reduce_mean(x, axis=[1, 2]))

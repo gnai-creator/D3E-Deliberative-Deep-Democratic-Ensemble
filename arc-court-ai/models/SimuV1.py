@@ -16,7 +16,7 @@ NUM_CLASSES = 10
 
 
 class SimuV1(tf.keras.Model):
-    def __init__(self, hidden_dim=64):
+    def __init__(self, hidden_dim=32):  # menor hidden_dim
         super().__init__()
         self.focal_expand = SpatialFocusTemporalMarking()
         self.flip = LearnedFlip()
@@ -27,7 +27,9 @@ class SimuV1(tf.keras.Model):
 
         self.encoder = tf.keras.Sequential([
             layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
+            layers.Dropout(0.4),  # mais dropout
             layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
+            layers.Dropout(0.4),  # mais dropout
         ])
 
         self.fractal = FractalBlock(hidden_dim)
@@ -52,7 +54,6 @@ class SimuV1(tf.keras.Model):
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        # x = self.focal_expand(x)
         x = x[:, :, :, :, -1]  # usa o último frame
 
         flip_logits = self.flip.logits_layer(tf.reduce_mean(x, axis=[1, 2]))

@@ -25,9 +25,10 @@ class SimuV5(tf.keras.Model):
         self.pos_enc = PositionalEncoding2D(hidden_dim)
         self.temporal_shape_encoder = ClassTemporalAlignmentBlock(hidden_dim)
 
+        # Encoder comparativo - concatena entrada com uma versão transformada
         self.encoder = tf.keras.Sequential([
-            layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
             layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
+            layers.Conv2D(hidden_dim, 3, padding='same', activation='relu')
         ])
 
         self.fractal = FractalBlock(hidden_dim)
@@ -36,9 +37,11 @@ class SimuV5(tf.keras.Model):
         self.mha = tf.keras.layers.MultiHeadAttention(num_heads=8, key_dim=hidden_dim)
         self.norm = tf.keras.layers.LayerNormalization()
 
-        self.decoder = tf.keras.Sequential([
-            layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
-            layers.Conv2D(NUM_CLASSES, 1)
+        # Cabeça para "juízo" — julgamento de classes baseado em comparações
+        self.judgement_head = tf.keras.Sequential([
+            layers.GlobalAveragePooling2D(),
+            layers.Dense(hidden_dim, activation='relu'),
+            layers.Dense(NUM_CLASSES)
         ])
 
         self.presence_head = layers.Conv2D(1, 1, activation='sigmoid')
@@ -52,7 +55,6 @@ class SimuV5(tf.keras.Model):
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        # x = self.focal_expand(x)
         x = x[:, :, :, :, -1]  # usa o último frame
 
         flip_logits = self.flip.logits_layer(tf.reduce_mean(x, axis=[1, 2]))
@@ -96,12 +98,7 @@ class SimuV5(tf.keras.Model):
         x_attn = self.norm(x_attn + x_flat)
         x = tf.reshape(x_attn, [b, h, w, x_attn.shape[-1]])
 
-        raw_logits = self.decoder(x)
-        raw_logits = self.permuter(x, raw_logits)
+        # Passa pelo juízo final
+        logits = self.judgement_head(x)
 
-        if training:
-            class_logits = self.color_perm_train(raw_logits, training=True)
-        else:
-            class_logits = tf.gather(raw_logits, self.permutation_eval, axis=-1)
-
-        return class_logits
+        return logits

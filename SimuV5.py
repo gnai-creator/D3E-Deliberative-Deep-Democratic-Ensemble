@@ -58,7 +58,8 @@ class SimuV5(tf.keras.Model):
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
         B, H, W, C, J = tf.unstack(tf.shape(x))
-        x = tf.reshape(x, [B, H, W, 4])  # Forçando o reshape para 2 canais fixos
+        x = tf.reshape(x, [B, H, W, tf.shape(x)[3] * tf.shape(x)[4]])  # ✅ Correto
+
 
         features = tf.reduce_mean(x, axis=[1, 2])
 

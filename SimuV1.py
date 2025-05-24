@@ -49,24 +49,24 @@ class SimuV1(tf.keras.Model):
         self.permutation_eval = tf.range(NUM_CLASSES)
         self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
 
+        self.fallback_dense = tf.keras.layers.Dense(10)
+        self.init_conv = layers.Conv2D(self.hidden_dim, 1, activation='relu', input_shape=(None, None, 2))
+
     def call(self, x, training=False):
         if x.shape.rank != 5:
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
         B, H, W, C, J = tf.unstack(tf.shape(x))
+        x = tf.reshape(x, [B, H, W, 2])  # Forçando o reshape para 2 canais fixos
 
-        # Colapsa os canais e juízes (você pode ajustar essa parte como quiser)
-        x = tf.reshape(x, [B, H, W, C * J])
-
-        features = tf.reduce_mean(x, axis=[1, 2])  # [B, C * J]
+        features = tf.reduce_mean(x, axis=[1, 2])
 
         try:
             flip_logits = self.flip.logits_layer(features)
             rotation_logits = self.rotation.classifier(features)
         except Exception:
-            expected = 10 if training else features.shape[-1]
-            features = layers.Dense(expected)(features)
+            features = self.fallback_dense(features)
             flip_logits = self.flip.logits_layer(features)
             rotation_logits = self.rotation.classifier(features)
 
@@ -88,8 +88,7 @@ class SimuV1(tf.keras.Model):
         x = tf.map_fn(flip_op, (x, flip_code), fn_output_signature=x.dtype)
         x = tf.map_fn(rotate_single, (x, rotation_code), fn_output_signature=x.dtype)
 
-        x = layers.Conv2D(self.hidden_dim, 1, activation='relu')(x)
-
+        x = self.init_conv(x)
         x = self.pos_enc(x)
         x = self.focal_expand(x)
         x = self.temporal_shape_encoder(x)

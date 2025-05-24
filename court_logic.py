@@ -4,43 +4,7 @@ from runtime_utils import log
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
-
-def salvar_voto_visual(votos, iteracao, saida_dir="votos_visuais"):
-    os.makedirs(saida_dir, exist_ok=True)
-    num_modelos = len(votos)
-    votos_classes = [tf.argmax(v, axis=-1).numpy()[0] for v in votos]  # [H, W] para cada
-
-    # Calcular mapa de consenso por pixel
-    votos_stack = np.stack(votos_classes, axis=0)  # [M, H, W]
-    H, W = votos_stack.shape[1:]
-
-    consenso_map = np.zeros((H, W), dtype=np.uint8)
-    for i in range(H):
-        for j in range(W):
-            _, counts = np.unique(votos_stack[:, i, j], return_counts=True)
-            if np.max(counts) >= 3:
-                consenso_map[i, j] = 1  # estabilidade jurídica
-
-    fig, axes = plt.subplots(1, num_modelos + 1, figsize=(4 * (num_modelos + 1), 4))
-    nomes = [f"Jurada {i+1}" for i in range(num_modelos - 2)] + ["Advogada", "Juíza"]
-
-    for i, (ax, voto, nome) in enumerate(zip(axes[:-1], votos_classes, nomes)):
-        sns.heatmap(voto, ax=ax, cbar=False, cmap="viridis", square=True)
-        ax.set_title(f"{nome}", fontsize=10)
-        ax.axis("off")
-
-    # Último eixo: consenso
-    ax_consenso = axes[-1]
-    sns.heatmap(consenso_map, ax=ax_consenso, cbar=False, cmap="Greens", square=True)
-    ax_consenso.set_title("Mapa de Consenso (≥3)", fontsize=10)
-    ax_consenso.axis("off")
-
-    plt.suptitle(f"Predições dos Modelos - Iteração {iteracao}", fontsize=12)
-    filepath = os.path.join(saida_dir, f"votos_iter_{iteracao:02d}.png")
-    plt.tight_layout()
-    plt.savefig(filepath)
-    plt.close()
-    log(f"[VISUAL] Salvo mapa de votos + consenso em {filepath}")
+from metrics_utils import salvar_voto_visual
 
 
 def arc_court(models, input_tensor, max_iters=5, tol=0.98, epochs=3):
@@ -58,7 +22,7 @@ def arc_court(models, input_tensor, max_iters=5, tol=0.98, epochs=3):
     log(f"[INÍCIO] Tribunal iniciado com {len(models)} modelos.")
     log(f"[INFO] Tolerância de consenso definida em {tol:.2f}")
 
-    while consenso < 1.0 and iter_count < max_iters:
+    while consenso < 1.0 : # and iter_count < max_iters:
         log(f"\n[ITER {iter_count+1}] Iniciando rodada de julgamento")
 
         # 1. Advogada faz predição
@@ -96,7 +60,7 @@ def arc_court(models, input_tensor, max_iters=5, tol=0.98, epochs=3):
         votos_final = tf.argmax(votos_models[-1], axis=-1)
 
     log(f"\n[FIM] Julgamento encerrado após {iter_count} iteração(ões). Consenso final: {consenso:.4f}")
-    KK votos_final
+    return votos_final
 
 
 def avaliar_consenso_por_j(votos_models, tol=0.98):

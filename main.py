@@ -109,24 +109,24 @@ if __name__ == "__main__":
             log(f"[INFO] SHAPE X TRAIN : {X_train.shape}")
             log(f"[INFO] SHAPE Y Val : {Y_val.shape}")
             log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")
-
-            for i in range(N_MODELS) :
+            model_idx = 0
+            while model_idx < N_MODELS:
                 
                 try:
-                    model = load_model(i, LEARNING_RATE)
+                    model = load_model(model_idx, LEARNING_RATE)
                     if model is None:
-                        raise ValueError(f"[FATAL] Modelo {i} não foi carregado corretamente.")
+                        raise ValueError(f"[FATAL] Modelo {model_idx} não foi carregado corretamente.")
                     models.append(model)
                 except Exception as e:
-                    log(f"[FATAL] Falha ao carregar o modelo {i}: {e}")
+                    log(f"[FATAL] Falha ao carregar o modelo {model_idx}: {e}")
                     raise
                 
                 for cycle in range(CYCLES):
-                    log(f"Cycle {cycle}")
+                    log(f"Cycle {cycle} MODEL : {model_idx}")
                     log(f"X_train.shape: {X_train.shape}")
                     log(f"Y_train.shape: {Y_train.shape}")
 
-                    models[i].fit(
+                    models[model_idx].fit(
                         x=X_train,
                         y=Y_train,
                         validation_data=(X_val, Y_val),
@@ -148,8 +148,19 @@ if __name__ == "__main__":
                         y_val_expected = to_numpy_safe(Y_val[:1][0])
 
                         valid_mask = (y_val_expected != PAD_VALUE)
+
+                        # Corrige máscara se estiver com um eixo extra (ex: (30,30,1) → (30,30))
+                        if valid_mask.shape != y_val_pred.shape:
+                            try:
+                                valid_mask = np.squeeze(valid_mask)
+                                if valid_mask.shape != y_val_pred.shape:
+                                    raise ValueError("Shape incompatível após squeeze.")
+                            except Exception:
+                                log(f"[ERROR] Falha ao ajustar máscara: mask shape {valid_mask.shape}, pred shape {y_val_pred.shape}")
+                                continue
+
                         if np.sum(valid_mask) == 0:
-                            log(f"[WARN] Nenhum pixel valido para comparacao. Task: {task_id}")
+                            log(f"[WARN] Nenhum pixel válido para comparação. Task: {task_id}")
                             continue
 
                         pixel_color_perfect = np.mean((y_val_pred == y_val_expected)[valid_mask])
@@ -163,27 +174,26 @@ if __name__ == "__main__":
                             pad_value=PAD_VALUE,
                             index=block_index,
                             task_id=task_id
-
                         )
                         plot_prediction_debug(
                             raw_input=raw_inputs[0],
                             expected_output=y_val_expected,
                             predicted_output=y_val_pred,
-                            model_index=f"AAASSSSXXX",
+                            model_index="AAASSSSXXX",
                             pad_value=PAD_VALUE,
                             index=block_index,
                             task_id=task_id
                         )
 
-                        log(f"Pixel Color Perfect: {pixel_color_perfect} - Pixel Shape Perfect {pixel_shape_perfect}")
+                        log(f"🎯 Pixel Color Perfect: {pixel_color_perfect:.5f} - Pixel Shape Perfect: {pixel_shape_perfect:.5f}")
 
                         if pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999 and corte_esta_completa(models):
                             test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submission_dict)
                             block_index += 1
                             break
-                        
-                        elif pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999 :
-                            block_index += 1
+
+                        elif pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999:
+                            model_idx += 1
                             break
 
                     except Exception as e:

@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     && rm -rf /var/lib/apt/lists/*
 
+
 # Configura usuário vscode, porque o VSCode acha que é especial
 ARG USERNAME=vscode
 ARG USER_UID=1000
@@ -32,8 +33,8 @@ RUN ln -s /usr/bin/python3 /usr/local/bin/python
 RUN python3 -m pip install --upgrade pip setuptools wheel
 
 # Copia requirements.txt e instala dependências do projeto
-COPY requirements.txt /tmp/requirements.txt
-RUN python3 -m pip install --no-cache-dir -r /tmp/requirements.txt
+# COPY requirements.txt /tmp/requirements.txt
+# RUN python3 -m pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Define diretório de trabalho
 WORKDIR /workspace

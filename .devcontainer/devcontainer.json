@@ -66,5 +66,7 @@
     }
   },
   "forwardPorts": [8888, 6006],
-  "remoteUser": "vscode"
+  "remoteUser": "vscode",
+
+  "postCreateCommand": "pip install --no-cache-dir -r requirements.txt"
 }

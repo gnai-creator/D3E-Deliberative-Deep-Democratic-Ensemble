@@ -14,29 +14,32 @@ from neural_blocks import (
 
 NUM_CLASSES = 10
 
-
 class SimuV2(tf.keras.Model):
-    def __init__(self, hidden_dim=64):
+    def __init__(self, hidden_dim=32):
         super().__init__()
+        self.hidden_dim = hidden_dim
         self.focal_expand = SpatialFocusTemporalMarking()
         self.flip = LearnedFlip()
         self.rotation = DiscreteRotation()
-        self.input_proj = layers.Conv2D(hidden_dim, 1, activation='relu')
         self.pos_enc = PositionalEncoding2D(hidden_dim)
         self.temporal_shape_encoder = ClassTemporalAlignmentBlock(hidden_dim)
 
         self.encoder = tf.keras.Sequential([
-            layers.Conv2D(hidden_dim, 5, padding='same', activation='relu'),
+            layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
+            layers.Dropout(0.25),
+            layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
+            layers.Dropout(0.25),
         ])
 
         self.fractal = FractalBlock(hidden_dim)
         self.attn_memory = AttentionOverMemory(hidden_dim)
 
-        self.mha = tf.keras.layers.MultiHeadAttention(num_heads=8, key_dim=hidden_dim)
+        self.mha = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=hidden_dim)
         self.norm = tf.keras.layers.LayerNormalization()
 
         self.decoder = tf.keras.Sequential([
-            layers.Conv2D(hidden_dim // 2, 5, padding='same', activation='relu'),
+            layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
+            layers.Dropout(0.25),
             layers.Conv2D(NUM_CLASSES, 1)
         ])
 
@@ -46,25 +49,29 @@ class SimuV2(tf.keras.Model):
         self.permutation_eval = tf.range(NUM_CLASSES)
         self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
 
+        self.fallback_dense = tf.keras.layers.Dense(10)
+        self.init_conv = layers.Conv2D(self.hidden_dim, 1, activation='relu', input_shape=(None, None, 2))
+
     def call(self, x, training=False):
-        if x.shape.rank == 5:
-            x = tf.expand_dims(x, axis=4)
-        elif x.shape.rank != 6:
+        if x.shape.rank != 5:
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
-        # Reduz dimensão temporal e de julgamento para extrair features globais
-        features = tf.reduce_mean(x, axis=[1, 2, 3, 4])  # [B, C]
-        if features.shape[-1] != self.flip.logits_layer.input_shape[-1]:
-            features = tf.keras.layers.Dense(self.flip.logits_layer.input_shape[-1])(features)
+        B, H, W, C, J = tf.unstack(tf.shape(x))
+        x = tf.reshape(x, [B, H, W, 2])  # Forçando o reshape para 2 canais fixos
 
-        flip_logits = self.flip.logits_layer(features)
-        rotation_logits = self.rotation.classifier(features)
+        features = tf.reduce_mean(x, axis=[1, 2])
+
+        try:
+            flip_logits = self.flip.logits_layer(features)
+            rotation_logits = self.rotation.classifier(features)
+        except Exception:
+            features = self.fallback_dense(features)
+            flip_logits = self.flip.logits_layer(features)
+            rotation_logits = self.rotation.classifier(features)
 
         flip_code = tf.argmax(flip_logits, axis=-1)
         rotation_code = tf.argmax(rotation_logits, axis=-1)
-
-        x = tf.reduce_mean(x, axis=3)  # remove o eixo J
 
         def flip_op(args):
             img, code = args
@@ -78,10 +85,10 @@ class SimuV2(tf.keras.Model):
             img, k_val = args
             return tf.image.rot90(img, k=tf.cast(tf.squeeze(k_val), tf.int32))
 
-        x = tf.map_fn(flip_op, (x, flip_code), dtype=x.dtype)
-        x = tf.map_fn(rotate_single, (x, rotation_code), dtype=x.dtype)
+        x = tf.map_fn(flip_op, (x, flip_code), fn_output_signature=x.dtype)
+        x = tf.map_fn(rotate_single, (x, rotation_code), fn_output_signature=x.dtype)
 
-        x = self.input_proj(x)
+        x = self.init_conv(x)
         x = self.pos_enc(x)
         x = self.focal_expand(x)
         x = self.temporal_shape_encoder(x)

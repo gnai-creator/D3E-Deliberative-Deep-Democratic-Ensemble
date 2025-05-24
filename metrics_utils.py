@@ -9,7 +9,11 @@ from sklearn.metrics import confusion_matrix, classification_report
 from runtime_utils import log, make_serializable
 import imageio
 import glob
-from moviepy.editor import VideoFileClip, AudioFileClip
+import sys
+sys.path.append('/home/vscode/.local/lib/python3.10/site-packages')
+import moviepy.editor as mpy
+# from moviepy.editor import VideoFileClip, AudioFileClip
+
 
 os.makedirs("images", exist_ok=True)
 sns.set(style="whitegrid", font_scale=1.2)
@@ -67,26 +71,43 @@ def ensure_numpy(x):
     else:
         return np.array(x)
 
+def prepare_display_image(img, pad_value, h, w):
+    pad_height = h - img.shape[0]
+    pad_width = w - img.shape[1]
+    if img.ndim == 2:
+        img = np.pad(img, ((0, pad_height), (0, pad_width)), constant_values=pad_value)
+    elif img.ndim == 3:
+        img = np.pad(img, ((0, pad_height), (0, pad_width), (0, 0)), constant_values=pad_value)
+        if img.shape[-1] > 3:
+            img = np.mean(img, axis=-1)  # Reduz todos os canais extras para média
+        elif img.shape[-1] == 1:
+            img = img[:, :, 0]  # Remove canal singleton
+    else:
+        raise ValueError(f"[pad()] Formato inesperado: {img.shape}")
+    return img
 
 def plot_prediction_debug(expected_output, predicted_output, raw_input=None, model_index="output", task_id="", index=0, pad_value=0):
     try:
         predicted_output = ensure_numpy(predicted_output).astype(np.int32)
         expected_output = ensure_numpy(expected_output).astype(np.int32)
-
-        if raw_input is not None:
-            input_img = np.asarray(raw_input)
+        input_img = np.asarray(raw_input) if raw_input is not None else np.zeros_like(expected_output)
 
         h = max(input_img.shape[0], predicted_output.shape[0], expected_output.shape[0])
         w = max(input_img.shape[1], predicted_output.shape[1], expected_output.shape[1])
-        def pad(x): return np.pad(x, ((0, h - x.shape[0]), (0, w - x.shape[1])), constant_values=pad_value)
 
-        input_img = pad(input_img)
-        predicted_output = pad(predicted_output)
-        expected_output = pad(expected_output)
+        input_img = prepare_display_image(input_img, pad_value, h, w)
+        predicted_output = prepare_display_image(predicted_output, pad_value, h, w)
+        expected_output = prepare_display_image(expected_output, pad_value, h, w)
 
         valid_mask = expected_output != pad_value
+        if valid_mask.ndim > 2:
+            valid_mask = np.squeeze(valid_mask)
+        if valid_mask.shape != predicted_output.shape:
+            raise ValueError(f"Máscara inválida: {valid_mask.shape} vs {predicted_output.shape}")
+
         pixel_color_perfect = np.mean((predicted_output == expected_output)[valid_mask])
-        pixel_shape_perfect = np.mean((predicted_output > 0) == (expected_output > 0))
+        pixel_shape_perfect = np.mean((predicted_output > 0)[valid_mask] == (expected_output > 0)[valid_mask])
+
         heatmap = ((predicted_output > 0) == (expected_output > 0)).astype(np.int32)
 
         fig, axs = plt.subplots(1, 4, figsize=(22, 4))
@@ -105,25 +126,21 @@ def plot_prediction_debug(expected_output, predicted_output, raw_input=None, mod
         filename = f"images/prediction_debug_{model_index}.png"
         plt.savefig(filename, dpi=150)
         plt.close()
-
         log(f"[INFO] Debug visual salvo: {filename}")
         return pixel_color_perfect, pixel_shape_perfect
     except Exception as e:
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
 
-
 def plot_prediction_test(predicted_output, task_id, filename="output", raw_input=None, index=0, pad_value=0):
     try:
         predicted_output = ensure_numpy(predicted_output).astype(np.int32)
-        if raw_input is not None:
-            input_img = np.asarray(raw_input)
+        input_img = np.asarray(raw_input) if raw_input is not None else np.zeros_like(predicted_output)
 
         h = max(input_img.shape[0], predicted_output.shape[0])
         w = max(input_img.shape[1], predicted_output.shape[1])
-        def pad(x): return np.pad(x, ((0, h - x.shape[0]), (0, w - x.shape[1])), constant_values=pad_value)
 
-        input_img = pad(input_img)
-        predicted_output = pad(predicted_output)
+        input_img = prepare_display_image(input_img, pad_value, h, w)
+        predicted_output = prepare_display_image(predicted_output, pad_value, h, w)
 
         fig, axs = plt.subplots(1, 2, figsize=(6, 3))
         for ax, img, title in zip(axs, [input_img, predicted_output], ["Input", "Prediction"]):
@@ -134,16 +151,52 @@ def plot_prediction_test(predicted_output, task_id, filename="output", raw_input
         plt.suptitle(f"Prediction TEST - Model Task {index} ID: {task_id}", fontsize=10)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         os.makedirs("images/test", exist_ok=True)
-        full_filename = f"images/test/{filename}_Prediction TEST - Model Task {task_id}.png"
+        full_filename = f"images/test/{filename}_Prediction_TEST_Task_{task_id}.png"
         plt.savefig(full_filename, dpi=150)
         plt.close()
-
         log(f"[INFO] Debug visual salvo: {full_filename}")
     except Exception as e:
-        log(f"[ERROR] Falha ao gerar plot de debug: {e}")
+        log(f"[ERROR] Falha ao gerar plot de teste: {e}")
 
 
 
+
+def salvar_voto_visual(votos, iteracao, saida_dir="votos_visuais"):
+    os.makedirs(saida_dir, exist_ok=True)
+    num_modelos = len(votos)
+    votos_classes = [tf.argmax(v, axis=-1).numpy()[0] for v in votos]  # [H, W] para cada
+
+    # Calcular mapa de consenso por pixel
+    votos_stack = np.stack(votos_classes, axis=0)  # [M, H, W]
+    H, W = votos_stack.shape[1:]
+
+    consenso_map = np.zeros((H, W), dtype=np.uint8)
+    for i in range(H):
+        for j in range(W):
+            _, counts = np.unique(votos_stack[:, i, j], return_counts=True)
+            if np.max(counts) >= 3:
+                consenso_map[i, j] = 1  # estabilidade jurídica
+
+    fig, axes = plt.subplots(1, num_modelos + 1, figsize=(4 * (num_modelos + 1), 4))
+    nomes = [f"Jurada {i+1}" for i in range(num_modelos - 2)] + ["Advogada", "Juíza"]
+
+    for i, (ax, voto, nome) in enumerate(zip(axes[:-1], votos_classes, nomes)):
+        sns.heatmap(voto, ax=ax, cbar=False, cmap="viridis", square=True)
+        ax.set_title(f"{nome}", fontsize=10)
+        ax.axis("off")
+
+    # Último eixo: consenso
+    ax_consenso = axes[-1]
+    sns.heatmap(consenso_map, ax=ax_consenso, cbar=False, cmap="Greens", square=True)
+    ax_consenso.set_title("Mapa de Consenso (≥3)", fontsize=10)
+    ax_consenso.axis("off")
+
+    plt.suptitle(f"Predições dos Modelos - Iteração {iteracao}", fontsize=12)
+    filepath = os.path.join(saida_dir, f"votos_iter_{iteracao:02d}.png")
+    plt.tight_layout()
+    plt.savefig(filepath)
+    plt.close()
+    log(f"[VISUAL] Salvo mapa de votos + consenso em {filepath}")
 
 def gerar_video_time_lapse(pasta="votos_visuais", output="court_drama.mp4", fps=1):
     arquivos = sorted(glob.glob(f"{pasta}/votos_iter_*.png"))
@@ -163,8 +216,8 @@ def gerar_video_time_lapse(pasta="votos_visuais", output="court_drama.mp4", fps=
 
 
 def embutir_trilha_sonora(video_path="court_drama.mp4", musica_path="intergalactic.mp3", output_path="court_with_sound.mp4"):
-    video = VideoFileClip(video_path)
-    audio = AudioFileClip(musica_path).set_duration(video.duration)
+    video = mpy.VideoFileClip(video_path)
+    audio = mpy.AudioFileClip(musica_path).set_duration(video.duration)
     final = video.set_audio(audio)
     final.write_videofile(output_path, codec='libx264', audio_codec='aac')
     log(f"[AUDIO] Vídeo com trilha salvo em: {output_path}")

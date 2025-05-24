@@ -128,7 +128,7 @@ def plot_prediction_test(predicted_output, task_id, filename="output", raw_input
             ax.set_title(title)
             ax.axis("off")
 
-        plt.suptitle(f"Prediction TEST - Model Task {task_id}", fontsize=10)
+        plt.suptitle(f"Prediction TEST - Model Task {index} ID: {task_id}", fontsize=10)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
         os.makedirs("images/test", exist_ok=True)
         full_filename = f"images/test/{filename}_Prediction TEST - Model Task {task_id}.png"

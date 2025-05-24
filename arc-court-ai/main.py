@@ -35,7 +35,15 @@ def test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submis
             predicted_output=pred_np,
             task_id=task_id,
             filename=f"block_{block_index}_task_{task_id}_model_0",
-            index=0,
+            index=block_index,
+            pad_value=PAD_VALUE
+        )
+        plot_prediction_test(
+            raw_input=raw_test_inputs[0],
+            predicted_output=pred_np,
+            task_id=task_id,
+            filename=f"PREDICT TEST JUDGE RESULTS AAASSSSXXX",
+            index=block_index,
             pad_value=PAD_VALUE
         )
 

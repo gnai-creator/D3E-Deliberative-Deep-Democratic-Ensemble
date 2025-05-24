@@ -113,9 +113,7 @@ if __name__ == "__main__":
                 
                 model = load_model(i, LEARNING_RATE)
                 if model is None:
-                    log(f"[ERROR] Modelo {i} retornou None do load_model. Pulando.")
-                    continue
-
+                    raise ValueError(f"[FATAL] Modelo {i} não foi carregado corretamente.")
                 models[i] = model
                 for cycle in range(CYCLES):
                     log(f"Cycle {cycle}")

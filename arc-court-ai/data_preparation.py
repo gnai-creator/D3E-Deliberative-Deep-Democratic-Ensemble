@@ -4,6 +4,13 @@ from sklearn.model_selection import train_test_split
 from runtime_utils import log
 from metrics import standardize_grid_shapes, pad_to_30x30_top_left, pad_to_30x30_top_left_single
 
+def add_juizo_channel(input_grid, juizo_value):
+    h, w = input_grid.shape
+    grid_with_channel = np.zeros((h, w, 2), dtype=np.float32)
+    grid_with_channel[..., 0] = input_grid  # valor original
+    grid_with_channel[..., 1] = juizo_value  # canal de juízo
+    return grid_with_channel
+
 def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_size):
     start_idx = block_index * block_size
     end_idx = start_idx + block_size
@@ -38,9 +45,9 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
             log(f"[WARN] Grid maior que 30x30: {max_h}x{max_w} — pulando")
             continue
 
-        X.append(input_grid)
-        Y.append(output_grid)
-        X_test.append(test_input_grid)
+        X.append(add_juizo_channel(input_grid, juizo_value=0))
+        Y.append(add_juizo_channel(output_grid, juizo_value=1))
+        X_test.append(add_juizo_channel(test_input_grid, juizo_value=0))
         info.append({"task_id": task_id})
 
     X, Y = standardize_grid_shapes(X, Y)
@@ -48,10 +55,8 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
     X_test, _ = standardize_grid_shapes(X_test, Y)
     X_test = pad_to_30x30_top_left_single(X=X_test)
 
- 
-
-    X = tf.one_hot(X, depth=vocab_size).numpy()
-    X_test = tf.one_hot(X_test, depth=vocab_size).numpy()
+    X = tf.convert_to_tensor(X, dtype=tf.float32)
+    X_test = tf.convert_to_tensor(X_test, dtype=tf.float32)
 
     if len(X) > 1:
         X_train, X_val, Y_train, Y_val, info_train, info_val = train_test_split(
@@ -62,14 +67,14 @@ def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_
         Y_train, Y_val = Y, Y
         info_train, info_val = info, info
 
-    sw_train = np.ones_like(Y_train, dtype=np.float32)
-    sw_val = np.ones_like(Y_val, dtype=np.float32)
+    sw_train = np.ones_like(Y_train[..., 0], dtype=np.float32)
+    sw_val = np.ones_like(Y_val[..., 0], dtype=np.float32)
 
     return (
         tf.convert_to_tensor(X_train, dtype=tf.float32),
         tf.convert_to_tensor(X_val, dtype=tf.float32),
-        tf.convert_to_tensor(Y_train, dtype=tf.int32),
-        tf.convert_to_tensor(Y_val, dtype=tf.int32),
+        tf.convert_to_tensor(Y_train[..., 0], dtype=tf.int32),
+        tf.convert_to_tensor(Y_val[..., 0], dtype=tf.int32),
         tf.convert_to_tensor(sw_train, dtype=tf.float32),
         tf.convert_to_tensor(sw_val, dtype=tf.float32),
         tf.convert_to_tensor(X_test, dtype=tf.float32),

@@ -3,28 +3,27 @@ import tensorflow as tf
 
 def standardize_grid_shapes(X, Y):
     """
-    Ensure all grids are in (H, W) format where H >= W.
-    Transpose if necessary.
+    Garante que todos os grids tenham formato (H, W, J) com H >= W.
+    Transpõe se necessário.
     """
     X_out, Y_out = [], []
     for x, y in zip(X, Y):
-        if y.ndim != 2:
-            raise ValueError("Expected 2D array for Y in standardize_grid_shapes")
-        h, w = y.shape
+        if y.ndim != 3:
+            raise ValueError(f"Esperado shape (H, W, J), mas veio {y.shape}")
+
+        h, w = y.shape[:2]
         if h < w:
-            if x.ndim == 3:
-                x = np.transpose(x, (1, 0, 2))  # For one-hot
-            elif x.ndim == 2:
-                x = np.transpose(x, (1, 0))     # For raw grid
-            y = np.transpose(y, (1, 0))
+            x = np.transpose(x, (1, 0, 2)) if x.ndim == 3 else x.T
+            y = np.transpose(y, (1, 0, 2))
         X_out.append(x)
         Y_out.append(y)
     return np.array(X_out), np.array(Y_out)
 
+
 def pad_to_max_shape(X, Y):
     """
     Pad all samples to the maximum height and width found in the batch.
-    Supports both 2D and 3D arrays for X.
+    Supports both 2D and 3D arrays for X and Y.
     """
     max_h = max(y.shape[0] for y in Y)
     max_w = max(y.shape[1] for y in Y)
@@ -42,36 +41,62 @@ def pad_to_max_shape(X, Y):
         else:
             raise ValueError("Unsupported number of dimensions in X")
 
-        y_pad = np.pad(y, ((0, pad_h), (0, pad_w)), mode='constant')
+        if y.ndim == 2:
+            y_pad = np.pad(y, ((0, pad_h), (0, pad_w)), mode='constant')
+        elif y.ndim == 3:
+            y_pad = np.pad(y, ((0, pad_h), (0, pad_w), (0, 0)), mode='constant')
+        else:
+            raise ValueError("Unsupported number of dimensions in Y")
 
         padded_X.append(x_pad)
         padded_Y.append(y_pad)
 
     return np.array(padded_X), np.array(padded_Y)
+
 
 def prepare_data(X, Y):
     X, Y = standardize_grid_shapes(X, Y)
     X, Y = pad_to_max_shape(X, Y)
     return X, Y
 
-def pad_to_30x30_top_left(X, Y, pad_value=0):
-    padded_X, padded_Y = [], []
-    for x, y in zip(X, Y):
-        x_pad = np.full((30, 30), pad_value, dtype=x.dtype)
-        y_pad = np.full((30, 30), pad_value, dtype=y.dtype)
 
+def pad_to_30x30_top_left(X, Y, pad_value=0):
+    """
+    Pad X and Y to shape (30, 30, [J]) in the top-left corner.
+    """
+    padded_X, padded_Y = [], []
+
+    for x, y in zip(X, Y):
         x_h, x_w = x.shape[:2]
         y_h, y_w = y.shape[:2]
 
-        x_pad[:x_h, :x_w] = x
-        y_pad[:y_h, :y_w] = y
+        x_channels = x.shape[2] if x.ndim == 3 else None
+        y_channels = y.shape[2] if y.ndim == 3 else None
+
+        if x_channels is not None:
+            x_pad = np.full((30, 30, x_channels), pad_value, dtype=x.dtype)
+            x_pad[:x_h, :x_w, :] = x
+        else:
+            x_pad = np.full((30, 30), pad_value, dtype=x.dtype)
+            x_pad[:x_h, :x_w] = x
+
+        if y_channels is not None:
+            y_pad = np.full((30, 30, y_channels), pad_value, dtype=y.dtype)
+            y_pad[:y_h, :y_w, :] = y
+        else:
+            y_pad = np.full((30, 30), pad_value, dtype=y.dtype)
+            y_pad[:y_h, :y_w] = y
 
         padded_X.append(x_pad)
         padded_Y.append(y_pad)
 
     return np.array(padded_X), np.array(padded_Y)
 
+
 def pad_to_30x30_top_left_single(X, pad_value=0):
+    """
+    Pad a single list of X arrays to (30, 30, [J]) in the top-left corner.
+    """
     padded_X = []
     for x in X:
         if x.ndim == 2:

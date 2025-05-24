@@ -14,6 +14,8 @@ from data_preparation import get_dataset
 from model_loader import load_model
 from court_logic import arc_court
 
+def corte_esta_completa(models):
+    return isinstance(models, list) and len(models) == 5 and all(m is not None for m in models)
 
 def test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submission_dict):
     log(f"[TEST] Inicializando teste bloco {block_index} para task {task_id}")
@@ -107,14 +109,19 @@ if __name__ == "__main__":
             rotation_targets = np.zeros((Y_train.shape[0],), dtype=np.int32)
             flip_val_targets = np.zeros((Y_val.shape[0],), dtype=np.int32)
             rotation_val_targets = np.zeros((Y_val.shape[0],), dtype=np.int32)
-            models = [None] * N_MODELS 
+            models = []
 
             for i in range(N_MODELS) :
                 
-                model = load_model(i, LEARNING_RATE)
-                if model is None:
-                    raise ValueError(f"[FATAL] Modelo {i} não foi carregado corretamente.")
-                models[i] = model
+                try:
+                    model = load_model(i, LEARNING_RATE)
+                    if model is None:
+                        raise ValueError(f"[FATAL] Modelo {i} não foi carregado corretamente.")
+                    models.append(model)
+                except Exception as e:
+                    log(f"[FATAL] Falha ao carregar o modelo {i}: {e}")
+                    raise
+                
                 for cycle in range(CYCLES):
                     log(f"Cycle {cycle}")
                     log(f"X_train.shape: {X_train.shape}")
@@ -170,8 +177,13 @@ if __name__ == "__main__":
                         )
 
                         log(f"Pixel Color Perfect: {pixel_color_perfect} - Pixel Shape Perfect {pixel_shape_perfect}")
-                        if pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999:
+
+                        if pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999 and corte_esta_completa(models):
                             test_challenge(models, X_test, raw_test_inputs, block_index, task_id, submission_dict)
+                            block_index += 1
+                            break
+                        
+                        elif pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999 :
                             block_index += 1
                             break
 

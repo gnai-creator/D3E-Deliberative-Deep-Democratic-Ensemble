@@ -1,6 +1,9 @@
 import tensorflow as tf
 
 def arc_court(models, input_tensor, max_iters=5, tol=0.98, epochs=3):
+    if len(models) < 5:
+        raise ValueError("Corte incompleta: recebi menos de 5 modelos.")
+
     juradas = [models[i] for i in range(3)]
     advogada = models[3]
     juiza = models[4]

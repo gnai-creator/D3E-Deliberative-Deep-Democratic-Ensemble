@@ -1,8 +1,8 @@
-from models.SimuV1 import SimuV1
-from models.SimuV2 import SimuV2
-from models.SimuV3 import SimuV3
-from models.SimuV4 import SimuV4
-from models.SimuV5 import SimuV5
+from SimuV1 import SimuV1
+from SimuV2 import SimuV2
+from SimuV3 import SimuV3
+from SimuV4 import SimuV4
+from SimuV5 import SimuV5
 from model_compile import compile_model
 import tensorflow as tf
 

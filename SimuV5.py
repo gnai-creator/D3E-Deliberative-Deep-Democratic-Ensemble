@@ -15,7 +15,7 @@ from neural_blocks import (
 NUM_CLASSES = 10
 
 
-class SimuV1(tf.keras.Model):
+class SimuV5(tf.keras.Model):
     def __init__(self, hidden_dim=64):
         super().__init__()
         self.focal_expand = SpatialFocusTemporalMarking()

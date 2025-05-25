@@ -71,7 +71,7 @@ class ClippyX:
             x_outros, _ = self.preparar_inputs(x_input)
 
             if len(self.models) < 6:
-                self.models.append(load_model(5))  # Suprema Juíza
+                self.models.append(load_model(5, 0.0005))  # Suprema Juíza
 
             log(f"[CLIPPYX] Julgando bloco {block_index} — Task {task_id}")
             resultados = arc_court_supreme(

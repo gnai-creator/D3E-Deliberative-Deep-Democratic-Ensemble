@@ -85,7 +85,7 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
     except Exception as e:
         print("[ERROR] Falha ao gerar plot de teste:", str(e))
 
-def salvar_voto_visual(votos, iteracao, block_idx, saida_dir="votos_visuais"):
+def salvar_voto_visual(votos, iteracao, block_idx,input_tensor_outros, task_id, saida_dir="votos_visuais"):
     os.makedirs(saida_dir, exist_ok=True)
     num_modelos = len(votos)
     votos_classes = [np.argmax(ensure_numpy(v), axis=-1)[0] for v in votos if v is not None]
@@ -104,23 +104,29 @@ def salvar_voto_visual(votos, iteracao, block_idx, saida_dir="votos_visuais"):
             if np.max(counts) >= 3:
                 consenso_map[i, j] = 1
 
-    fig, axes = plt.subplots(1, num_modelos + 1, figsize=(4 * (num_modelos + 1), 4))
+    fig, axes = plt.subplots(1, num_modelos + 2, figsize=(4 * (num_modelos + 2), 4))
 
     cargos = {0: "Jurada 1", 1: "Jurada 2", 2: "Jurada 3", 3: "Advogada", 4: "Juíza", 5: "Suprema Juíza"}
     nomes = [cargos.get(i, f"Modelo {i}") for i in range(num_modelos)]
 
+    # Plot do input no primeiro eixo
+    sns.heatmap(input_tensor_outros[0, ..., 0], ax=axes[0], cbar=False, cmap="gray", square=True)
+    axes[0].set_title("Input", fontsize=10)
+    axes[0].axis("off")
 
-
-    for ax, voto, nome in zip(axes[:-1], votos_classes, nomes):
+    # Votos dos modelos
+    for ax, voto, nome in zip(axes[1:-1], votos_classes, nomes):
         sns.heatmap(voto, ax=ax, cbar=False, cmap="viridis", square=True)
         ax.set_title(f"{nome}", fontsize=10)
         ax.axis("off")
 
+    # Mapa de consenso
     sns.heatmap(consenso_map, ax=axes[-1], cbar=False, cmap="Greens", square=True)
     axes[-1].set_title("Mapa de Consenso (≥3)", fontsize=10)
     axes[-1].axis("off")
 
-    plt.suptitle(f"Predições dos Modelos - Iteração {iteracao}", fontsize=12)
+
+    plt.suptitle(f"Predições dos Modelos - Iteração {iteracao} Task {task_id}", fontsize=12)
     filepath = os.path.join(saida_dir, f"{block_idx} - votos_iter_{iteracao:02d}.png")
     plt.tight_layout()
     plt.savefig(filepath)
@@ -252,6 +258,7 @@ def gerar_video_time_lapse(pasta="votos_visuais", block_idx=0, saida="video_voto
 
     video.release()
     log(f"[VISUAL] Vídeo salvo em {saida}")
+    return saida
 
 def embutir_trilha_sonora(video_path="court_drama.mp4", block_idx=0, musica_path="intergalactic.mp3", output="court_with_sound.mp4"):
     try:

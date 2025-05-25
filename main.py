@@ -31,9 +31,9 @@ def test_challenge(models, X_test, model_idx, raw_test_inputs, block_index, task
             x_input_juiz = tf.zeros((1, 30, 30, 1, 40), dtype=tf.float32)
 
         log(f"[TEST] Preview raw input: {np.unique(raw_test_inputs[0])}")
-        preds = arc_court_supreme(models, x_input_outros, None, block_idx=block_index)
+        preds = arc_court_supreme(models, x_input_outros, None, task_id=task_id,block_idx=block_index)
 
-        video_path = gerar_video_time_lapse(block_idx=block_index)
+        video_path = gerar_video_time_lapse(pasta="votos_visuais", block_idx=block_index, saida=f"{block_index}_{task_id}.avi")
         if video_path:
             embutir_trilha_sonora(video_path=video_path, block_idx=block_index)
 

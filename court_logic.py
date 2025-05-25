@@ -4,7 +4,7 @@ from runtime_utils import log
 from model_loader import load_model
 from metrics_utils import salvar_voto_visual
 
-def arc_court_supreme(models, input_tensor_outros, expected_output, block_idx=0, max_iters=10, tol=0.98, epochs=60, learning_rate=0.0005):
+def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, block_idx=0, max_iters=10, tol=0.98, epochs=60, learning_rate=0.0005):
     
     if len(models) < 5:
         raise ValueError("Corte incompleta: recebi menos de 5 modelos.")
@@ -75,7 +75,7 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, block_idx=0,
         else:
             log(f"[OK] Juíza produziu saída válida com shape: {votos_models[-1].shape}")
 
-        salvar_voto_visual(votos_models, iter_count, block_idx)
+        salvar_voto_visual(votos_models, iter_count, block_idx, input_tensor_outros, task_id=task_id)
 
         consenso = avaliar_consenso_por_j(votos_models, tol, required_votes=5)
         log(f"[CONSENSO] Iteração {iter_count + 1}: Consenso = {consenso:.4f}")
@@ -100,7 +100,7 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, block_idx=0,
         for i, vm in enumerate(votos_models):
             log(f"[DEBUG] votos_model[{i}] shape: {vm.shape}")
 
-        while (loss_value > 0.02 or accuracy < 1.0) and cycles < MAX_CYCLES:
+        while (loss_value > 0.001 or accuracy < 1.0) and cycles < MAX_CYCLES:
             supreme_juiza.fit(entrada_suprema, tf.argmax(votos_models[-1], axis=-1), epochs=epochs, verbose=0)
             pred_suprema_logits = supreme_juiza(entrada_suprema, training=False)
             log(f"[DEBUG] Suprema logits shape: {pred_suprema_logits.shape}")

@@ -6,7 +6,7 @@ from metrics import standardize_grid_shapes, pad_to_30x30_top_left, pad_to_30x30
 
 
 
-def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_size, model_idx):
+def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_size, block_idx, model_idx):
     start_idx = block_index * block_size
     end_idx = start_idx + block_size
     block_task_ids = task_ids[start_idx:end_idx]
@@ -43,11 +43,12 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
         if model_idx == 4:
             X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=1, confidence_value=40))
             X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=1, confidence_value=40))
+            Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=1, confidence_value=40))
         else:
             X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=1, confidence_value=4))
             X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=1, confidence_value=4))
+            Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=1, confidence_value=4))
 
-        Y.append(add_judge_channel(input_grid, juizo_value=1, channel_value=1, confidence_value=4))
         info.append({"task_id": task_id})
 
     X, Y = standardize_grid_shapes(X, Y)
@@ -67,14 +68,24 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
         Y_train, Y_val = Y, Y
         info_train, info_val = info, info
 
+    if len(X_train.shape) == 4:
+        X_train = tf.expand_dims(X_train, axis=0)
+    
+   
+    # if len(Y_train.shape) == 4:
+    #     Y_train = tf.expand_dims(Y_train, axis=0)
+    # if len(Y_val.shape) == 4:
+    #     Y_val = tf.expand_dims(Y_val, axis=0)
+
+    
     sw_train = np.ones_like(Y_train[..., 0], dtype=np.float32)
     sw_val = np.ones_like(Y_val[..., 0], dtype=np.float32)
 
     return (
         tf.convert_to_tensor(X_train, dtype=tf.float32),
         tf.convert_to_tensor(X_val, dtype=tf.float32),
-        tf.convert_to_tensor(Y_train[..., 0], dtype=tf.int32),
-        tf.convert_to_tensor(Y_val[..., 0], dtype=tf.int32),
+        tf.cast(Y_train[..., 0], dtype=tf.int32),
+        tf.cast(Y_val[..., 0], dtype=tf.int32),
         tf.convert_to_tensor(sw_train, dtype=tf.float32),
         tf.convert_to_tensor(sw_val, dtype=tf.float32),
         tf.convert_to_tensor(X_test, dtype=tf.float32),
@@ -84,3 +95,4 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
         raw_inputs,
         raw_test_inputs
     )
+

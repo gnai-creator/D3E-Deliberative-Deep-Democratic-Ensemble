@@ -117,39 +117,50 @@ class ClippyX:
             return {"consenso": 0.0}
 
 
-def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=10, consenso_minimo=0.9):
+# Global cache para manter batches entre chamadas
+todos_os_batches = {}
+
+def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=10, consenso_minimo=0.9, idx=0):
     clippy = ClippyX()
     with open("arc-agi_test_challenges.json") as f:
         test_challenges = json.load(f)
     task_ids = list(test_challenges.keys())
-    batches = load_data_batches(challenges=test_challenges,num_models=clippy.num_modelos,task_ids=task_ids)
-    for batch_idx in range(len(batches)):
+
+    if idx not in todos_os_batches:
+        todos_os_batches[idx] = []
+
         for model_idx in range(clippy.num_modelos):
+            batches = load_data_batches(
+                challenges=test_challenges,
+                num_models=clippy.num_modelos,
+                task_ids=task_ids,
+                model_idx=model_idx,
+                block_idx=idx
+            )
             training_process(
                 models=clippy.models,
                 batches=batches,
                 n_model=model_idx,
-                batch_index=batch_idx,
-                max_blocks=1, 
-                block_size=1, 
-                max_training_time=14400, 
-                cycles=150, 
-                epochs=60, 
+                batch_index=idx,
+                max_blocks=1,
+                block_size=1,
+                max_training_time=14400,
+                cycles=150,
+                epochs=60,
                 batch_size=8,
                 patience=20,
                 rl_lr=2e-3,
                 factor=0.65,
                 len_trainig=1,
                 pad_value=0,
-                )
-    for (X_train, X_val, Y_train, Y_val, X_test, raw_input, block_idx, task_id) in batches:
+            )
+            todos_os_batches[idx].extend(batches)
+
+    for (X_train, X_val, Y_train, Y_val, X_test, raw_input, block_idx, task_id) in todos_os_batches[idx]:
         iteracao = 0
         sucesso = False
-        # Treina raciocinios
-        
 
         while not sucesso and iteracao < max_iteracoes:
-            
             log(f"[CLIPPYX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
             resultado = clippy.julgar(X_test, raw_input, block_idx, task_id)
 
@@ -173,11 +184,13 @@ if __name__ == "__main__":
     np.random.seed(42)
     random.seed(42)
     os.environ["TF_DETERMINISTIC_OPS"] = "1"
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    idx = 0
     while True:
         while rodar_deliberacao_com_condicoes(
             parar_se_sucesso=True,
             max_iteracoes=150,
-            consenso_minimo=0.9
+            consenso_minimo=0.9,
+            idx=idx
         ):
-            pass
+            idx += 1

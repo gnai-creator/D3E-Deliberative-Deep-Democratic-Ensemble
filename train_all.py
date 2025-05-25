@@ -58,19 +58,6 @@ def training_process(
     if model is None:
         raise ValueError(f"[FATAL] Modelo {n_model} não foi carregado corretamente.")
 
-    # if n_model == 4:
-    #     Y_train = tf.squeeze(Y_train, axis=-1)
-    #     Y_val = tf.squeeze(Y_val, axis=-1)
-
-    if len(X_train.shape) == 4:
-        X_train = tf.expand_dims(X_train, axis=0)
-    # if len(X_val.shape) == 4:
-    #     X_val = tf.expand_dims(X_val, axis=0)
-    # if len(Y_train.shape) == 4:
-    #     Y_train = tf.expand_dims(Y_train, axis=0)
-    # if len(Y_val.shape) == 4:
-    #     Y_val = tf.expand_dims(Y_val, axis=0)
-
     log(f"[INFO] Treinando modelo {n_model} no exemplo {batch_index}")
     log(f"[INFO] SHAPE X TRAIN : {X_train.shape}")
     log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")

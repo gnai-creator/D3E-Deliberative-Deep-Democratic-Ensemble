@@ -42,7 +42,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         # Juíza aprende com advogada
         y_juiza = tf.argmax(votos_models["modelo_3"], axis=-1)
         entrada_juiza = input_tensor_outros
-        entrada_juiza = tf.reshape(entrada_crua, [1, 30, 30, 1, 1])
+        entrada_juiza = tf.reshape(entrada_crua, [1, 30, 30, 1, 10])
         entrada_juiza = pad_or_truncate_channels(entrada_juiza, 40)
         juiza.fit(entrada_juiza, y_juiza, epochs=epochs, verbose=0)
         votos_models["modelo_4"] = juiza(entrada_juiza, training=False)

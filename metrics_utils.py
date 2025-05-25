@@ -85,10 +85,36 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
     except Exception as e:
         print("[ERROR] Falha ao gerar plot de teste:", str(e))
 
+
+
+def ensure_numpy(tensor):
+    return tensor.numpy() if hasattr(tensor, "numpy") else tensor
+
+def safe_squeeze_axis(tensor, axis):
+    if tensor.shape[axis] == 1:
+        return tf.squeeze(tensor, axis=axis)
+    return tensor
+
+def preparar_voto_para_visualizacao(v):
+    v = ensure_numpy(v)
+
+    # Se ainda tiver logits (mais de 2 dimensões), transforma em classes
+    if v.ndim > 2:
+        v = np.argmax(v, axis=-1)
+
+    # Agora, remove eixos extras até ficar 2D
+    while v.ndim > 2:
+        v = np.squeeze(v, axis=0)
+
+    if v.ndim == 3:
+        v = v[..., 0]
+    return v
+
+
 def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, task_id=None, saida_dir="votos_visuais"):
     os.makedirs(saida_dir, exist_ok=True)
-    num_modelos = len(votos)
-    votos_classes = [np.argmax(ensure_numpy(v), axis=-1)[0] for v in votos if v is not None]
+    votos_classes = [preparar_voto_para_visualizacao(v) for v in votos if v is not None]
+    num_modelos = len(votos_classes)
 
     # Nome do arquivo
     prefixo = f"{task_id}_" if task_id else ""
@@ -97,10 +123,8 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, task_id=
 
     if not votos_classes:
         print("[WARNING] Nenhuma predição válida para visualização.")
-        
         fig, ax = plt.subplots(figsize=(6, 6))
-        
-        # Calcular entropia nos canais do input, se possível
+
         raw_input = np.squeeze(input_tensor_outros[0])
         if raw_input.ndim == 3:
             H, W, C = raw_input.shape
@@ -109,7 +133,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, task_id=
                 for j in range(W):
                     vals, counts = np.unique(raw_input[i, j, :], return_counts=True)
                     probs = counts / np.sum(counts)
-                    entropy = -np.sum(probs * np.log2(probs + 1e-9))  # +eps para evitar log(0)
+                    entropy = -np.sum(probs * np.log2(probs + 1e-9))
                     heatmap[i, j] = entropy
             sns.heatmap(heatmap, ax=ax, cmap="magma", square=True, cbar=True)
             ax.set_title("Entropia dos Pixels (Sem votos válidos)", fontsize=10)
@@ -136,22 +160,26 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, task_id=
 
     fig, axes = plt.subplots(1, num_modelos + 2, figsize=(4 * (num_modelos + 2), 4))
 
-    # Identificações
     cargos = {
         0: "Jurada 1", 1: "Jurada 2", 2: "Jurada 3",
         3: "Advogada", 4: "Juíza", 5: "Suprema Juíza"
     }
     nomes = [cargos.get(i, f"Modelo {i}") for i in range(num_modelos)]
 
-    for ax, voto, nome in zip(axes[:-2], votos_classes, nomes):
+    for ax, voto, nome in zip(axes[:num_modelos], votos_classes, nomes):
         sns.heatmap(voto, ax=ax, cbar=False, cmap="viridis", square=True)
         ax.set_title(f"{nome}", fontsize=10)
         ax.axis("off")
 
     # Input original
-    input_vis = np.squeeze(input_tensor_outros[0])
-    if input_vis.ndim == 3:
+    input_vis = ensure_numpy(input_tensor_outros[0])
+    if input_vis.ndim == 4:
         input_vis = input_vis[..., 0]
+    elif input_vis.ndim == 3 and input_vis.shape[-1] > 1:
+        input_vis = np.mean(input_vis, axis=-1)
+
+    input_vis = np.squeeze(input_vis)  # Garante que esteja em 2D
+
     sns.heatmap(input_vis, ax=axes[-2], cbar=False, cmap="gray", square=True)
     axes[-2].set_title("Input", fontsize=10)
     axes[-2].axis("off")
@@ -165,6 +193,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, task_id=
     plt.savefig(filepath)
     plt.close()
     print(f"[VISUAL] Salvo mapa de votos + consenso em {filepath}")
+
 
 
 def plot_confusion(y_true, y_pred, model_name):

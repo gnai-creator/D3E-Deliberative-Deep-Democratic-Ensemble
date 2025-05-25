@@ -5,6 +5,7 @@ from model_loader import load_model
 from metrics_utils import salvar_voto_visual
 
 def arc_court_supreme(models, input_tensor_outros, expected_output, block_idx=0, max_iters=10, tol=0.98, epochs=60, learning_rate=0.0005):
+    
     if len(models) < 5:
         raise ValueError("Corte incompleta: recebi menos de 5 modelos.")
 
@@ -19,12 +20,14 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, block_idx=0,
     log(f"[INÍCIO] Tribunal iniciado com {len(models)} modelos.")
     log(f"[INFO] Tolerância de consenso definida em {tol:.2f}")
     supreme_juiza = load_model(5, learning_rate)
-    MAX_CYCLES = 5
+    MAX_CYCLES = 50
 
-    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy()
+    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
     acc_fn = tf.keras.metrics.SparseCategoricalAccuracy()
 
     while consenso < 1.0:
+        if len(input_tensor_outros.shape) == 4 and input_tensor_outros.shape[0] != 1:
+            input_tensor_outros = tf.expand_dims(input_tensor_outros, axis=0)
         log(f"\n[ITER {iter_count + 1}] Iniciando rodada de julgamento")
 
         y_advogada_logits = advogada(input_tensor_outros, training=False)
@@ -52,7 +55,20 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, block_idx=0,
         juiza.fit(x=input_juiza_concat, y=y_advogada_classes, epochs=epochs * 3, verbose=0)
         log(f"[TREINO] Juíza treinada com opiniões de juradas e advogada")
 
-        votos_models = [pad_to_10_channels(model(input_tensor_outros, training=False)) for model in juradas + [advogada, juiza]]
+        votos_models = []
+        for idx, model in enumerate(juradas + [advogada, juiza]):
+            if hasattr(model, 'from_40'):
+                log(f"[DEBUG] ajustando input_tensor_outros para modelo[{idx}] que espera 40 canais")
+                input_tensor_mod = tf.concat(votos_models, axis=-1)[..., :40]
+                input_tensor_mod = tf.expand_dims(input_tensor_mod, axis=3)
+                log(f"[DEBUG] input_tensor_mod para modelo[{idx}] shape: {input_tensor_mod.shape}")
+            else:
+                input_tensor_mod = input_tensor_outros
+            pred = model(input_tensor_mod, training=False)
+            log(f"[DEBUG] modelo[{idx}] predição shape: {pred.shape}")
+            padded = pad_to_10_channels(pred)
+            log(f"[DEBUG] modelo[{idx}] padded shape: {padded.shape}")
+            votos_models.append(padded)
 
         if tf.reduce_sum(votos_models[-1]) == 0:
             log("[WARN] Juíza retornou apenas zeros na predição final.")
@@ -64,22 +80,37 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, block_idx=0,
         consenso = avaliar_consenso_por_j(votos_models, tol, required_votes=5)
         log(f"[CONSENSO] Iteração {iter_count + 1}: Consenso = {consenso:.4f}")
 
-        if iter_count > 0:
-            y_juiza_classes = tf.argmax(votos_models[-1], axis=-1)
-            advogada.fit(x=input_tensor_outros, y=y_juiza_classes, epochs=epochs, verbose=0)
-            log("[TREINO] Advogada atualizada com voto da juíza")
-
         log("[SUPREMA] Iniciando Suprema Juíza com julgamento do Juiz")
         loss_value = float('inf')
         accuracy = 0.0
         cycles = 0
 
-        while (loss_value > 0.05 or accuracy < 0.68) and cycles < MAX_CYCLES:
-            supreme_juiza.fit(input_tensor_outros, tf.argmax(votos_models[-1], axis=-1), epochs=epochs, verbose=0)
-            pred_suprema_logits = supreme_juiza(input_tensor_outros, training=False)
+        entrada_suprema = tf.concat(votos_models, axis=-1)
+        log(f"[DEBUG] concat shape before slicing: {entrada_suprema.shape}")
+        if entrada_suprema.shape[-1] >= 40:
+            entrada_suprema = entrada_suprema[..., :40]
+        else:
+            padding = 40 - entrada_suprema.shape[-1]
+            entrada_suprema = tf.pad(entrada_suprema, paddings=[[0, 0], [0, 0], [0, 0], [0, padding]])
+            log(f"[DEBUG] Entrada suprema padded para shape: {entrada_suprema.shape}")
+        entrada_suprema = tf.reshape(entrada_suprema, [1, 30, 30, 40])
+        entrada_suprema = tf.expand_dims(entrada_suprema, axis=3)
+        log(f"[DEBUG] entrada_suprema final shape (com eixo expandido): {entrada_suprema.shape}")
+        log(f"[DEBUG] entrada_suprema shape: {entrada_suprema.shape}")
+        for i, vm in enumerate(votos_models):
+            log(f"[DEBUG] votos_model[{i}] shape: {vm.shape}")
+
+        while (loss_value > 0.02 or accuracy < 1.0) and cycles < MAX_CYCLES:
+            supreme_juiza.fit(entrada_suprema, tf.argmax(votos_models[-1], axis=-1), epochs=epochs, verbose=0)
+            pred_suprema_logits = supreme_juiza(entrada_suprema, training=False)
+            log(f"[DEBUG] Suprema logits shape: {pred_suprema_logits.shape}")
             votos_supremos = tf.argmax(pred_suprema_logits, axis=-1)
 
-            votos_supremos_logits = pad_to_10_channels(pred_suprema_logits)
+            if pred_suprema_logits.shape[-1] < 10:
+                votos_supremos_logits = pad_to_10_channels(pred_suprema_logits)
+            else:
+                votos_supremos_logits = pred_suprema_logits
+
             votos_models_final = [votos_supremos_logits for _ in range(6)]
             salvar_voto_visual(votos_models_final, iter_count + cycles, block_idx)
 
@@ -92,8 +123,13 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, block_idx=0,
             log(f"[SUPREMA] Ciclo {cycles} - Loss: {loss_value:.4f} - Accuracy: {accuracy:.4f}")
             cycles += 1
 
+        input_advogada = tf.concat(votos_models, axis=-1)[..., :4]
+        input_advogada = tf.reshape(input_advogada, [1, 30, 30, 1, 4])
+        advogada.fit(x=input_advogada, y=votos_supremos, epochs=epochs, verbose=0)
+        log("[TREINO] Advogada atualizada com voto da Suprema Juíza")
+
         iter_count += 1
-        votos_final = tf.argmax(votos_models[-1], axis=-1)
+        votos_final = votos_supremos
 
     log(f"\n[FIM] Julgamento encerrado após {iter_count} iteração(ões). Consenso final: {consenso:.4f}")
     return votos_supremos

@@ -31,7 +31,7 @@ def test_challenge(models, X_test, model_idx, raw_test_inputs, block_index, task
             x_input_juiz = tf.zeros((1, 30, 30, 1, 40), dtype=tf.float32)
 
         log(f"[TEST] Preview raw input: {np.unique(raw_test_inputs[0])}")
-        preds = arc_court_supreme(models,  x_input_outros, block_idx=block_index)
+        preds = arc_court_supreme(models, x_input_outros, None, block_idx=block_index)
 
         video_path = gerar_video_time_lapse(block_idx=block_index)
         if video_path:
@@ -195,6 +195,7 @@ if __name__ == "__main__":
                             if corte_esta_completa(models):
                                 test_challenge(models, X_test, model_idx, raw_test_inputs, block_index, task_id, submission_dict)
                                 block_index += 1
+                                model_idx += 1
                                 break
 
                             model_idx += 1

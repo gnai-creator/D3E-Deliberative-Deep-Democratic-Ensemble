@@ -8,6 +8,7 @@ import tensorflow as tf
 from sklearn.metrics import confusion_matrix, classification_report
 from runtime_utils import log, make_serializable
 import imageio
+import cv2
 import glob
 import sys
 sys.path.append('/home/vscode/.local/lib/python3.10/site-packages')
@@ -234,31 +235,23 @@ def plot_prediction_debug(expected_output, predicted_output, raw_input=None, mod
         log(f"[ERROR] Falha ao gerar plot de debug: {e}")
 
 
-def gerar_video_time_lapse(pasta="votos_visuais", block_idx=0, output="court_drama.mp4", fps=1):
-    try:
-        if not isinstance(pasta, str):
-            raise ValueError(f"[ERRO] Argumento 'pasta' deve ser uma string. Recebido: {pasta}")
+def gerar_video_time_lapse(pasta="votos_visuais", block_idx=0, saida="video_votos.avi", fps=1):
+    arquivos = sorted(glob.glob(os.path.join(pasta, f"{block_idx} - votos_iter_*.png")))
 
-        arquivos = sorted(glob.glob(os.path.join(pasta, "votos_iter_*.png")))
-        if not arquivos:
-            log("[VISUAL] Nenhuma imagem de iteração encontrada para gerar o vídeo.")
-            return None
+    if not arquivos:
+        log("[VISUAL] Nenhuma imagem de iteração encontrada para gerar o vídeo.")
+        return
 
-        os.makedirs("videos", exist_ok=True)
-        filename = f"videos/julgamento_block_{block_idx}.mp4"
+    primeira_img = cv2.imread(arquivos[0])
+    altura, largura, _ = primeira_img.shape
+    video = cv2.VideoWriter(saida, cv2.VideoWriter_fourcc(*'XVID'), fps, (largura, altura))
 
-        log(f"[VIDEO] Gerando vídeo com {len(arquivos)} quadros...")
-        with imageio.get_writer(filename, fps=fps) as writer:
-            for img_path in arquivos:
-                img = imageio.imread(img_path)
-                writer.append_data(img)
+    for arq in arquivos:
+        img = cv2.imread(arq)
+        video.write(img)
 
-        log(f"[VIDEO] Time-lapse salvo em: {filename}")
-        return filename
-
-    except Exception as e:
-        log(f"[ERRO] Falha ao gerar vídeo: {e}")
-        return None
+    video.release()
+    log(f"[VISUAL] Vídeo salvo em {saida}")
 
 def embutir_trilha_sonora(video_path="court_drama.mp4", block_idx=0, musica_path="intergalactic.mp3", output="court_with_sound.mp4"):
     try:

@@ -6,6 +6,7 @@ seaborn
 scikit-learn
 imageio
 moviepy
+opencv-python-headless
 
 # TensorFlow Addons compatível com TF 2.15
 tensorflow-addons==0.21.0

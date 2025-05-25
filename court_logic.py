@@ -35,7 +35,10 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
 
         for idx, jurada in enumerate(juradas):
             if idx in [0, 1]:  # juradas do contra
-                y_treino = (y_advogada_classes + tf.random.uniform(shape=y_advogada_classes.shape, maxval=3, dtype=tf.int64)) % 10
+                y_treino = (
+                    tf.cast(y_advogada_classes, tf.int64)
+                    + tf.random.uniform(shape=y_advogada_classes.shape, maxval=3, dtype=tf.int64)
+                ) % 10
             else:
                 y_treino = y_advogada_classes
             jurada.fit(x=input_tensor_outros, y=y_treino, epochs=epochs, verbose=0)

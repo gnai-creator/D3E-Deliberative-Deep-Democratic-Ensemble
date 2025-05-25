@@ -15,3 +15,5 @@ Talvez revisar o loss function de alguns dos modelos simples (se quiser que todo
 
 Benchmarkar tempo de julgamento caso use isso em larga escala.
 
+Antes de submition retomar o tamanho do pad do array
+

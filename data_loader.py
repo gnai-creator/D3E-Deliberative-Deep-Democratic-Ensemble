@@ -39,10 +39,15 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
         if max_h > 30 or max_w > 30:
             log(f"[WARN] Grid maior que 30x30: {max_h}x{max_w} — pulando")
             continue
+        
+        if model_idx == 4:
+            X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=1, confidence_value=40))
+            X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=1, confidence_value=40))
+        else:
+            X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=1, confidence_value=4))
+            X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=1, confidence_value=4))
 
-        X.append(add_judge_channel(input_grid, juizo_value=0, model_idx=model_idx))
-        Y.append(add_judge_channel(output_grid, juizo_value=1, model_idx=model_idx))
-        X_test.append(add_judge_channel(test_input_grid, juizo_value=0, model_idx=model_idx))
+        Y.append(add_judge_channel(input_grid, juizo_value=1, channel_value=1, confidence_value=4))
         info.append({"task_id": task_id})
 
     X, Y = standardize_grid_shapes(X, Y)

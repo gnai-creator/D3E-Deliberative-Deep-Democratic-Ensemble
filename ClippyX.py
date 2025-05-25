@@ -123,23 +123,25 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=10, con
         test_challenges = json.load(f)
     task_ids = list(test_challenges.keys())
     batches = load_data_batches(challenges=test_challenges,num_models=clippy.num_modelos,task_ids=task_ids)
-    for model_idx in range(len(batches)):
-        training_process(
-            models=clippy.models,
-            batches=batches,
-            n_model=model_idx,
-            max_blocks=1, 
-            block_size=1, 
-            max_training_time=14400, 
-            cycles=150, 
-            epochs=60, 
-            batch_size=8,
-            patience=20,
-            rl_lr=2e-3,
-            factor=0.65,
-            len_trainig=1,
-            pad_value=0,
-            )
+    for batch_idx in range(len(batches)):
+        for model_idx in range(clippy.num_modelos):
+            training_process(
+                models=clippy.models,
+                batches=batches,
+                n_model=model_idx,
+                batch_index=batch_idx,
+                max_blocks=1, 
+                block_size=1, 
+                max_training_time=14400, 
+                cycles=150, 
+                epochs=60, 
+                batch_size=8,
+                patience=20,
+                rl_lr=2e-3,
+                factor=0.65,
+                len_trainig=1,
+                pad_value=0,
+                )
     for (X_train, X_val, Y_train, Y_val, X_test, raw_input, block_idx, task_id) in batches:
         iteracao = 0
         sucesso = False

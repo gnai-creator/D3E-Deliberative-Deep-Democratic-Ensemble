@@ -1,66 +1,76 @@
-# ARC Court Supreme
+# SimuV1 ARC Court AI System
 
-Este projeto é uma simulação inspirada no ARC Challenge, onde um tribunal composto por diferentes modelos de deep learning julga a melhor predição para uma tarefa de visão computacional.
+Este projeto é uma simulação avançada de julgamento automático de tarefas do [ARC Challenge](https://github.com/fchollet/ARC). Ele introduz uma arquitetura inspirada em um tribunal, composta por múltiplos modelos (juradas, advogada, juíza e suprema juíza), onde a tomada de decisão é baseada em consenso.
 
-## Visão Geral
+## Estrutura do Tribunal
 
-O sistema possui:
-- **3 Juradas** (modelos que aprendem com a advogada)
-- **1 Advogada** (modelo base que tenta prever a saída original)
-- **1 Juíza** (modelo que aprende com juradas e advogada)
-- **1 Suprema Juíza** (modelo que aprende a partir das predições da juíza comum)
+- **Juradas (3 modelos):** Aprendem com a saída da Advogada.
+- **Advogada:** Aprende com a saída da Suprema Juíza.
+- **Juíza:** Aprende com as saídas das Juradas e da Advogada.
+- **Suprema Juíza:** Treina com as predições da Juíza, decide o veredito final e re-treina a Advogada.
 
-A cada iteração, os modelos votam em um resultado, e um sistema de consenso é utilizado para determinar a qualidade das predições.
+## Arquiteturas SimuV*
 
-## Fluxo do Tribunal
+O projeto contém cinco versões de modelos neurais sofisticados:
 
-1. **Input** é apresentado a todos os modelos.
-2. **Advogada** faz uma predição inicial.
-3. **Juradas** treinam suas saídas com base na advogada.
-4. **Juíza** treina com base nas juradas + advogada.
-5. **Suprema Juíza** treina com base na juíza, ajustando-se até que a perda fique abaixo de um limiar.
-6. **Advogada** se atualiza com o veredito final da Suprema.
-7. O processo repete até que o consenso entre modelos seja atingido (por padrão, 5 de 6 modelos concordando).
+- `SimuV1.py` a `SimuV5.py`: Modelos sequenciais com módulos atencionais, permutadores de classe, codificações posicionais e módulos de memória.
+- Usam a API do TensorFlow 2.x e Keras.
 
-## Diretórios
+## Requisitos
 
-- `votos_visuais/`: imagens geradas com os votos de cada modelo, input e mapa de consenso.
-- `videos/`: arquivos .avi gerados automaticamente a partir dos votos.
+- Python 3.10
+- TensorFlow >= 2.12
+- Pandas, NumPy, Matplotlib, Seaborn
+- OpenCV (para geração de vídeos)
 
 ## Execução
 
-1. Instale as dependências:
-   ```bash
-   pip install tensorflow opencv-python matplotlib seaborn
-   ```
+### 1. Pré-processamento dos Dados
 
-2. Execute o sistema:
-   ```bash
-   python main.py
-   ```
+```bash
+python3 main.py --prepare
+```
 
-3. Para gerar o vídeo time-lapse de votação:
-   ```python
-   from metrics_utils import gerar_video_time_lapse
-   gerar_video_time_lapse(block_idx=0)
-   ```
+### 2. Treinamento e Julgamento
 
-## Componentes
+```bash
+python3 main.py --train
+```
 
-- `model_loader.py`: carrega os modelos (juradas, juíza, advogada, suprema).
-- `court_logic.py`: lógica de julgamento iterativo.
-- `metrics_utils.py`: salva votos visuais, avalia consenso e gera vídeo.
-- `main.py`: ponto de entrada do sistema.
+### 3. Teste no ARC Challenge
 
-## Visualização
-Cada iteração gera uma imagem com:
-- Input da tarefa
-- Votos de cada modelo
-- Mapa de consenso (pixels com maioria qualificada)
+```bash
+python3 main.py --test_challenge
+```
 
-## Objetivo
-A ideia é simular uma tomada de decisão colegiada e iterativa entre modelos, onde uma Suprema Juíza resolve ambiguidades e busca maximizar a qualidade da predição coletiva.
+## Estrutura dos Diretórios
+
+- `main.py`: Arquivo principal de execução.
+- `court_logic.py`: Lógica da simulação do tribunal com treinamento iterativo.
+- `metrics_utils.py`: Visualização dos votos e métricas de consenso.
+- `data_preparation.py`: Carregamento e formatação dos dados do ARC.
+- `SimuV*.py`: Arquivos com diferentes versões dos modelos neurais.
+- `neural_blocks.py`: Blocos personalizados usados por todos os modelos.
+- `votos_visuais/`: Gera visualizações dos votos por iteração.
+- `videos/`: Armazena vídeos compilados com as votações visuais.
+
+## Modo de Consenso
+
+O sistema considera consenso quando **5 dos 6 modelos** concordam com a mesma classe para um pixel. A Suprema Juíza treina até que sua loss seja inferior a `0.05` e a acurácia seja superior a `0.95`.
+
+## Visualizações
+
+Cada iteração gera um arquivo `.png` com a predição de cada modelo e um mapa de consenso, salvos em `votos_visuais/`. Esses arquivos são usados para criar vídeos da deliberação.
+
+## Erros Comuns
+
+- `ValueError: Entrada com shape inesperado`: certifique-se que todos os tensores estão com o shape [B, 30, 30, 1, C].
+- `UnboundLocalError: votos_models_final`: ocorre quando não há votos válidos durante iterações iniciais. Proteja o código com verificações.
+
+## Autor
+
+Desenvolvido por [gnai-creator](https://github.com/gnai-creator), com amor e paciência para lidar com modelos que argumentam mais que humanos.
 
 ---
 
-Sim, é uma corte de modelos neurais. Não, você não está sonhando.
+**Nota:** Este projeto é uma simulação experimental com fins de pesquisa. Não use isso para tomar decisões jurídicas no mundo real. (Ainda.)

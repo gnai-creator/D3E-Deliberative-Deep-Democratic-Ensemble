@@ -58,12 +58,12 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
         for idx, model in enumerate(juradas + [advogada, juiza]):
             if hasattr(model, 'from_40'):
                 log(f"[DEBUG] ajustando input_tensor_outros para modelo[{idx}] que espera 40 canais")
-                input_tensor_mod = tf.concat(votos_models, axis=-1)[..., :40]
-                input_tensor_mod = tf.expand_dims(input_tensor_mod, axis=3)
-                log(f"[DEBUG] input_tensor_mod para modelo[{idx}] shape: {input_tensor_mod.shape}")
+                input_tensor_juiza = tf.concat(votos_models, axis=-1)[..., :40]
+                input_tensor_juiza = tf.expand_dims(input_tensor_juiza, axis=3)
+                log(f"[DEBUG] input_tensor_mod para modelo[{idx}] shape: {input_tensor_juiza.shape}")
             else:
-                input_tensor_mod = input_tensor_outros
-            pred = model(input_tensor_mod, training=False)
+                input_tensor_juiza = input_tensor_outros
+            pred = model(input_tensor_juiza, training=False)
             log(f"[DEBUG] modelo[{idx}] predição shape: {pred.shape}")
             padded = pad_to_10_channels(pred)
             log(f"[DEBUG] modelo[{idx}] padded shape: {padded.shape}")
@@ -111,8 +111,8 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
             log(f"[SUPREMA] Ciclo {cycles} - Loss: {loss_value:.4f} - Accuracy: {accuracy:.4f}")
             cycles += 1
 
-        input_advogada = tf.concat(votos_models, axis=-1)[..., :4]
-        input_advogada = tf.reshape(input_advogada, [1, 30, 30, 1, 4])
+
+        input_advogada = tf.reshape(entrada_suprema[..., :4], [1, 30, 30, 1, 4])
         advogada.fit(x=input_advogada, y=votos_supremos, epochs=epochs, verbose=0)
         log("[TREINO] Advogada atualizada com voto da Suprema Juíza")
 

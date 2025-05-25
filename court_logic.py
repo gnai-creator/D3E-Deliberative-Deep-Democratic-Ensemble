@@ -35,7 +35,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                     tf.random.uniform(shape=(1, 30, 30), maxval=3, dtype=tf.int64)) % 10
 
         entrada_crua_adv = tf.reshape(entrada_crua, [1, 30, 30, 1, 1])
-        entrada_crua_adv = pad_or_truncate_channels(entrada_crua_adv, 40)
+        entrada_crua_adv = pad_or_truncate_channels(entrada_crua_adv, 4)
         advogada.fit(entrada_crua_adv, y_treino, epochs=epochs, verbose=0)
         votos_models["modelo_3"] = advogada(input_tensor_outros, training=False)
 

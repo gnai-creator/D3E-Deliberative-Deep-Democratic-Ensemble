@@ -1,64 +1,63 @@
-# 🧠 D3E — Deliberative Deep Democratic Ensemble
+![D3E - Deliberative Deep Democratic Ensemble](DDDE.png)
 
-![D3E Logo](A_logo_for_D3E,_"DDDE.png)
+# D3E: Deliberative Deep Democratic Ensemble
 
-## 📚 Overview
-D3E simulates a deliberative courtroom of neural agents — jurors, lawyers, judges, and a supreme judge — each with their own role in collectively resolving ambiguous perception tasks from the ARC Challenge.
+D3E (Deliberative Deep Democratic Ensemble) é um sistema de aprendizado coletivo inspirado na estrutura de um tribunal. Foi projetado para resolver tarefas do ARC Challenge com base em deliberacão iterativa entre modelos neurais especializados.
 
-This system prioritizes process over speed, engaging in iterative voting and refinement until consensus is reached. Each agent is an independently trained neural network that evolves through simulated deliberation.
+## 🏛️ Arquitetura
 
-## ⚙️ System Hierarchy
-- **Juradas (x3)**: Learn from the Advogada, add plurality of views.
-- **Advogada**: Learns from the Suprema Juíza.
-- **Juíza**: Aggregates juror and lawyer outputs.
-- **Suprema Juíza**: Trains on raw data, acts as the final authority.
+* **Juradas (3)**: Modelos que aprendem com a advogada.
+* **Advogada (1)**: Aprende com os dados crus (raw input) e a Suprema Juíza.
+* **Juíza (1)**: Agrega a opinião das juradas e da advogada.
+* **Suprema Juíza (1)**: Refina a predição com base apenas no input original, em ciclos iterativos, até que haja consenso entre pelo menos 5 modelos.
 
-## 🌀 Deliberation Cycle
-1. Raw input → Advogada → Juradas
-2. Juíza aggregates → Suprema Juíza refines
-3. If consensus (≥5/6) not reached → repeat cycle
-4. Advogada & Suprema Juíza always train from raw input
+## ⚖️ Ciclo de Julgamento
 
-## 🧪 Why This Works
-- Promotes interpretability through stepwise visualization
-- Resilient to noise and ambiguity
-- Models improve each iteration
+1. O input (do ARC) é apresentado.
+2. A advogada faz uma predição com base apenas no input.
+3. Juradas são treinadas com base na predição da advogada.
+4. A juíza se treina com as saídas das juradas e da advogada.
+5. Todos votam. Se 5 ou mais concordarem, temos consenso.
+6. Se não houver consenso:
 
-## 🧪 Results
-Performance varies per challenge:
-- 🟢 Task `00576224`: ✅ Consensus reached
-- 🟡 Task `007bbfb7`: ⚠️ Partial agreement
-- 🔴 Task `009d5c81`: ❌ Failed under strict consensus threshold
+   * A Suprema Juíza entra em ação, sendo treinada com base apenas no input e na predição da Juíza.
+   * Itera várias vezes até convergir ou atingir o limite de ciclos.
+7. A advogada atualiza-se com a opinião da Suprema Juíza.
+8. O ciclo se repete até alcançar consenso total ou o limite de iterações.
 
-## 🔍 Insights
-- High tolerance (`tol`) leads to slower but more accurate consensus
-- `MAX_CYCLES` and `EPOCHS` balance speed vs convergence
-- Juror disagreement can be intentionally injected for robustness
+## 🎓 Inspiração
 
-## 🔧 Files
-- `court_logic.py` — Core deliberative logic
-- `main.py` — Execution script
-- `metrics_utils.py` — Visual voting logs and metrics
-- `SimuV1-V5.py` — Neural models
+Inspirado em sistemas democráticos e deliberativos, o D3E busca resolver tarefas ambíguas promovendo o debate interno entre modelos. Essa abordagem estática e iterativa é especialmente eficaz em tarefas onde a solução correta é incerta.
 
-## 📦 Dependencies
+## 🔢 Características
+
+* Controle de consenso via `tol` (threshold entre 0.6 a 0.98)
+* Ciclos iterativos com máximo de 150 iterações por tarefa
+* Visualização por heatmaps dos votos e consenso
+* Deliberação com feedback realimentado
+* Sistema modulado por simulações neurais (SimuV1-V5)
+
+## 🔧 Execução
+
 ```bash
-pip install tensorflow numpy seaborn matplotlib opencv-python
+python main.py --mode test_challenge
 ```
 
-## 🧠 Inspirations
-- Legal systems
-- Democratic voting
-- Human group deliberation
+## 🎥 Saídas
 
-## 📺 Demos
-- [ARC 00576224 Demo](https://youtu.be/eXO_PCb6M6E)
-- [ARC 007bbfb7 Demo](https://youtu.be/0L6NJQhLlxE)
+* `votos_visuais/`: imagens de predição por iteração
+* `predictions_test/`: arquivos de predição finais por desafio
 
-## 🤖 Final Thoughts
-This is not just ensemble learning — it’s ensemble **deliberation**.
+## 🔍 Futuras melhorias
 
-> "Consensus isn’t given, it’s earned. One vote at a time."
+* Otimização de ciclos via early stopping
+* Juradas com ruído negativo regulador (adversarial noise)
+* Variações inspiradas em jurados dissidentes
+
+## 🚀 Contribuição
+
+Pull requests e melhorias são bem-vindas. O tribunal está sempre aberto a novas vozes.
 
 ---
-© 2025 Maya Rahto. Court is now in session.
+
+Copyright © 2025

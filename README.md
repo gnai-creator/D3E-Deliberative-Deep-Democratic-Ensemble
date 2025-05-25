@@ -1,6 +1,6 @@
 # 🧠 D3E — Deliberative Deep Democratic Ensemble
 
-![D3E Logo](A_logo_for_D3E,_"Deliberative_Deep_Democratic_Ense.png)
+![D3E Logo](A_logo_for_D3E,_"DDDE.png)
 
 ## 📚 Overview
 D3E simulates a deliberative courtroom of neural agents — jurors, lawyers, judges, and a supreme judge — each with their own role in collectively resolving ambiguous perception tasks from the ARC Challenge.

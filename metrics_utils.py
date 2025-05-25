@@ -88,7 +88,7 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
 def salvar_voto_visual(votos, iteracao, block_idx,input_tensor_outros, task_id, saida_dir="votos_visuais"):
     os.makedirs(saida_dir, exist_ok=True)
     num_modelos = len(votos)
-    votos_classes = [np.argmax(ensure_numpy(v), axis=-1)[0] for v in votos if v is not None]
+    votos_classes = [np.squeeze(np.argmax(ensure_numpy(v), axis=-1)) for v in votos if v is not None]
 
     if not votos_classes:
         print("[WARNING] Nenhuma predição válida para visualização.")
@@ -110,7 +110,9 @@ def salvar_voto_visual(votos, iteracao, block_idx,input_tensor_outros, task_id, 
     nomes = [cargos.get(i, f"Modelo {i}") for i in range(num_modelos)]
 
     # Plot do input no primeiro eixo
-    sns.heatmap(input_tensor_outros[0, ..., 0], ax=axes[0], cbar=False, cmap="gray", square=True)
+    input_vis = np.squeeze(input_tensor_outros[0])[..., 0]
+    sns.heatmap(input_vis, ax=axes[0], cbar=False, cmap="viridis", square=True)
+
     axes[0].set_title("Input", fontsize=10)
     axes[0].axis("off")
 

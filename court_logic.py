@@ -75,7 +75,7 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
         else:
             log(f"[OK] Juíza produziu saída válida com shape: {votos_models[-1].shape}")
 
-        salvar_voto_visual(votos_models, iter_count, block_idx, input_tensor_outros, task_id=task_id)
+
 
         consenso = avaliar_consenso_por_j(votos_models, tol, required_votes=5)
         log(f"[CONSENSO] Iteração {iter_count + 1}: Consenso = {consenso:.4f}")
@@ -112,7 +112,8 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
                 votos_supremos_logits = pred_suprema_logits
 
             votos_models_final = [votos_supremos_logits for _ in range(6)]
-            salvar_voto_visual(votos_models_final, iter_count + cycles, block_idx)
+            salvar_voto_visual(votos_models_final, iter_count + cycles, block_idx, input_tensor_outros, task_id=task_id)
+            
 
             y_true = tf.argmax(votos_models[-1], axis=-1)
             loss_value = loss_fn(y_true, pred_suprema_logits).numpy()

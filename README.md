@@ -1,54 +1,66 @@
-# 🧠 SimuV1 ARC Judiciary System
+# ARC Court Supreme
 
-**"If the human mind can deliberate, so can a swarm of pixel-obsessed neural networks."**
+Este projeto é uma simulação inspirada no ARC Challenge, onde um tribunal composto por diferentes modelos de deep learning julga a melhor predição para uma tarefa de visão computacional.
 
-SimuV1 é uma arquitetura visual neural projetada para o Abstraction and Reasoning Corpus (ARC). Após resolver mais de **205 desafios de ARC-AGI-2**, evoluímos para uma nova abordagem inspirada em sistemas judiciais, votações e metacognição.  
-Bem-vindo ao **ARC Judiciary System**.
+## Visão Geral
 
-## 🧬 Estrutura do Sistema
+O sistema possui:
+- **3 Juradas** (modelos que aprendem com a advogada)
+- **1 Advogada** (modelo base que tenta prever a saída original)
+- **1 Juíza** (modelo que aprende com juradas e advogada)
+- **1 Suprema Juíza** (modelo que aprende a partir das predições da juíza comum)
 
-O sistema é composto por **5 redes neurais distintas** com papéis específicos:
+A cada iteração, os modelos votam em um resultado, e um sistema de consenso é utilizado para determinar a qualidade das predições.
 
-| Rede | Papel | Descrição |
-|------|-------|-----------|
-| **IA1–IA3** | Juradas | Continuam treinando com base nas previsões da IA4. Cada uma possui variações arquiteturais ou de dados. |
-| **IA4** | Advogada | Gera previsões iniciais baseadas apenas nos inputs de teste. |
-| **IA5** | Juíza | Avalia os outputs de IA1–IA3 com base em distância semântica e um campo especial chamado `juízo`. Decide qual output é o mais confiável. |
+## Fluxo do Tribunal
 
-## 🌀 O Ciclo
+1. **Input** é apresentado a todos os modelos.
+2. **Advogada** faz uma predição inicial.
+3. **Juradas** treinam suas saídas com base na advogada.
+4. **Juíza** treina com base nas juradas + advogada.
+5. **Suprema Juíza** treina com base na juíza, ajustando-se até que a perda fique abaixo de um limiar.
+6. **Advogada** se atualiza com o veredito final da Suprema.
+7. O processo repete até que o consenso entre modelos seja atingido (por padrão, 5 de 6 modelos concordando).
 
-1. Treinamento inicial com dados de treino (train[0]["input"] e train[0]["output"]).
-2. IA4 realiza **inference** no conjunto de testes.
-3. Suas previsões alimentam o treinamento supervisionado de IA1–IA3.
-4. IA1–IA3 devolvem previsões + confiança (`juízo ∈ [0, 1]`).
-5. IA5 avalia as previsões usando critérios de consenso e confiança.
-6. Se pelo menos 3 outputs possuem `juízo ≥ 0.9`, o voto é aceito.
-7. Votação final entre as 5 redes define a resposta.
+## Diretórios
 
-## 🧠 Sobre o Juízo
+- `votos_visuais/`: imagens geradas com os votos de cada modelo, input e mapa de consenso.
+- `videos/`: arquivos .avi gerados automaticamente a partir dos votos.
 
-A dimensão `juízo` é um campo contínuo que representa a autoconfiança da IA sobre sua própria resposta.  
-Ele é aprendido durante o treinamento via uma *critic head* que tenta prever a loss esperada.
+## Execução
 
-## 🎯 Objetivo
+1. Instale as dependências:
+   ```bash
+   pip install tensorflow opencv-python matplotlib seaborn
+   ```
 
-- Resolver **todas as 400 tarefas do ARC-AGI-2**.
-- Sem vazamento de dados.
-- Apenas inferência legítima com generalização.
+2. Execute o sistema:
+   ```bash
+   python main.py
+   ```
 
-## 📼 Registro
+3. Para gerar o vídeo time-lapse de votação:
+   ```python
+   from metrics_utils import gerar_video_time_lapse
+   gerar_video_time_lapse(block_idx=0)
+   ```
 
-Todo o processo foi registrado em vídeo:
-- SimuV1 resolvendo 205 tarefas: [YouTube Link](https://www.youtube.com/watch?v=o3It0tT4kGk)
+## Componentes
 
-## ⚖️ Filosofia
+- `model_loader.py`: carrega os modelos (juradas, juíza, advogada, suprema).
+- `court_logic.py`: lógica de julgamento iterativo.
+- `metrics_utils.py`: salva votos visuais, avalia consenso e gera vídeo.
+- `main.py`: ponto de entrada do sistema.
 
-> "Você não programa esse sistema. Você educa ele."
+## Visualização
+Cada iteração gera uma imagem com:
+- Input da tarefa
+- Votos de cada modelo
+- Mapa de consenso (pixels com maioria qualificada)
 
-Este projeto trata mais de criar uma **mente deliberativa coletiva** do que um simples modelo de classificação. É um passo em direção à inteligência artificial interpretável, cooperativa e autocrítica.
+## Objetivo
+A ideia é simular uma tomada de decisão colegiada e iterativa entre modelos, onde uma Suprema Juíza resolve ambiguidades e busca maximizar a qualidade da predição coletiva.
 
 ---
 
-**Status:** Em desenvolvimento contínuo.  
-**Contato:** via GitHub Issues ou ~visões neurais telepáticas~ futuras releases.
-
+Sim, é uma corte de modelos neurais. Não, você não está sonhando.

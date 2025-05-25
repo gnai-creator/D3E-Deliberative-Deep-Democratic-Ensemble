@@ -6,9 +6,10 @@ from metrics_utils import salvar_voto_visual
 from runtime_utils import log
 
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
-                      max_cycles=150, tol=0.98, epochs=1, confidence_threshold=0.5):
+                      max_cycles=150, tol=0.98, epochs=1, confidence_threshold=0.5,
+                      confidence_manager=[]):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
-    manager = ConfidenceManager(models)
+    manager = confidence_manager
     votos_models = {}
     iter_count = 0
 

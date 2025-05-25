@@ -2,62 +2,75 @@
 
 # D3E: Deliberative Deep Democratic Ensemble
 
-D3E (Deliberative Deep Democratic Ensemble) é um sistema de aprendizado coletivo inspirado na estrutura de um tribunal. Foi projetado para resolver tarefas do ARC Challenge com base em deliberacão iterativa entre modelos neurais especializados.
-
-## 🏛️ Arquitetura
-
-* **Juradas (3)**: Modelos que aprendem com a advogada.
-* **Advogada (1)**: Aprende com os dados crus (raw input) e a Suprema Juíza.
-* **Juíza (1)**: Agrega a opinião das juradas e da advogada.
-* **Suprema Juíza (1)**: Refina a predição com base apenas no input original, em ciclos iterativos, até que haja consenso entre pelo menos 5 modelos.
-
-## ⚖️ Ciclo de Julgamento
-
-1. O input (do ARC) é apresentado.
-2. A advogada faz uma predição com base apenas no input.
-3. Juradas são treinadas com base na predição da advogada.
-4. A juíza se treina com as saídas das juradas e da advogada.
-5. Todos votam. Se 5 ou mais concordarem, temos consenso.
-6. Se não houver consenso:
-
-   * A Suprema Juíza entra em ação, sendo treinada com base apenas no input e na predição da Juíza.
-   * Itera várias vezes até convergir ou atingir o limite de ciclos.
-7. A advogada atualiza-se com a opinião da Suprema Juíza.
-8. O ciclo se repete até alcançar consenso total ou o limite de iterações.
-
-## 🎓 Inspiração
-
-Inspirado em sistemas democráticos e deliberativos, o D3E busca resolver tarefas ambíguas promovendo o debate interno entre modelos. Essa abordagem estática e iterativa é especialmente eficaz em tarefas onde a solução correta é incerta.
-
-## 🔢 Características
-
-* Controle de consenso via `tol` (threshold entre 0.6 a 0.98)
-* Ciclos iterativos com máximo de 150 iterações por tarefa
-* Visualização por heatmaps dos votos e consenso
-* Deliberação com feedback realimentado
-* Sistema modulado por simulações neurais (SimuV1-V5)
-
-## 🔧 Execução
-
-```bash
-python main.py --mode test_challenge
-```
-
-## 🎥 Saídas
-
-* `votos_visuais/`: imagens de predição por iteração
-* `predictions_test/`: arquivos de predição finais por desafio
-
-## 🔍 Futuras melhorias
-
-* Otimização de ciclos via early stopping
-* Juradas com ruído negativo regulador (adversarial noise)
-* Variações inspiradas em jurados dissidentes
-
-## 🚀 Contribuição
-
-Pull requests e melhorias são bem-vindas. O tribunal está sempre aberto a novas vozes.
+**D3E** is a deliberative learning architecture based on legal metaphors. It uses a set of models that play distinct roles in a simulated courtroom — jurors, lawyer, judge, and supreme justice — to promote collective learning, dissent, consensus, and prediction refinement.
 
 ---
 
-Copyright © 2025
+## 🧠 Deliberative Structure
+
+- **Jurors (3)**: Learn from **lawyer**, are continuously trained to adjust their predictions.
+- **Lawyer (1)**: Learns from **supreme justice** using only the raw input data.
+- **Judge (1)**: Receives the predictions from the jurors and the lawyer, decides based on their aggregation. - **Supreme Judge (1)**: Ensures the final refinement of the decision using only the raw data. It only ends the process after reaching **sufficient certainty** (low loss and high accuracy).
+- **ConfidenceManager**: Regulation system that adjusts the weight of each vote based on the confidence history of each model.
+
+---
+
+## 🔁 Deliberation Process
+
+1. **Raw Input** is passed to all agents, with channel adaptations for each one.
+2. The **lawyer** predicts and teaches the **jurors**.
+3. The **jurors** are trained and their outputs are combined with that of the **lawyer** to form the **judge**'s vote.
+4. The **judge** generates a collegial decision.
+5. The **supreme judge** receives only the raw data again and learns from the **judge**'s output. 6. Deliberation continues until there is consensus among 5 of the 6 models with sufficient confidence.
+
+---
+## ⚖️ Confidence Module
+
+The `ConfidenceManager` tracks the performance of each model and regulates its voting rights. It:
+- Penalizes models with low accuracy.
+- Temporarily reduces the influence of "contrarian" models.
+- Rehabilitates models that perform well again.
+
+---
+## 📊 Visualizations
+
+At each iteration:
+- **Images** with individual votes, the consensus map, and the raw input are saved.
+- A time-lapse **video** can be generated with an embedded soundtrack.
+
+---
+## 📁 Code Structure
+
+- `main.py` – Challenge execution.
+- `court_logic.py` – Deliberation and control of learning cycles.
+- `confidence_system.py` – Model confidence management.
+- `metrics_utils.py` – Visualizations and metrics.
+- `SimuV*.py` – Model files with different hierarchical levels.
+- `neural_blocks.py` – Reusable neural network components.
+- `data_preparation.py` – Data preprocessing.
+
+---
+
+## 🎵 Recommended soundtrack
+
+> 🎧 *"Intergalactic" – Beastie Boys*
+
+To accompany the simulation of a robotic court at war with itself.
+
+---
+
+## 🧪 Tested with
+
+- ARC Challenge tasks `00576224` and `007bbfb7`
+- TensorFlow 2.x
+- Python 3.10
+
+---
+
+## 📜 License
+
+This project is experimental and deliberately excessive. Use at your own risk. Robotic justice has no jurisprudence.
+
+---
+
+**D3E**: The only neural network that needs a parliamentary recess between epochs.

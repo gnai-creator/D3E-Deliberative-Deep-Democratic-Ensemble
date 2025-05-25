@@ -19,10 +19,17 @@ def corte_esta_completa(models):
 
 def test_challenge(models, X_test, model_idx, raw_test_inputs, block_index, task_id, submission_dict):
     log(f"[TEST] Inicializando teste bloco {block_index} para task {task_id}")
-    try:
-        x_test_sample = tf.convert_to_tensor(X_test[0], dtype=tf.float32)
-        x_test_sample = tf.expand_dims(x_test_sample, axis=0)
 
+    try:
+        # Verifica entrada
+        if X_test is None or tf.size(X_test) == 0 or raw_test_inputs is None or len(raw_test_inputs) == 0:
+            raise ValueError("[TEST] Entrada de teste vazia ou malformada.")
+
+        # Prepara tensor de entrada
+        x_test_sample = tf.convert_to_tensor(X_test[0], dtype=tf.float32)
+        x_test_sample = tf.expand_dims(x_test_sample, axis=0)  # shape (1, H, W, C)
+
+        # Se tiver 40 canais, já é entrada do juiz
         if x_test_sample.shape[-1] == 40:
             x_input_juiz = x_test_sample
             x_input_outros = tf.concat(tf.split(x_test_sample, num_or_size_splits=10, axis=-1)[:1], axis=-1)
@@ -30,25 +37,46 @@ def test_challenge(models, X_test, model_idx, raw_test_inputs, block_index, task
             x_input_outros = x_test_sample
             x_input_juiz = tf.zeros((1, 30, 30, 1, 40), dtype=tf.float32)
 
+        # Prepara os modelos (certifica que são 6)
+        if not models or len(models) < 5:
+            raise ValueError("[TEST] Modelos insuficientes para formar corte inicial.")
+
+        # Garante modelo da Suprema Juíza
+        if len(models) < 6:
+            suprema = load_model(5, 0.0005)
+            models.append(suprema)
+            log("[TEST] Modelo da Suprema Juíza adicionado à corte.")
+        elif len(models) > 6:
+            models = models[:6]
+            log("[TEST] Lista de modelos truncada para 6 membros.")
+
+        # Sanidade
+        if len(models) != 6:
+            raise ValueError(f"[TEST] Corte incorreta: esperados 6 modelos, recebidos {len(models)}")
+
         log(f"[TEST] Preview raw input: {np.unique(raw_test_inputs[0])}")
+
+        # Julgamento
         preds = arc_court_supreme(models, x_input_outros, task_id=task_id, block_idx=block_index)
 
+        # Gera vídeo
         video_path = gerar_video_time_lapse(pasta="votos_visuais", block_idx=block_index, saida=f"{block_index}_{task_id}.avi")
         if video_path:
             embutir_trilha_sonora(video_path=video_path, block_idx=block_index)
 
+        # Pós-processamento
         y_test_logits = preds["class_logits"] if isinstance(preds, dict) else preds
-        pred_np = y_test_logits
-        if isinstance(pred_np, tf.Tensor):
-            pred_np = pred_np.numpy()
+        pred_np = y_test_logits.numpy() if isinstance(y_test_logits, tf.Tensor) else y_test_logits
+
         log(f"[DEBUG] predicted_output shape before plot: {pred_np.shape}")
 
         plot_prediction_test(
             raw_input=raw_test_inputs[0],
             predicted_output=pred_np,
-            save_path=f"images/test/TEST block_{block_index}_task_{task_id}_model_{model_idx}",
+            save_path=f"images/test/TEST_block_{block_index}_task_{task_id}_model_{model_idx}",
             pad_value=PAD_VALUE
         )
+
         plot_prediction_test(
             raw_input=raw_test_inputs[0],
             predicted_output=pred_np,
@@ -56,9 +84,18 @@ def test_challenge(models, X_test, model_idx, raw_test_inputs, block_index, task
             pad_value=PAD_VALUE
         )
 
-        submission_dict.append({"task_id": task_id, "prediction": pred_np})
+        submission_dict.append({
+            "task_id": task_id,
+            "prediction": pred_np
+        })
         save_debug_result(submission_dict, "submission.json")
+
+        log(f"[TEST] Teste concluído para task {task_id}, bloco {block_index}")
+
     except Exception as e:
+        log(f"[ERRO] Exceção durante test_challenge: {str(e)}")
+        raise
+
         log(f"[ERROR] Erro ao gerar predicoes: {e}")
         traceback.print_exc()
 

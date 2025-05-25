@@ -5,6 +5,7 @@ from SimuV2 import SimuV2
 from SimuV3 import SimuV3
 from SimuV4 import SimuV4
 from SimuV5 import SimuV5
+from SimuV6 import SimuV6
 
 # Configurações de cada modelo: classe e hidden_dim
 MODEL_CONFIGS = {
@@ -13,7 +14,7 @@ MODEL_CONFIGS = {
     2: (SimuV3, 128),
     3: (SimuV4, 256),
     4: (SimuV5, 128),
-    5: (SimuV5, 256),
+    5: (SimuV6, 256),
 }
 
 def load_model(index, learning_rate):

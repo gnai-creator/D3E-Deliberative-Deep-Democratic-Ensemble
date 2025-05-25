@@ -110,19 +110,17 @@ def preparar_voto_para_visualizacao(v):
         v = v[..., 0]
     return v
 
-
 def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, task_id=None, saida_dir="votos_visuais"):
     os.makedirs(saida_dir, exist_ok=True)
-    votos_classes = [preparar_voto_para_visualizacao(v) for v in votos if v is not None]
-    num_modelos = len(votos_classes)
-
-    # Nome do arquivo
     prefixo = f"{task_id}_" if task_id else ""
     fname = f"{prefixo}{block_idx} - votos_iter_{iteracao:02d}.png"
     filepath = os.path.join(saida_dir, fname)
 
+    votos_classes = [preparar_voto_para_visualizacao(v) for v in votos if v is not None]
+    num_modelos = len(votos_classes)
+
     if not votos_classes:
-        print("[WARNING] Nenhuma predição válida para visualização.")
+        log("[VISUAL] Nenhuma predição válida para visualização.")
         fig, ax = plt.subplots(figsize=(6, 6))
 
         raw_input = np.squeeze(input_tensor_outros[0])
@@ -144,14 +142,13 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, task_id=
         plt.tight_layout()
         plt.savefig(filepath)
         plt.close()
-        print(f"[VISUAL] Salvou imagem de fallback com entropia em {filepath}")
+        log(f"[VISUAL] Salvou fallback visual em {filepath}")
         return
 
-    # Votos válidos
+    # Consenso
     votos_stack = np.stack(votos_classes, axis=0)
     H, W = votos_stack.shape[1:3]
     consenso_map = np.zeros((H, W), dtype=np.uint8)
-
     for i in range(H):
         for j in range(W):
             _, counts = np.unique(votos_stack[:, i, j], return_counts=True)
@@ -171,15 +168,14 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, task_id=
         ax.set_title(f"{nome}", fontsize=10)
         ax.axis("off")
 
-    # Input original
+    # Input
     input_vis = ensure_numpy(input_tensor_outros[0])
     if input_vis.ndim == 4:
         input_vis = input_vis[..., 0]
     elif input_vis.ndim == 3 and input_vis.shape[-1] > 1:
         input_vis = np.mean(input_vis, axis=-1)
 
-    input_vis = np.squeeze(input_vis)  # Garante que esteja em 2D
-
+    input_vis = np.squeeze(input_vis)
     sns.heatmap(input_vis, ax=axes[-2], cbar=False, cmap="gray", square=True)
     axes[-2].set_title("Input", fontsize=10)
     axes[-2].axis("off")
@@ -192,7 +188,8 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, task_id=
     plt.tight_layout()
     plt.savefig(filepath)
     plt.close()
-    print(f"[VISUAL] Salvo mapa de votos + consenso em {filepath}")
+    log(f"[VISUAL] Salvo mapa de votos + consenso em {filepath}")
+
 
 
 

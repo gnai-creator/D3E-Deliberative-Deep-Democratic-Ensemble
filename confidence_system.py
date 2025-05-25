@@ -60,7 +60,8 @@ def avaliar_consenso_com_confiança(votos_models: dict, confidence_manager, requ
             voto = tf.squeeze(voto, axis=0)
         votos_classe.append(voto)
 
-    votos_stacked = tf.stack(votos_classe, axis=0)  # [N, H, W]
+    votos_stacked = tf.stack([tf.reshape(v, (30, 30)) for v in votos_models.values()])
+
 
     if votos_stacked.shape.rank != 3:
         raise ValueError(f"[ERRO] Shape inesperado em votos_stacked: {votos_stacked.shape}. Esperado (N, H, W)")

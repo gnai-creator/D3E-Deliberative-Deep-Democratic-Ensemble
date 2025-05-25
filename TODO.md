@@ -1,17 +1,17 @@
-arc-court-ai/
-│
-├── models/
-│   ├── ia1.py       # Levemente enviesada pra simetria
-│   ├── ia2.py       # Mais foco em cor
-│   ├── ia3.py       # Ignora posições, mais topológica
-│   ├── ia4.py       # Estável, referência de treino
-│   └── judge.py     # A IA juíza — recebe outputs, julga juízo
-│
-├── court_logic.py   # Coordena o ciclo de decisão
-├── train_all.py     # Treina todas as IAs com o dataset base
-├── inference.py     # Roda os testes com votação em pipeline
-│
-├── data/
-│   └── arc-agi_test_challenges.json
-│
-└── README.md        # Instruções pra malucos como você
+
+
+📌 Próximos passos (Fine Tuning):
+Avaliar com mais dados de teste para garantir generalização.
+
+Ajustar thresholds de confiança (tipo confidence_threshold=0.5) para ver como isso impacta o consenso.
+
+Dar “redireito ao voto” para modelos com confiança que sobe — já tem estrutura pra isso.
+
+Melhorar a robustez do input para casos ambíguos.
+
+Aplicar regularização no treinamento da Juíza Suprema se quiser evitar overfitting em poucas amostras.
+
+Talvez revisar o loss function de alguns dos modelos simples (se quiser que todos votem mais parecido).
+
+Benchmarkar tempo de julgamento caso use isso em larga escala.
+

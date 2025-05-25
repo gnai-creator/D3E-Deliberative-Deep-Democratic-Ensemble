@@ -1,80 +1,64 @@
-![Court System](Court%20System.png)
+# 🧠 D3E — Deliberative Deep Democratic Ensemble
 
-# ARC Supreme Court: Deliberative Ensemble for ARC Challenges
+![D3E Logo](A_logo_for_D3E,_"Deliberative_Deep_Democratic_Ense.png)
 
-This repository contains a legal-inspired ensemble learning system designed to tackle the ARC (Abstraction and Reasoning Corpus) challenge using a courtroom metaphor.
+## 📚 Overview
+D3E simulates a deliberative courtroom of neural agents — jurors, lawyers, judges, and a supreme judge — each with their own role in collectively resolving ambiguous perception tasks from the ARC Challenge.
 
-## Overview
+This system prioritizes process over speed, engaging in iterative voting and refinement until consensus is reached. Each agent is an independently trained neural network that evolves through simulated deliberation.
 
-The system consists of multiple neural models, each playing a role in a deliberative process:
+## ⚙️ System Hierarchy
+- **Juradas (x3)**: Learn from the Advogada, add plurality of views.
+- **Advogada**: Learns from the Suprema Juíza.
+- **Juíza**: Aggregates juror and lawyer outputs.
+- **Suprema Juíza**: Trains on raw data, acts as the final authority.
 
-* **Juradas (Jurors)**: 3 models that initially learn from the advogada (lawyer).
-* **Advogada (Lawyer)**: Learns directly from raw input and later from the Supreme Judge.
-* **Juíza (Ordinary Judge)**: Aggregates the predictions from the jurors and the lawyer to issue a decision.
-* **Suprema Juíza (Supreme Judge)**: Trains on raw input using the decision from the ordinary judge as supervision, and refines predictions until a consensus is reached.
+## 🌀 Deliberation Cycle
+1. Raw input → Advogada → Juradas
+2. Juíza aggregates → Suprema Juíza refines
+3. If consensus (≥5/6) not reached → repeat cycle
+4. Advogada & Suprema Juíza always train from raw input
 
-This structure simulates a deliberative judicial system where models improve over iterations, refining their collective decision.
+## 🧪 Why This Works
+- Promotes interpretability through stepwise visualization
+- Resilient to noise and ambiguity
+- Models improve each iteration
 
-## Features
+## 🧪 Results
+Performance varies per challenge:
+- 🟢 Task `00576224`: ✅ Consensus reached
+- 🟡 Task `007bbfb7`: ⚠️ Partial agreement
+- 🔴 Task `009d5c81`: ❌ Failed under strict consensus threshold
 
-* **Deliberative Voting**: All members vote on the output. Consensus is required from 5 out of 6 models to finalize a solution.
-* **Supreme Justice Refinement**: The Suprema Juíza iteratively improves until reaching accuracy or loss thresholds.
-* **Iterative Learning**: Jurors and judges learn from one another in successive iterations, simulating a learning ecosystem.
-* **Visual Output**: Saves vote visualizations per iteration for inspection.
+## 🔍 Insights
+- High tolerance (`tol`) leads to slower but more accurate consensus
+- `MAX_CYCLES` and `EPOCHS` balance speed vs convergence
+- Juror disagreement can be intentionally injected for robustness
 
-## System Flow
+## 🔧 Files
+- `court_logic.py` — Core deliberative logic
+- `main.py` — Execution script
+- `metrics_utils.py` — Visual voting logs and metrics
+- `SimuV1-V5.py` — Neural models
 
-```
-Raw Input → Lawyer & Supreme Judge
-           → Jurors (trained from lawyer)
-           → Ordinary Judge aggregates
-           → Supreme Judge trains using judge's output
-           → Lawyer retrains from Supreme Judge
-Repeat until consensus ≥ threshold
-```
-
-## File Structure
-
-* `main.py`: Entry point for training and testing on ARC tasks.
-* `court_logic.py`: Core logic simulating the court's deliberation process.
-* `metrics_utils.py`: Visualization and evaluation utilities.
-* `model_loader.py`, `model_compile.py`: Utilities for initializing and compiling models.
-* `SimuV1.py` to `SimuV5.py`: Model architecture definitions.
-* `neural_blocks.py`: Shared blocks used by model architectures.
-* `data_preparation.py`: Dataset loading and preprocessing utilities.
-
-## Running the System
-
-Make sure you have the necessary dependencies:
-
+## 📦 Dependencies
 ```bash
-pip install tensorflow matplotlib seaborn pandas opencv-python
+pip install tensorflow numpy seaborn matplotlib opencv-python
 ```
 
-To run an ARC task:
+## 🧠 Inspirations
+- Legal systems
+- Democratic voting
+- Human group deliberation
 
-```bash
-python main.py --task_id <task_id>
-```
+## 📺 Demos
+- [ARC 00576224 Demo](https://youtu.be/eXO_PCb6M6E)
+- [ARC 007bbfb7 Demo](https://youtu.be/0L6NJQhLlxE)
 
-This will generate logs, save vote visualizations in `votos_visuais/`, and optionally export a video of the deliberation process.
+## 🤖 Final Thoughts
+This is not just ensemble learning — it’s ensemble **deliberation**.
 
-## Notes
-
-* The system is inspired by legal structure but remains entirely a computational model.
-* It is not optimized for all ARC tasks; it performs best in ambiguous scenarios where iterative consensus can be effective.
-
-## Videos & Examples
-
-Example demonstrations:
-
-* [Deliberative ARC Challenge 1](https://youtu.be/eXO_PCb6M6E)
-* [Challenge 2 Analysis](https://youtu.be/0L6NJQhLlxE)
-
-## License
-
-MIT. Use freely and judge wisely.
+> "Consensus isn’t given, it’s earned. One vote at a time."
 
 ---
-
-For academic inquiries or to file an appeal with the Supreme Juíza, contact the developer via GitHub Issues.
+© 2025 Maya Rahto. Court is now in session.

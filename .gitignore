@@ -2,6 +2,9 @@
 **/__pycache__/
 images/
 results/
+votos_visuais/** */
+videos/** */
+
 sage_model*
 checkpoint*
 history*

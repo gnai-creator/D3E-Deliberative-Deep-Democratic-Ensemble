@@ -34,14 +34,12 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
         log(f"[INFO] Advogada previu classes com shape: {y_advogada_classes.shape}")
 
         for idx, jurada in enumerate(juradas):
-            if idx in [0, 1]:
-                ruido = tf.cast(tf.random.uniform(shape=y_advogada_classes.shape) < 0.3, tf.int32)
-                desvio = tf.random.uniform(shape=y_advogada_classes.shape, minval=1, maxval=4, dtype=tf.int32)
-                y_treino = (y_advogada_classes + ruido * desvio) % 10
+            if idx in [0, 1]:  # juradas do contra
+                y_treino = (y_advogada_classes + tf.random.uniform(shape=y_advogada_classes.shape, maxval=3, dtype=tf.int64)) % 10
             else:
                 y_treino = y_advogada_classes
             jurada.fit(x=input_tensor_outros, y=y_treino, epochs=epochs, verbose=0)
-            log(f"[TREINO] Jurada {idx + 1} treinada com {'ruído' if idx in [0,1] else 'saída da advogada'}")
+            log(f"[TREINO] Jurada {idx + 1} treinada com saída da advogada")
 
         saidas_juradas = [jurada(input_tensor_outros, training=False) for jurada in juradas]
 
@@ -88,7 +86,7 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
         accuracy = 0.0
         cycles = 0
 
-        entrada_suprema = input_tensor_outros
+        entrada_suprema = input_tensor_outros  # <--- CORREÇÃO AQUI
         if entrada_suprema.shape[-1] < 40:
             padding = 40 - entrada_suprema.shape[-1]
             entrada_suprema = tf.pad(entrada_suprema, paddings=[[0, 0], [0, 0], [0, 0], [0, 0], [0, padding]])
@@ -117,7 +115,8 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
             log(f"[SUPREMA] Ciclo {cycles} - Loss: {loss_value:.4f} - Accuracy: {accuracy:.4f}")
             cycles += 1
 
-        input_advogada = tf.reshape(input_tensor_outros[..., :4], [1, 30, 30, 1, 4])
+
+        input_advogada = tf.reshape(entrada_suprema[..., :4], [1, 30, 30, 1, 4])
         advogada.fit(x=input_advogada, y=votos_supremos, epochs=epochs, verbose=0)
         log("[TREINO] Advogada atualizada com voto da Suprema Juíza")
 
@@ -126,3 +125,25 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
 
     log(f"\n[FIM] Julgamento encerrado após {iter_count} iteração(ões). Consenso final: {consenso:.4f}")
     return votos_supremos
+
+
+def avaliar_consenso_por_j(votos_models, tol=0.98, required_votes=5):
+    votos_classe = [tf.argmax(v, axis=-1) for v in votos_models]
+    votos_stacked = tf.stack(votos_classe, axis=0)
+
+    def contar_consenso(votos_pixel):
+        uniques, _, count = tf.unique_with_counts(votos_pixel)
+        return tf.reduce_max(count)
+
+    votos_majoritarios = tf.map_fn(
+        lambda x: tf.map_fn(
+            lambda y: tf.map_fn(contar_consenso, y, dtype=tf.int32),
+            x,
+            dtype=tf.int32
+        ),
+        tf.transpose(votos_stacked, [1, 2, 3, 0]),
+        dtype=tf.int32
+    )
+
+    consenso_bin = tf.cast(votos_majoritarios >= required_votes, tf.float32)
+    return tf.reduce_mean(consenso_bin).numpy()

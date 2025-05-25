@@ -85,15 +85,45 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
     except Exception as e:
         print("[ERROR] Falha ao gerar plot de teste:", str(e))
 
-def salvar_voto_visual(votos, iteracao, block_idx,input_tensor_outros, task_id, saida_dir="votos_visuais"):
+def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, task_id=None, saida_dir="votos_visuais"):
     os.makedirs(saida_dir, exist_ok=True)
     num_modelos = len(votos)
-    votos_classes = [np.squeeze(np.argmax(ensure_numpy(v), axis=-1)) for v in votos if v is not None]
+    votos_classes = [np.argmax(ensure_numpy(v), axis=-1)[0] for v in votos if v is not None]
+
+    # Nome do arquivo
+    prefixo = f"{task_id}_" if task_id else ""
+    fname = f"{prefixo}{block_idx} - votos_iter_{iteracao:02d}.png"
+    filepath = os.path.join(saida_dir, fname)
 
     if not votos_classes:
         print("[WARNING] Nenhuma predição válida para visualização.")
+        
+        fig, ax = plt.subplots(figsize=(6, 6))
+        
+        # Calcular entropia nos canais do input, se possível
+        raw_input = np.squeeze(input_tensor_outros[0])
+        if raw_input.ndim == 3:
+            H, W, C = raw_input.shape
+            heatmap = np.zeros((H, W))
+            for i in range(H):
+                for j in range(W):
+                    vals, counts = np.unique(raw_input[i, j, :], return_counts=True)
+                    probs = counts / np.sum(counts)
+                    entropy = -np.sum(probs * np.log2(probs + 1e-9))  # +eps para evitar log(0)
+                    heatmap[i, j] = entropy
+            sns.heatmap(heatmap, ax=ax, cmap="magma", square=True, cbar=True)
+            ax.set_title("Entropia dos Pixels (Sem votos válidos)", fontsize=10)
+        else:
+            ax.text(0.5, 0.5, "Sem votos válidos", ha="center", va="center", fontsize=14)
+            ax.axis("off")
+
+        plt.tight_layout()
+        plt.savefig(filepath)
+        plt.close()
+        print(f"[VISUAL] Salvou imagem de fallback com entropia em {filepath}")
         return
 
+    # Votos válidos
     votos_stack = np.stack(votos_classes, axis=0)
     H, W = votos_stack.shape[1:3]
     consenso_map = np.zeros((H, W), dtype=np.uint8)
@@ -106,39 +136,31 @@ def salvar_voto_visual(votos, iteracao, block_idx,input_tensor_outros, task_id, 
 
     fig, axes = plt.subplots(1, num_modelos + 2, figsize=(4 * (num_modelos + 2), 4))
 
-    cargos = {0: "Jurada 1", 1: "Jurada 2", 2: "Jurada 3", 3: "Advogada", 4: "Juíza", 5: "Suprema Juíza"}
+    # Identificações
+    cargos = {
+        0: "Jurada 1", 1: "Jurada 2", 2: "Jurada 3",
+        3: "Advogada", 4: "Juíza", 5: "Suprema Juíza"
+    }
     nomes = [cargos.get(i, f"Modelo {i}") for i in range(num_modelos)]
 
-    # Plot do input no primeiro eixo
-    input_vis_raw = ensure_numpy(input_tensor_outros)
-    if input_vis_raw.ndim == 5:
-        input_vis = input_vis_raw[0, :, :, 0, 0]  # (1, H, W, 1, C) → HxW (usando canal 0)
-    elif input_vis_raw.ndim == 4:
-        input_vis = input_vis_raw[0, :, :, 0]
-    elif input_vis_raw.ndim == 3:
-        input_vis = input_vis_raw[:, :, 0]
-    else:
-        input_vis = input_vis_raw.squeeze()
-
-    sns.heatmap(input_vis, ax=axes[0], cbar=False, cmap="viridis", square=True)
-
-    axes[0].set_title("Input", fontsize=10)
-    axes[0].axis("off")
-
-    # Votos dos modelos
-    for ax, voto, nome in zip(axes[1:-1], votos_classes, nomes):
+    for ax, voto, nome in zip(axes[:-2], votos_classes, nomes):
         sns.heatmap(voto, ax=ax, cbar=False, cmap="viridis", square=True)
         ax.set_title(f"{nome}", fontsize=10)
         ax.axis("off")
 
-    # Mapa de consenso
+    # Input original
+    input_vis = np.squeeze(input_tensor_outros[0])
+    if input_vis.ndim == 3:
+        input_vis = input_vis[..., 0]
+    sns.heatmap(input_vis, ax=axes[-2], cbar=False, cmap="gray", square=True)
+    axes[-2].set_title("Input", fontsize=10)
+    axes[-2].axis("off")
+
     sns.heatmap(consenso_map, ax=axes[-1], cbar=False, cmap="Greens", square=True)
     axes[-1].set_title("Mapa de Consenso (≥3)", fontsize=10)
     axes[-1].axis("off")
 
-
-    plt.suptitle(f"Predições dos Modelos - Iteração {iteracao} Task {task_id}", fontsize=12)
-    filepath = os.path.join(saida_dir, f"{block_idx} - votos_iter_{iteracao:02d}.png")
+    plt.suptitle(f"Predições dos Modelos - Iteração {iteracao}", fontsize=12)
     plt.tight_layout()
     plt.savefig(filepath)
     plt.close()

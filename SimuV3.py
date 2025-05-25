@@ -56,7 +56,8 @@ class SimuV3(tf.keras.Model):
         if x.shape.rank != 5:
             tf.print("[DEBUG] Tensor de entrada shape inesperado:", tf.shape(x))
             raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
-
+        # Entrada esperada: [Batch, Height, Width, Class, Judge]
+        # Combina as dimensões de Classe e Juízo para formar o canal de entrada
         B, H, W, C, J = tf.unstack(tf.shape(x))
         x = tf.reshape(x, [B, H, W, C * J]) 
 

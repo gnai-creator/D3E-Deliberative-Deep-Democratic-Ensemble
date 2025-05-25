@@ -79,6 +79,8 @@ class SimuV5(tf.keras.Model):
         _ = self.color_perm_train(dummy_logits)
 
     def call(self, x, training=False):
+        # Entrada esperada: [Batch, Height, Width, Class, Judge]
+        # Combina as dimensões de Classe e Juízo para formar o canal de entrada
         if x.shape.rank == 5:
             B, H, W, C, J = tf.unstack(tf.shape(x))
             x = tf.reshape(x, [B, H, W, C * J])

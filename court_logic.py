@@ -5,7 +5,6 @@ from model_loader import load_model
 from metrics_utils import salvar_voto_visual
 
 def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, block_idx=0, max_iters=10, tol=0.98, epochs=60, learning_rate=0.0005):
-    
     if len(models) < 5:
         raise ValueError("Corte incompleta: recebi menos de 5 modelos.")
 
@@ -75,8 +74,6 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
         else:
             log(f"[OK] Juíza produziu saída válida com shape: {votos_models[-1].shape}")
 
-
-
         consenso = avaliar_consenso_por_j(votos_models, tol, required_votes=5)
         log(f"[CONSENSO] Iteração {iter_count + 1}: Consenso = {consenso:.4f}")
 
@@ -85,20 +82,12 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
         accuracy = 0.0
         cycles = 0
 
-        entrada_suprema = tf.concat(votos_models, axis=-1)
-        log(f"[DEBUG] concat shape before slicing: {entrada_suprema.shape}")
-        if entrada_suprema.shape[-1] >= 40:
-            entrada_suprema = entrada_suprema[..., :40]
-        else:
-            padding = 40 - entrada_suprema.shape[-1]
-            entrada_suprema = tf.pad(entrada_suprema, paddings=[[0, 0], [0, 0], [0, 0], [0, padding]])
-            log(f"[DEBUG] Entrada suprema padded para shape: {entrada_suprema.shape}")
+        entrada_suprema = tf.squeeze(input_tensor_outros, axis=-1)  # (1, 30, 30, 4)
+        padding = 40 - entrada_suprema.shape[-1]
+        entrada_suprema = tf.pad(entrada_suprema, paddings=[[0,0], [0,0], [0,0], [0,padding]])
         entrada_suprema = tf.reshape(entrada_suprema, [1, 30, 30, 40])
-        entrada_suprema = tf.expand_dims(entrada_suprema, axis=3)
-        log(f"[DEBUG] entrada_suprema final shape (com eixo expandido): {entrada_suprema.shape}")
-        log(f"[DEBUG] entrada_suprema shape: {entrada_suprema.shape}")
-        for i, vm in enumerate(votos_models):
-            log(f"[DEBUG] votos_model[{i}] shape: {vm.shape}")
+        entrada_suprema = tf.expand_dims(entrada_suprema, axis=3)  # (1, 30, 30, 1, 40)
+
 
         while (loss_value > 0.001 or accuracy < 1.0) and cycles < MAX_CYCLES:
             supreme_juiza.fit(entrada_suprema, tf.argmax(votos_models[-1], axis=-1), epochs=epochs, verbose=0)
@@ -113,7 +102,6 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
 
             votos_models_final = [votos_supremos_logits for _ in range(6)]
             salvar_voto_visual(votos_models_final, iter_count + cycles, block_idx, input_tensor_outros, task_id=task_id)
-            
 
             y_true = tf.argmax(votos_models[-1], axis=-1)
             loss_value = loss_fn(y_true, pred_suprema_logits).numpy()
@@ -134,6 +122,7 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
 
     log(f"\n[FIM] Julgamento encerrado após {iter_count} iteração(ões). Consenso final: {consenso:.4f}")
     return votos_supremos
+
 
 def avaliar_consenso_por_j(votos_models, tol=0.98, required_votes=5):
     votos_classe = [tf.argmax(v, axis=-1) for v in votos_models]

@@ -76,7 +76,12 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
 
         iter_count += 1
 
-    return votos_models["modelo_5"]
+    return {
+        "class_logits": votos_models["modelo_5"],
+        "consenso": consenso
+    }
+
+    # return votos_models["modelo_5"]
 
 
 def pad_or_truncate_channels(tensor, target_channels=40):

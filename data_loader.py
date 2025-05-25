@@ -6,7 +6,7 @@ from metrics import standardize_grid_shapes, pad_to_30x30_top_left, pad_to_30x30
 
 
 
-def get_dataset(block_index, task_ids, challenges, block_size, pad_value, vocab_size, model_idx):
+def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_size, model_idx):
     start_idx = block_index * block_size
     end_idx = start_idx + block_size
     block_task_ids = task_ids[start_idx:end_idx]

@@ -10,8 +10,8 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 from metrics_utils import plot_prediction_debug, plot_prediction_test, gerar_video_time_lapse, embutir_trilha_sonora
 from runtime_utils import log, save_debug_result, transform_input, to_numpy_safe
-from data_preparation import get_dataset
-from model_loader import load_model
+from data_loader import load_data
+from models_loader import load_model
 from court_logic import arc_court_supreme
 
 def corte_esta_completa(models):
@@ -144,7 +144,7 @@ if __name__ == "__main__":
             log(f"Treinando bloco {block_index:02d}")
 
             while model_idx < 5:
-                X_train, X_val, Y_train, Y_val, _, _, X_test, info_train, info_val, task_id, raw_inputs, raw_test_inputs = get_dataset(
+                X_train, X_val, Y_train, Y_val, _, _, X_test, info_train, info_val, task_id, raw_inputs, raw_test_inputs = load_data(
                     block_index=block_index, task_ids=task_ids, challenges=test_challenges,
                     block_size=BLOCK_SIZE, pad_value=PAD_VALUE, vocab_size=VOCAB_SIZE,
                     model_idx=model_idx

@@ -46,7 +46,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         votos_models["modelo_4"] = juiza(input_tensor_outros, training=False)
 
         # Suprema Juíza aprende com dado cru (entrada original)
-        entrada_crua_suprema = tf.reshape(entrada_crua, [1, 30, 30, 1])
+        entrada_crua_suprema = tf.reshape(entrada_crua, [1, 30, 30, 1, 1])
         entrada_crua_suprema = pad_or_truncate_channels(entrada_crua_suprema, 40)
         y_suprema = tf.argmax(votos_models["modelo_4"], axis=-1)
         suprema_juiza.fit(entrada_crua_suprema, y_suprema, epochs=epochs, verbose=0)

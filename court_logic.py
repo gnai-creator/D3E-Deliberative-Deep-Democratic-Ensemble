@@ -82,12 +82,11 @@ def arc_court_supreme(models, input_tensor_outros, expected_output, task_id, blo
         accuracy = 0.0
         cycles = 0
 
-        entrada_suprema = tf.squeeze(input_tensor_outros, axis=-1)  # (1, 30, 30, 4)
-        padding = 40 - entrada_suprema.shape[-1]
-        entrada_suprema = tf.pad(entrada_suprema, paddings=[[0,0], [0,0], [0,0], [0,padding]])
-        entrada_suprema = tf.reshape(entrada_suprema, [1, 30, 30, 40])
-        entrada_suprema = tf.expand_dims(entrada_suprema, axis=3)  # (1, 30, 30, 1, 40)
-
+        entrada_suprema = input_tensor_outros  # <--- CORREÇÃO AQUI
+        if entrada_suprema.shape[-1] < 40:
+            padding = 40 - entrada_suprema.shape[-1]
+            entrada_suprema = tf.pad(entrada_suprema, paddings=[[0, 0], [0, 0], [0, 0], [0, 0], [0, padding]])
+        entrada_suprema = tf.reshape(entrada_suprema, [1, 30, 30, 1, 40])
 
         while (loss_value > 0.001 or accuracy < 1.0) and cycles < MAX_CYCLES:
             supreme_juiza.fit(entrada_suprema, tf.argmax(votos_models[-1], axis=-1), epochs=epochs, verbose=0)

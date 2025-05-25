@@ -67,7 +67,7 @@ if __name__ == "__main__":
     np.random.seed(42)
     random.seed(42)
     os.environ["TF_DETERMINISTIC_OPS"] = "1"
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Minimiza logs (1: INFO, 2: WARNING, 3: ERROR)
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Minimiza logs (1: INFO, 2: WARNING, 3: ERROR)
 
     PAD_VALUE = 0
     VOCAB_SIZE = 10

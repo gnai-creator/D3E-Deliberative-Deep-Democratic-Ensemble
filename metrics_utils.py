@@ -110,7 +110,16 @@ def salvar_voto_visual(votos, iteracao, block_idx,input_tensor_outros, task_id, 
     nomes = [cargos.get(i, f"Modelo {i}") for i in range(num_modelos)]
 
     # Plot do input no primeiro eixo
-    input_vis = np.squeeze(input_tensor_outros[0])[..., 0]
+    input_vis_raw = ensure_numpy(input_tensor_outros)
+    if input_vis_raw.ndim == 5:
+        input_vis = input_vis_raw[0, :, :, 0, 0]  # (1, H, W, 1, C) → HxW (usando canal 0)
+    elif input_vis_raw.ndim == 4:
+        input_vis = input_vis_raw[0, :, :, 0]
+    elif input_vis_raw.ndim == 3:
+        input_vis = input_vis_raw[:, :, 0]
+    else:
+        input_vis = input_vis_raw.squeeze()
+
     sns.heatmap(input_vis, ax=axes[0], cbar=False, cmap="viridis", square=True)
 
     axes[0].set_title("Input", fontsize=10)

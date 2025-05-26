@@ -17,6 +17,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     
 RUN apt-get update && apt-get install -y libgl1-mesa-glx
 
+RUN apt-get update && apt-get install -y git-lfs && git lfs install
+
+RUN apt-get install -y locales && \
+    locale-gen en_US.UTF-8 && \
+    update-locale LANG=en_US.UTF-8
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+
 
 # Configura usuário vscode, porque o VSCode acha que é especial
 ARG USERNAME=vscode

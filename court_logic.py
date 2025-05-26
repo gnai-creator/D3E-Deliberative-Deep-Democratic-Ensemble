@@ -38,6 +38,8 @@ def prepare_input_for_model(model_index, base_input):
     else:
         return pad_or_truncate_channels(base_input, 40)
 
+
+
 def safe_prepare_visual_tensor(v, i):
     try:
         if len(v.shape) > 3 and v.shape[-1] > 1:
@@ -46,11 +48,14 @@ def safe_prepare_visual_tensor(v, i):
         try:
             if v.shape[0] == 1:
                 v = tf.squeeze(v, axis=0)
-            if v.shape.ndims >= 3 and v.shape[-1] == 1:
-                v = tf.squeeze(v, axis=-1)
-            elif v.shape.ndims >= 3 and v.shape[-1] != 1:
-                log(f"[VISUAL] Dimensão final inesperada ao tentar squeeze: {v.shape}")
-                return None
+
+            if v.shape.ndims >= 3:
+                last_dim = tf.shape(v)[-1]
+                if tf.equal(last_dim, 1):
+                    v = tf.squeeze(v, axis=-1)
+                elif tf.greater(last_dim, 1):
+                    log(f"[VISUAL] Dimensão final não espremente: {tf.shape(v)}")
+                    return None
         except Exception as e:
             log(f"[VISUAL] Falha ao ajustar shape do modelo {i}: {e}")
             return None
@@ -61,7 +66,7 @@ def safe_prepare_visual_tensor(v, i):
             v = tf.image.resize_with_crop_or_pad(tf.cast(v, tf.float32), 30, 30)
             v = tf.cast(v, tf.int32)
         elif v.shape.rank != 2:
-            log(f"[VISUAL] Tensor com rank inesperado após squeeze: {v.shape}")
+            log(f"[VISUAL] Tensor com rank inesperado: {v.shape}")
             return None
 
         return v.numpy()
@@ -69,7 +74,6 @@ def safe_prepare_visual_tensor(v, i):
     except Exception as e:
         log(f"[VISUAL] Erro ao preparar voto do modelo {i}: {e}")
         return None
-
 
 
 
@@ -153,6 +157,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         adv_input = prepare_input_for_model(3, input_tensor_outros)
         y_advogada = tf.argmax(votos_models["modelo_4"], axis=-1)
         y_advogada = tf.expand_dims(y_advogada, axis=-1)
+        y_advogada = tf.tile(y_advogada, [1, 30, 30, 1, 4])
         log("A Juíza respondeu. A Advogada atualiza sua tese com base nesse parecer.")
         models[3].fit(adv_input, y_advogada, epochs=epochs, verbose=0)
         votos_models["modelo_3"] = models[3](adv_input, training=False)

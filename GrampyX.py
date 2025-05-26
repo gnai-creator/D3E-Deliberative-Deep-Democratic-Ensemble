@@ -1,4 +1,4 @@
-# ClippyX_persistente.py
+# GrampyX_persistente.py
 import tensorflow as tf
 import numpy as np
 import os
@@ -15,13 +15,13 @@ from data_pipeline import load_data_batches
 from train_all import training_process
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense, Input
-from ClippyX_internal_models import ClippyInternalModels
+from GrampyX_internal_models import GrumpyInternalModels
 
 PERSIST_DIR = "clippy_data"
 DETECTOR_WEIGHTS = os.path.join(PERSIST_DIR, "detector.h5")
 HISTORY_PATH = os.path.join(PERSIST_DIR, "history.pkl")
 
-class ClippyX:
+class GrampyX:
     def __init__(self, num_modelos=5):
         os.makedirs(PERSIST_DIR, exist_ok=True)
 
@@ -31,7 +31,7 @@ class ClippyX:
         self.submission_dict = []
         self.history_X = []
         self.history_y = []
-        self.internal_models = ClippyInternalModels()
+        self.internal_models = GrumpyInternalModels()
 
         self.detector = Sequential([
             Input(shape=(30 * 30,)),
@@ -43,18 +43,18 @@ class ClippyX:
 
         if os.path.exists(DETECTOR_WEIGHTS):
             self.detector.load_weights(DETECTOR_WEIGHTS)
-            log("[CLIPPYX] Pesos do detector carregados")
+            log("[GrampyX] Pesos do detector carregados")
 
         if os.path.exists(HISTORY_PATH):
             with open(HISTORY_PATH, "rb") as f:
                 self.history_X, self.history_y = pickle.load(f)
-            log("[CLIPPYX] Histórico carregado")
+            log("[GrampyX] Histórico carregado")
 
     def salvar_estado(self):
         self.detector.save_weights(DETECTOR_WEIGHTS)
         with open(HISTORY_PATH, "wb") as f:
             pickle.dump((self.history_X, self.history_y), f)
-        log("[CLIPPYX] Estado salvo")
+        log("[GrampyX] Estado salvo")
 
     def preparar_inputs(self, x):
         if x.shape[-1] == 40:
@@ -73,7 +73,7 @@ class ClippyX:
             if len(self.models) < 6:
                 self.models.append(load_model(5, 0.0005))  # Suprema Juíza
 
-            log(f"[CLIPPYX] Julgando bloco {block_index} — Task {task_id}")
+            log(f"[GrampyX] Julgando bloco {block_index} — Task {task_id}")
             resultados = arc_court_supreme(
                 self.models,
                 x_outros,
@@ -97,7 +97,7 @@ class ClippyX:
 
             if len(self.history_X) >= 10:
                 self.detector.fit(np.array(self.history_X), np.array(self.history_y), epochs=5, verbose=0)
-                log(f"[CLIPPYX] Detector interno treinado")
+                log(f"[GrampyX] Detector interno treinado")
 
             self.salvar_estado()
 
@@ -114,7 +114,7 @@ class ClippyX:
             return {"consenso": consenso}
 
         except Exception as e:
-            log(f"[CLIPPYX ERRO] Bloco {block_index}: {str(e)}")
+            log(f"[GrampyX ERRO] Bloco {block_index}: {str(e)}")
             return {"consenso": 0.0}
 
 
@@ -122,7 +122,7 @@ class ClippyX:
 todos_os_batches = {}
 
 def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.9, idx=0):
-    clippy = ClippyX()
+    clippy = GrampyX()
     with open("arc-agi_test_challenges.json") as f:
         test_challenges = json.load(f)
     task_ids = list(test_challenges.keys())
@@ -163,21 +163,21 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
         sucesso = False
 
         while not sucesso and iteracao < max_iteracoes:
-            log(f"[CLIPPYX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
+            log(f"[GrampyX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
             resultado = clippy.julgar(X_test, raw_input, block_idx, task_id, idx, iteracao)
 
             consenso = resultado.get("consenso", 0)
             if consenso >= consenso_minimo:
-                log(f"[CLIPPYX] Consenso alcançado ({consenso:.2f}), encerrando iteração.")
+                log(f"[GrampyX] Consenso alcançado ({consenso:.2f}), encerrando iteração.")
                 sucesso = True
             else:
-                log(f"[CLIPPYX] Consenso insuficiente ({consenso:.2f}), nova rodada.")
+                log(f"[GrampyX] Consenso insuficiente ({consenso:.2f}), nova rodada.")
                 iteracao += 1
 
         if not sucesso and parar_se_sucesso:
-            log(f"[CLIPPYX] Máximo de iterações atingido para bloco {block_idx}. Partindo pro próximo.")
+            log(f"[GrampyX] Máximo de iterações atingido para bloco {block_idx}. Partindo pro próximo.")
 
-    log("[CLIPPYX] Deliberação encerrada.")
+    log("[GrampyX] Deliberação encerrada.")
     return False
 
 

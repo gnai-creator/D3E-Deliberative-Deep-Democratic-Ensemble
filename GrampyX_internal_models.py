@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models
 
-class ClippyInternalModels:
+class GrumpyInternalModels:
     def __init__(self):
         self.votos_memoria = []
 

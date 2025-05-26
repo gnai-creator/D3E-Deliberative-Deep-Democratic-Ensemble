@@ -1,3 +1,5 @@
+
+
 # GrampyX_persistente.py
 import tensorflow as tf
 import numpy as np
@@ -7,6 +9,7 @@ import random
 import json
 from court_logic import arc_court_supreme
 from confidence_system import ConfidenceManager
+from metrics import safe_squeeze
 from metrics_utils import plot_prediction_test, gerar_video_time_lapse, embutir_trilha_sonora
 from runtime_utils import save_debug_result
 from metrics_utils import log
@@ -17,7 +20,7 @@ from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense, Input
 from GrampyX_internal_models import GrumpyInternalModels
 
-PERSIST_DIR = "clippy_data"
+PERSIST_DIR = "grampy_data"
 DETECTOR_WEIGHTS = os.path.join(PERSIST_DIR, "detector.h5")
 HISTORY_PATH = os.path.join(PERSIST_DIR, "history.pkl")
 

@@ -110,3 +110,8 @@ def pad_to_30x30_top_left_single(X, pad_value=0):
         x_pad[:h, :w, :, :] = x
         padded_X.append(x_pad)
     return np.array(padded_X)
+
+def safe_squeeze(tensor, axis):
+    if tensor.shape[axis] == 1:
+        return tf.squeeze(tensor, axis=axis)
+    return tensor

@@ -95,7 +95,6 @@ def safe_squeeze_axis(tensor, axis):
         return tf.squeeze(tensor, axis=axis)
     return tensor
 
-
 def preparar_voto_para_visualizacao(v):
     v = ensure_numpy(v)
 
@@ -103,20 +102,13 @@ def preparar_voto_para_visualizacao(v):
     if v.ndim > 2:
         v = np.argmax(v, axis=-1)
 
-    # Remove eixos extras com segurança até ficar 2D
+    # Remove eixos extras até ficar 2D
     while v.ndim > 2:
-        if v.shape[0] == 1:
-            v = np.squeeze(v, axis=0)
-        elif v.shape[-1] == 1:
-            v = np.squeeze(v, axis=-1)
-        else:
-            break  # Não dá para reduzir mais sem perder dados
+        v = np.squeeze(v, axis=0)
 
-    # Se ainda for 3D, pega o primeiro canal (última dimensão)
     if v.ndim == 3:
         v = v[..., 0]
 
-    # Verificação final de shape
     if v.size != 900:
         log(f"[VISUAL] ⚠️ Voto inválido com {v.size} elementos. Esperado 900 para shape (30, 30).")
         return np.zeros((30, 30), dtype=np.int32)
@@ -169,11 +161,21 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
     # Input
     input_vis = ensure_numpy(input_tensor_outros)
     if input_vis.ndim == 5:
-        input_vis = input_vis[0, :, :, 0, 0]
-    elif input_vis.ndim == 4:
+        input_vis = input_vis[0, :, :, 0, 0]  # [30, 30]
+    elif input_vis.ndim == 4 and input_vis.shape[-1] == 1:
         input_vis = input_vis[0, :, :, 0]
-    input_vis = np.squeeze(input_vis)
-    input_vis = input_vis.reshape((30, 30)) if input_vis.size == 900 else np.zeros((30, 30))
+    elif input_vis.ndim == 4:
+        input_vis = input_vis[0, :, :, 0]  # assume canal no final
+    elif input_vis.ndim == 3 and input_vis.shape[0] == 1:
+        input_vis = input_vis[0]
+
+    # Garantir shape final 2D seguro
+    if input_vis.ndim == 3 and input_vis.shape[-1] == 1:
+        input_vis = input_vis[:, :, 0]
+
+    if input_vis.size != 900:
+        input_vis = np.zeros((30, 30), dtype=np.int32)
+
 
     sns.heatmap(input_vis, ax=axes[-2], cbar=False, cmap="viridis", square=True, vmin=0, vmax=9)
     axes[-2].set_title("Input", fontsize=10)

@@ -1,10 +1,12 @@
+
+
 import os
 import numpy as np
 import tensorflow as tf
 from confidence_system import avaliar_consenso_com_confiança
-from metrics_utils import salvar_voto_visual
+from metrics_utils import salvar_voto_visual, preparar_voto_para_visualizacao
 from runtime_utils import log
-
+from metrics import safe_squeeze
  
 
 def pixelwise_mode(stack):
@@ -40,52 +42,20 @@ def prepare_input_for_model(model_index, base_input):
 
 
 
-def safe_prepare_visual_tensor(v, i):
-    try:
-        if len(v.shape) > 3 and v.shape[-1] > 1:
-            v = tf.argmax(v, axis=-1)
-
-        try:
-            if v.shape[0] == 1:
-                v = tf.squeeze(v, axis=0)
-
-            if v.shape.ndims >= 3:
-                last_dim = tf.shape(v)[-1]
-                if tf.equal(last_dim, 1):
-                    v = tf.squeeze(v, axis=-1)
-                elif tf.greater(last_dim, 1):
-                    log(f"[VISUAL] Dimensão final não espremente: {tf.shape(v)}")
-                    return None
-        except Exception as e:
-            log(f"[VISUAL] Falha ao ajustar shape do modelo {i}: {e}")
-            return None
-
-        v = tf.convert_to_tensor(v)
-
-        if v.shape.rank == 2 and v.shape != (30, 30):
-            v = tf.image.resize_with_crop_or_pad(tf.cast(v, tf.float32), 30, 30)
-            v = tf.cast(v, tf.int32)
-        elif v.shape.rank != 2:
-            log(f"[VISUAL] Tensor com rank inesperado: {v.shape}")
-            return None
-
-        return v.numpy()
-
-    except Exception as e:
-        log(f"[VISUAL] Erro ao preparar voto do modelo {i}: {e}")
-        return None
-
-
-
 def gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id):
     votos_visuais = []
     for i, v in votos_models.items():
-        resultado = safe_prepare_visual_tensor(v, i)
+        resultado = preparar_voto_para_visualizacao(v, i)
         if resultado is not None:
             votos_visuais.append(resultado)
 
     try:
-        input_visual = tf.squeeze(input_tensor_outros[..., 0, 0])
+        # Extrai canal 0 e feature 0 corretamente
+        v = input_tensor_outros
+        if v.shape[-1] >= 1 and v.shape[-2] >= 1:
+            input_visual = v[0, :, :, 0, 0]  # shape: [30, 30]
+        else:
+            input_visual = tf.zeros((30, 30), dtype=tf.int32)
         if len(input_visual.shape) != 2:
             raise ValueError
     except:

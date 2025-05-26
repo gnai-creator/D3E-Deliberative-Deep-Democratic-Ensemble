@@ -1,5 +1,7 @@
+
 import tensorflow as tf
 from runtime_utils import log
+from metrics import safe_squeeze
 class ConfidenceManager:
     def __init__(self, models, initial_confidence=1.0, decay=0.9, recovery_rate=0.05, min_threshold=0.1):
         self.model_names = [f"modelo_{i}" for i in range(len(models))]

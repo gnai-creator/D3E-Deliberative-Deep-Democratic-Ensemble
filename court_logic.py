@@ -58,7 +58,10 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         y_juradas = tf.argmax(votos_models["modelo_3"], axis=-1)
         y_juradas = tf.cast(tf.expand_dims(y_juradas, axis=-1), dtype=tf.int64)
 
-        voto_suprema = tf.argmax(votos_models["modelo_5"], axis=-1)
+        if "modelo_5" in votos_models:
+            voto_suprema = tf.argmax(votos_models["modelo_5"], axis=-1)
+        else:
+            voto_suprema = tf.argmax(votos_models["modelo_3"], axis=-1)  # fallback to advocate
         voto_suprema_exp = tf.expand_dims(voto_suprema, axis=-1)
 
         for i in range(3):

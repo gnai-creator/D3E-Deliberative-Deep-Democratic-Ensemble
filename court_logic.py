@@ -90,7 +90,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                 log(f"[VISUAL] Erro ao preparar voto do modelo {i}: {e}")
 
         input_visual = tf.squeeze(input_tensor_outros[..., 0, 0])
-        salvar_voto_visual(votos_visuais, iter_count, block_idx, input_visual, task_id=task_id, idx=idx)
+        salvar_voto_visual(votos_visuais, idx, block_idx, input_visual, task_id=task_id, idx=idx)
 
         # CONSENSO
         consenso = avaliar_consenso_com_confiança(

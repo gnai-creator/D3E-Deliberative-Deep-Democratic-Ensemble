@@ -37,7 +37,7 @@ def prepare_input_for_model(model_index, base_input):
         return pad_or_truncate_channels(base_input, 40)
 
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
-                      max_cycles=10, tol=0.98, epochs=1, confidence_threshold=0.5,
+                      max_cycles=10, tol=0.98, epochs=60, confidence_threshold=0.5,
                       confidence_manager=[], idx=0):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
     manager = confidence_manager
@@ -54,15 +54,18 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
 
         # JURADAS aprendem com a advogada
         y_juradas = tf.argmax(votos_models["modelo_3"], axis=-1)
+        y_juradas = tf.cast(tf.expand_dims(y_juradas, axis=-1), dtype=tf.int64)
         for i in range(3):
             x_i = prepare_input_for_model(i, input_tensor_outros)
             if i == 0:
                 noise = tf.random.uniform(shape=y_juradas.shape, minval=0, maxval=6, dtype=tf.int64)
-                y_ruidoso = (y_juradas + noise) % 10
+                y_ruidoso = (tf.squeeze(y_juradas, axis=-1) + noise) % 10
+                y_ruidoso = tf.cast(tf.expand_dims(y_ruidoso, axis=-1), dtype=tf.int64)
                 models[i].fit(x_i, y_ruidoso, epochs=epochs, verbose=0)
             elif i == 2:
                 noise = tf.random.uniform(shape=y_juradas.shape, minval=0, maxval=3, dtype=tf.int64)
-                y_ruidoso = (y_juradas + noise) % 10
+                y_ruidoso = (tf.squeeze(y_juradas, axis=-1) + noise) % 10
+                y_ruidoso = tf.expand_dims(y_ruidoso, axis=-1)
                 models[i].fit(x_i, y_ruidoso, epochs=epochs, verbose=0)
             else:
                 models[i].fit(x_i, y_juradas, epochs=epochs, verbose=0)
@@ -75,18 +78,21 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         # SUPREMA - aprende com todos (0 a 4)
         stack_suprema = [tf.argmax(votos_models[f"modelo_{i}"], axis=-1) for i in range(5)]
         y_suprema = pixelwise_mode(tf.stack(stack_suprema, axis=0))
+        y_suprema = tf.expand_dims(y_suprema, axis=-1)
         x_suprema = prepare_input_for_model(5, input_tensor_outros)
         models[5].fit(x_suprema, y_suprema, epochs=epochs, verbose=0)
         votos_models["modelo_5"] = models[5](x_suprema, training=False)
 
         # JUÍZA aprende com feedback da Suprema
         y_juiza = tf.argmax(votos_models["modelo_5"], axis=-1)
+        y_juiza = tf.expand_dims(y_juiza, axis=-1)
         log("A Suprema emitiu seu veredito. A Juíza deve reavaliar a causa.")
         models[4].fit(x_juiza, y_juiza, epochs=epochs, verbose=0)
         votos_models["modelo_4"] = models[4](x_juiza, training=False)
 
         # ADVOGADA re-treina com feedback da Juíza
         y_advogada = tf.argmax(votos_models["modelo_4"], axis=-1)
+        y_advogada = tf.expand_dims(y_advogada, axis=-1)
         log("A Juíza respondeu. A Advogada atualiza sua tese com base nesse parecer.")
         models[3].fit(adv_input, y_advogada, epochs=epochs, verbose=0)
         votos_models["modelo_3"] = models[3](adv_input, training=False)
@@ -97,17 +103,18 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
             try:
                 if len(v.shape) > 3 and v.shape[-1] > 1:
                     v = tf.argmax(v, axis=-1)
-                v = tf.squeeze(v)
+                v = tf.squeeze(v, axis=0)
+                if len(v.shape) == 3 and v.shape[-1] == 1:
+                    v = tf.squeeze(v, axis=-1)
                 votos_visuais.append(v)
             except Exception as e:
                 log(f"[VISUAL] Erro ao preparar voto do modelo {i}: {e}")
 
         input_visual = tf.squeeze(input_tensor_outros[..., 0, 0])
         salvar_voto_visual(votos_visuais, idx, block_idx, input_visual, task_id=task_id, idx=idx)
-        # salvar_voto_visual(votos_visuais, iter_count, block_idx, input_visual, task_id=task_id, idx=idx)
 
         # CONSENSO = voto da Suprema Juíza
-        consenso = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(votos_models["modelo_5"], axis=-1), y_suprema), tf.float32)).numpy()
+        consenso = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(votos_models["modelo_5"], axis=-1), tf.squeeze(y_suprema, axis=-1)), tf.float32)).numpy()
         log(f"[CONSENSO] Score de consenso com Suprema = {consenso:.3f} (limite = {tol})")
 
         # CONFIANÇA: compara todos com Suprema
@@ -121,6 +128,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
 
         if consenso >= tol:
             y_eval = tf.argmax(votos_models["modelo_4"], axis=-1)
+            y_eval = tf.expand_dims(y_eval, axis=-1)
             loss, acc = models[5].evaluate(x_suprema, y_eval, verbose=0)
             log(f"[SUPREMA] Avaliação: acc = {acc:.3f}, loss = {loss:.6f}")
 

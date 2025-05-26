@@ -1,198 +1,148 @@
-# ClippyX_persistente.py
-import tensorflow as tf
-import numpy as np
 import os
-import pickle
-import random
-import json
-from court_logic import arc_court_supreme
-from confidence_system import ConfidenceManager
-from metrics_utils import plot_prediction_test, gerar_video_time_lapse, embutir_trilha_sonora
-from runtime_utils import save_debug_result
-from metrics_utils import log
-from models_loader import load_model
-from data_pipeline import load_data_batches
-from train_all import training_process
-from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Dense, Input
-from ClippyX_internal_models import ClippyInternalModels
+import numpy as np
+import tensorflow as tf
+from confidence_system import avaliar_consenso_com_confiança
+from metrics_utils import salvar_voto_visual
+from runtime_utils import log
 
-PERSIST_DIR = "clippy_data"
-DETECTOR_WEIGHTS = os.path.join(PERSIST_DIR, "detector.h5")
-HISTORY_PATH = os.path.join(PERSIST_DIR, "history.pkl")
+def pixelwise_mode(stack):
+    stack = tf.transpose(stack, [1, 2, 3, 0])  # (1, 30, 30, N)
+    flat = tf.reshape(stack, (-1, stack.shape[-1]))
 
-class ClippyX:
-    def __init__(self, num_modelos=5):
-        os.makedirs(PERSIST_DIR, exist_ok=True)
+    def pixel_mode(x):
+        with tf.device("/CPU:0"):
+            bincount = tf.math.bincount(tf.cast(x, tf.int32), minlength=10)
+        return tf.argmax(bincount)
 
-        self.num_modelos = num_modelos
-        self.models = [load_model(i, 0.0005) for i in range(num_modelos)]
-        self.manager = ConfidenceManager(self.models)
-        self.submission_dict = []
-        self.history_X = []
-        self.history_y = []
-        self.internal_models = ClippyInternalModels()
+    moda_flat = tf.map_fn(pixel_mode, flat, fn_output_signature=tf.int64)
+    return tf.reshape(moda_flat, (1, 30, 30))
 
-        self.detector = Sequential([
-            Input(shape=(30 * 30,)),
-            Dense(128, activation='relu'),
-            Dense(64, activation='relu'),
-            Dense(1, activation='sigmoid')
-        ])
-        self.detector.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+def pad_or_truncate_channels(tensor, target_channels=40):
+    current_channels = tensor.shape[-1]
+    rank = len(tensor.shape)
+    if current_channels == target_channels:
+        return tensor
+    elif current_channels < target_channels:
+        padding = target_channels - current_channels
+        paddings = [[0, 0]] * rank
+        paddings[-1] = [0, padding]
+        return tf.pad(tensor, paddings)
+    else:
+        return tensor[..., :target_channels]
 
-        if os.path.exists(DETECTOR_WEIGHTS):
-            self.detector.load_weights(DETECTOR_WEIGHTS)
-            log("[CLIPPYX] Pesos do detector carregados")
+def prepare_input_for_model(model_index, base_input):
+    if model_index in [0, 1, 2, 3]:  # Juradas e Advogada
+        return pad_or_truncate_channels(base_input, 4)
+    else:  # Juíza e Suprema
+        return pad_or_truncate_channels(base_input, 40)
 
-        if os.path.exists(HISTORY_PATH):
-            with open(HISTORY_PATH, "rb") as f:
-                self.history_X, self.history_y = pickle.load(f)
-            log("[CLIPPYX] Histórico carregado")
+def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
+                      max_cycles=10, tol=0.98, epochs=1, confidence_threshold=0.5,
+                      confidence_manager=[], idx=0):
+    log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
+    manager = confidence_manager
+    votos_models = {}
+    iter_count = 0
 
-    def salvar_estado(self):
-        self.detector.save_weights(DETECTOR_WEIGHTS)
-        with open(HISTORY_PATH, "wb") as f:
-            pickle.dump((self.history_X, self.history_y), f)
-        log("[CLIPPYX] Estado salvo")
+    while iter_count < max_cycles:
+        log(f"[CICLO] Iteração {iter_count}")
+        votos_models.clear()
 
-    def preparar_inputs(self, x):
-        if x.shape[-1] == 40:
-            x_juiz = x
-            x_outros = tf.concat(tf.split(x, num_or_size_splits=10, axis=-1)[:1], axis=-1)
-        else:
-            x_outros = x
-            x_juiz = tf.zeros((1, 30, 30, 1, 40), dtype=tf.float32)
-        return x_outros, x_juiz
+        # ADVOGADA - previsão inicial
+        adv_input = prepare_input_for_model(3, input_tensor_outros)
+        votos_models["modelo_3"] = models[3](adv_input, training=False)
 
-    def julgar(self, x_input, raw_input, block_index, task_id, idx, iteracao):
-        try:
-            x_input = tf.expand_dims(tf.convert_to_tensor(x_input, dtype=tf.float32), axis=0)
-            x_outros, _ = self.preparar_inputs(x_input)
-
-            if len(self.models) < 6:
-                self.models.append(load_model(5, 0.0005))  # Suprema Juíza
-
-            log(f"[CLIPPYX] Julgando bloco {block_index} — Task {task_id}")
-            resultados = arc_court_supreme(
-                self.models,
-                x_outros,
-                task_id=task_id,
-                block_idx=block_index,
-                confidence_manager=self.manager,
-                idx=idx,
-            )
-
-            consenso = resultados.get("consenso", 0.0)
-            y_pred = resultados["class_logits"] if isinstance(resultados, dict) else resultados
-            y_pred_np = y_pred.numpy() if isinstance(y_pred, tf.Tensor) else y_pred
-
-            flat = tf.argmax(y_pred_np, axis=-1).numpy().flatten()
-            label = 1.0 if consenso >= 0.9 else 0.0
-            self.history_X.append(flat)
-            self.history_y.append(label)
-
-            self.internal_models.adicionar_voto(y_pred_np, consenso)
-            self.internal_models.treinar_todos()
-
-            if len(self.history_X) >= 10:
-                self.detector.fit(np.array(self.history_X), np.array(self.history_y), epochs=5, verbose=0)
-                log(f"[CLIPPYX] Detector interno treinado")
-
-            self.salvar_estado()
-
-            salvar_path = f"images/clippy/JULGAMENTO_{block_index}_{task_id}"
-            plot_prediction_test(raw_input=raw_input, predicted_output=y_pred_np, save_path=salvar_path)
-
-            self.submission_dict.append({"task_id": task_id, "prediction": y_pred_np})
-            save_debug_result(self.submission_dict, "submission.json")
-
-            video_path = gerar_video_time_lapse("votos_visuais", block_index, f"{block_index}_{task_id}.avi")
-            if video_path:
-                embutir_trilha_sonora(video_path, block_index)
-
-            return {"consenso": consenso}
-
-        except Exception as e:
-            log(f"[CLIPPYX ERRO] Bloco {block_index}: {str(e)}")
-            return {"consenso": 0.0}
-
-
-# Global cache para manter batches entre chamadas
-todos_os_batches = {}
-
-def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.9, idx=0):
-    clippy = ClippyX()
-    with open("arc-agi_test_challenges.json") as f:
-        test_challenges = json.load(f)
-    task_ids = list(test_challenges.keys())
-    clippy.models = []
-    clippy.models = [load_model(i, 0.0005) for i in range(clippy.num_modelos)]
-    if idx not in todos_os_batches:
-        todos_os_batches[idx] = []
-
-        for model_idx in range(clippy.num_modelos):
-            batches = load_data_batches(
-                challenges=test_challenges,
-                num_models=clippy.num_modelos,
-                task_ids=task_ids,
-                model_idx=model_idx,
-                block_idx=idx
-            )
-            training_process(
-                models=clippy.models,
-                batches=batches,
-                n_model=model_idx,
-                batch_index=idx,
-                max_blocks=1,
-                block_size=1,
-                max_training_time=14400,
-                cycles=150,
-                epochs=60,
-                batch_size=8,
-                patience=20,
-                rl_lr=2e-3,
-                factor=0.65,
-                len_trainig=1,
-                pad_value=0,
-            )
-            todos_os_batches[idx].extend(batches)
-
-    for (X_train, X_val, Y_train, Y_val, X_test, raw_input, block_idx, task_id) in todos_os_batches[idx]:
-        iteracao = 0
-        sucesso = False
-
-        while not sucesso and iteracao < max_iteracoes:
-            log(f"[CLIPPYX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
-            resultado = clippy.julgar(X_test, raw_input, block_idx, task_id, idx, iteracao)
-
-            consenso = resultado.get("consenso", 0)
-            if consenso >= consenso_minimo:
-                log(f"[CLIPPYX] Consenso alcançado ({consenso:.2f}), encerrando iteração.")
-                sucesso = True
+        # JURADAS aprendem com a advogada
+        y_juradas = tf.argmax(votos_models["modelo_3"], axis=-1)
+        y_juradas = tf.cast(tf.expand_dims(y_juradas, axis=-1), dtype=tf.int64)
+        for i in range(3):
+            x_i = prepare_input_for_model(i, input_tensor_outros)
+            if i == 0:
+                noise = tf.random.uniform(shape=(1, 30, 30), minval=0, maxval=6, dtype=tf.int64)
+                y_base = tf.squeeze(y_juradas, axis=-1)
+                y_ruidoso = tf.expand_dims((y_base + noise) % 10, axis=-1)
+                models[i].fit(x_i, y_ruidoso, epochs=epochs, verbose=0)
+            # elif i == 2:
+            #     noise = tf.random.uniform(shape=(1, 30, 30), minval=0, maxval=3, dtype=tf.int64)
+            #     y_base = tf.squeeze(y_juradas, axis=-1)
+            #     y_ruidoso = tf.expand_dims((y_base + noise) % 10, axis=-1)
+            #     models[i].fit(x_i, y_ruidoso, epochs=epochs, verbose=0)
             else:
-                log(f"[CLIPPYX] Consenso insuficiente ({consenso:.2f}), nova rodada.")
-                iteracao += 1
+                models[i].fit(x_i, y_juradas, epochs=epochs, verbose=0)
+            votos_models[f"modelo_{i}"] = models[i](x_i, training=False)
 
-        if not sucesso and parar_se_sucesso:
-            log(f"[CLIPPYX] Máximo de iterações atingido para bloco {block_idx}. Partindo pro próximo.")
+        # JUÍZA - previsão (ainda não treina)
+        x_juiza = prepare_input_for_model(4, input_tensor_outros)
+        votos_models["modelo_4"] = models[4](x_juiza, training=False)
 
-    log("[CLIPPYX] Deliberação encerrada.")
-    return False
+        # SUPREMA - aprende com todos (0 a 4)
+        stack_suprema = [tf.argmax(votos_models[f"modelo_{i}"], axis=-1) for i in range(5)]
+        y_suprema = pixelwise_mode(tf.stack(stack_suprema, axis=0))
+        y_suprema = tf.expand_dims(y_suprema, axis=-1)
+        x_suprema = prepare_input_for_model(5, input_tensor_outros)
+        models[5].fit(x_suprema, y_suprema, epochs=epochs, verbose=0)
+        votos_models["modelo_5"] = models[5](x_suprema, training=False)
 
+        # JUÍZA aprende com feedback da Suprema
+        y_juiza = tf.argmax(votos_models["modelo_5"], axis=-1)
+        y_juiza = tf.expand_dims(y_juiza, axis=-1)
+        log("A Suprema emitiu seu veredito. A Juíza deve reavaliar a causa.")
+        models[4].fit(x_juiza, y_juiza, epochs=epochs, verbose=0)
+        votos_models["modelo_4"] = models[4](x_juiza, training=False)
 
-if __name__ == "__main__":
-    tf.random.set_seed(42)
-    np.random.seed(42)
-    random.seed(42)
-    os.environ["TF_DETERMINISTIC_OPS"] = "1"
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-    idx = 0
-    while True:
-        while rodar_deliberacao_com_condicoes(
-            parar_se_sucesso=True,
-            max_iteracoes=150,
-            consenso_minimo=0.9,
-            idx=idx
-        ):
-            idx += 1
+        # ADVOGADA re-treina com feedback da Juíza
+        y_advogada = tf.argmax(votos_models["modelo_4"], axis=-1)
+        y_advogada = tf.expand_dims(y_advogada, axis=-1)
+        log("A Juíza respondeu. A Advogada atualiza sua tese com base nesse parecer.")
+        models[3].fit(adv_input, y_advogada, epochs=epochs, verbose=0)
+        votos_models["modelo_3"] = models[3](adv_input, training=False)
+
+        # VISUALIZAÇÃO
+        votos_visuais = []
+        for i, v in votos_models.items():
+            try:
+                if len(v.shape) > 3 and v.shape[-1] > 1:
+                    v = tf.argmax(v, axis=-1)
+                v = tf.squeeze(v, axis=0)
+                if len(v.shape) == 3 and v.shape[-1] == 1:
+                    v = tf.squeeze(v, axis=-1)
+                votos_visuais.append(v)
+            except Exception as e:
+                log(f"[VISUAL] Erro ao preparar voto do modelo {i}: {e}")
+
+        input_visual = tf.squeeze(input_tensor_outros[..., 0, 0])
+        salvar_voto_visual(votos_visuais, idx, block_idx, input_visual, task_id=task_id, idx=idx)
+
+        # CONSENSO = voto da Suprema Juíza
+        consenso = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(votos_models["modelo_5"], axis=-1), tf.squeeze(y_suprema, axis=-1)), tf.float32)).numpy()
+        log(f"[CONSENSO] Score de consenso com Suprema = {consenso:.3f} (limite = {tol})")
+
+        # CONFIANÇA: compara todos com Suprema
+        voto_suprema = tf.argmax(votos_models["modelo_5"], axis=-1)
+        for i in range(6):
+            voto_i = tf.argmax(votos_models[f"modelo_{i}"], axis=-1)
+            acertou = tf.reduce_all(tf.equal(voto_i, voto_suprema)).numpy()
+            manager.update_confidence(f"modelo_{i}", bool(acertou))
+
+        manager.log_status(log)
+
+        if consenso >= tol:
+            y_eval = tf.argmax(votos_models["modelo_4"], axis=-1)
+            y_eval = tf.expand_dims(y_eval, axis=-1)
+            loss, acc = models[5].evaluate(x_suprema, y_eval, verbose=0)
+            log(f"[SUPREMA] Avaliação: acc = {acc:.3f}, loss = {loss:.6f}")
+
+            if acc < 1.0 or loss > 0.001:
+                log("[SUPREMA] A Suprema rejeitou o veredito da Juíza. Nova deliberação se faz necessária.")
+                iter_count += 1
+                continue
+            else:
+                log("[SUPREMA] Confiança plena atingida — consenso final aceito.")
+                break
+
+        iter_count += 1
+
+    return {
+        "class_logits": votos_models["modelo_5"],
+        "consenso": consenso
+    }

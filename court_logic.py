@@ -52,11 +52,20 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         adv_input = prepare_input_for_model(3, input_tensor_outros)
         votos_models["modelo_3"] = models[3](adv_input, training=False)
 
-        # JURADAS aprendem com a advogada
+        # JURADAS aprendem com a advogada (com ruído no jurado 0 e 2)
         y_juradas = tf.argmax(votos_models["modelo_3"], axis=-1)
         for i in range(3):
             x_i = prepare_input_for_model(i, input_tensor_outros)
-            models[i].fit(x_i, y_juradas, epochs=epochs, verbose=0)
+            if i == 0:
+                noise = tf.random.uniform(shape=y_juradas.shape, minval=0, maxval=6, dtype=tf.int64)
+                y_ruidoso = (y_juradas + noise) % 10
+                models[i].fit(x_i, y_ruidoso, epochs=epochs, verbose=0)
+            elif i == 2:
+                noise = tf.random.uniform(shape=y_juradas.shape, minval=0, maxval=3, dtype=tf.int64)
+                y_ruidoso = (y_juradas + noise) % 10
+                models[i].fit(x_i, y_ruidoso, epochs=epochs, verbose=0)
+            else:
+                models[i].fit(x_i, y_juradas, epochs=epochs, verbose=0)
             votos_models[f"modelo_{i}"] = models[i](x_i, training=False)
 
         # JUÍZA aprende com juradas + advogada
@@ -90,6 +99,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                 log(f"[VISUAL] Erro ao preparar voto do modelo {i}: {e}")
 
         input_visual = tf.squeeze(input_tensor_outros[..., 0, 0])
+        # salvar_voto_visual(votos_visuais, iter_count, block_idx, input_visual, task_id=task_id, idx=idx)
         salvar_voto_visual(votos_visuais, idx, block_idx, input_visual, task_id=task_id, idx=idx)
 
         # CONSENSO
@@ -98,6 +108,14 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
             required_votes=5, confidence_threshold=confidence_threshold
         )
         log(f"[CONSENSO] Score de consenso = {consenso:.3f} (limite = {tol})")
+
+        # ATUALIZA CONFIANÇA DOS MODELOS COM BASE NO CONSENSO GERAL
+        stack_all = [tf.argmax(votos_models[f"modelo_{i}"], axis=-1) for i in range(6)]
+        consenso_pixel = pixelwise_mode(tf.stack(stack_all, axis=0))
+        for i in range(6):
+            voto_i = tf.argmax(votos_models[f"modelo_{i}"], axis=-1)
+            acertou = tf.reduce_all(tf.equal(voto_i, consenso_pixel)).numpy()
+            manager.update_confidence(f"modelo_{i}", bool(acertou))
 
         if consenso >= tol:
             y_eval = tf.argmax(votos_models["modelo_4"], axis=-1)

@@ -7,7 +7,7 @@ from runtime_utils import log
 
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                       max_cycles=150, tol=0.98, epochs=1, confidence_threshold=0.5,
-                      confidence_manager=[]):
+                      confidence_manager=[], idx=0):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
     manager = confidence_manager
     votos_models = {}
@@ -34,7 +34,8 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         y_treino = (tf.argmax(votos_models["modelo_0"], axis=-1) +
                     tf.random.uniform(shape=(1, 30, 30), maxval=3, dtype=tf.int64)) % 10
 
-        entrada_crua_adv = tf.reshape(entrada_crua, [1, 30, 30, 1, 1])
+        entrada_crua_adv = tf.expand_dims(entrada_crua, axis=-1)  # (1, 30, 30, 1)
+        entrada_crua_adv = tf.expand_dims(entrada_crua_adv, axis=-1)  # (1, 30, 30, 1, 1)
         entrada_crua_adv = pad_or_truncate_channels(entrada_crua_adv, 4)
         advogada.fit(entrada_crua_adv, y_treino, epochs=epochs, verbose=0)
         votos_models["modelo_3"] = advogada(input_tensor_outros, training=False)
@@ -57,7 +58,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         votos_models["modelo_5"] = suprema_juiza(entrada_crua_suprema, training=False)
 
         # Visual
-        salvar_voto_visual(list(votos_models.values()), iter_count, block_idx, input_tensor_outros, task_id=task_id)
+        salvar_voto_visual(list(votos_models.values()), iter_count, block_idx, input_tensor_outros, task_id=task_id, idx=idx)
 
         consenso = avaliar_consenso_com_confiança(
             votos_models, confidence_manager=manager,

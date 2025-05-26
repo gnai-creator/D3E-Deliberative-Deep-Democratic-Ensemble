@@ -110,7 +110,7 @@ def preparar_voto_para_visualizacao(v):
         v = v[..., 0]
     return v
 
-def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, task_id=None, saida_dir="votos_visuais"):
+def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0,task_id=None, saida_dir="votos_visuais"):
     os.makedirs(saida_dir, exist_ok=True)
     prefixo = f"{task_id}_" if task_id else ""
     fname = f"{prefixo}{block_idx} - votos_iter_{iteracao:02d}.png"

@@ -65,7 +65,7 @@ class ClippyX:
             x_juiz = tf.zeros((1, 30, 30, 1, 40), dtype=tf.float32)
         return x_outros, x_juiz
 
-    def julgar(self, x_input, raw_input, block_index, task_id):
+    def julgar(self, x_input, raw_input, block_index, task_id, idx):
         try:
             x_input = tf.expand_dims(tf.convert_to_tensor(x_input, dtype=tf.float32), axis=0)
             x_outros, _ = self.preparar_inputs(x_input)
@@ -79,7 +79,8 @@ class ClippyX:
                 x_outros,
                 task_id=task_id,
                 block_idx=block_index,
-                confidence_manager=self.manager
+                confidence_manager=self.manager,
+                idx=idx,
             )
 
             consenso = resultados.get("consenso", 0.0)
@@ -162,7 +163,7 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=10, con
 
         while not sucesso and iteracao < max_iteracoes:
             log(f"[CLIPPYX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
-            resultado = clippy.julgar(X_test, raw_input, block_idx, task_id)
+            resultado = clippy.julgar(X_test, raw_input, block_idx, task_id, idx)
 
             consenso = resultado.get("consenso", 0)
             if consenso >= consenso_minimo:

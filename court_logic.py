@@ -35,10 +35,11 @@ def pad_or_truncate_channels(tensor, target_channels=40):
 
 
 def prepare_input_for_model(model_index, base_input):
-    if model_index in [0, 1, 2]:  # Juradas
+    if model_index in [0, 1, 2, 3]:  # Juradas e Advogada
         return pad_or_truncate_channels(base_input, 4)
-    else:
+    else:  # Juíza e Suprema
         return pad_or_truncate_channels(base_input, 40)
+
 
 
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,

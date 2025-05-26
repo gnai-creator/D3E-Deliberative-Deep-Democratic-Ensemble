@@ -102,21 +102,37 @@ def preparar_voto_para_visualizacao(v):
     if v.ndim > 2:
         v = np.argmax(v, axis=-1)
 
-    # Agora, remove eixos extras até ficar 2D
+    # Remove eixos extras até ficar 2D
     while v.ndim > 2:
         v = np.squeeze(v, axis=0)
 
     if v.ndim == 3:
         v = v[..., 0]
-    return v
 
-def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0,task_id=None, saida_dir="votos_visuais"):
+    if v.size != 900:
+        log(f"[VISUAL] ⚠️ Voto inválido com {v.size} elementos. Esperado 900 para shape (30, 30).")
+        return np.zeros((30, 30), dtype=np.int32)
+
+    return v.reshape((30, 30)).astype(np.int32)
+
+
+def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, task_id=None, saida_dir="votos_visuais"):
     os.makedirs(saida_dir, exist_ok=True)
     prefixo = f"{task_id}_" if task_id else ""
     fname = f"{prefixo}{block_idx} - votos_iter_{iteracao:02d}.png"
     filepath = os.path.join(saida_dir, fname)
 
-    votos_classes = [preparar_voto_para_visualizacao(v) for v in votos if v is not None]
+    votos_classes = []
+    for i, v in enumerate(votos):
+        if v is None:
+            continue
+        try:
+            v_cls = preparar_voto_para_visualizacao(v)
+            log(f"[VISUAL DEBUG] modelo_{i}: únicos = {np.unique(v_cls)}")
+            votos_classes.append(v_cls)
+        except Exception as e:
+            log(f"[VISUAL] Erro ao preparar voto do modelo_{i}: {e}")
+
     num_modelos = len(votos_classes)
 
     if not votos_classes:
@@ -145,12 +161,11 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0,ta
         log(f"[VISUAL] Salvou fallback visual em {filepath}")
         return
 
-    # Consenso
+    # Mapa de consenso
     votos_stack = np.stack(votos_classes, axis=0)
-    H, W = votos_stack.shape[1:3]
-    consenso_map = np.zeros((H, W), dtype=np.uint8)
-    for i in range(H):
-        for j in range(W):
+    consenso_map = np.zeros((30, 30), dtype=np.uint8)
+    for i in range(30):
+        for j in range(30):
             _, counts = np.unique(votos_stack[:, i, j], return_counts=True)
             if np.max(counts) >= 3:
                 consenso_map[i, j] = 1
@@ -164,19 +179,33 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0,ta
     nomes = [cargos.get(i, f"Modelo {i}") for i in range(num_modelos)]
 
     for ax, voto, nome in zip(axes[:num_modelos], votos_classes, nomes):
-        sns.heatmap(voto, ax=ax, cbar=False, cmap="viridis", square=True)
+        sns.heatmap(voto, ax=ax, cbar=False, cmap="viridis", square=True, vmin=0, vmax=9)
         ax.set_title(f"{nome}", fontsize=10)
         ax.axis("off")
 
-    # Input
-    input_vis = ensure_numpy(input_tensor_outros[0])
-    if input_vis.ndim == 4:
-        input_vis = input_vis[..., 0]
-    elif input_vis.ndim == 3 and input_vis.shape[-1] > 1:
-        input_vis = np.mean(input_vis, axis=-1)
+    # Prepara input visual
+    try:
+        input_vis = ensure_numpy(input_tensor_outros)
+        if input_vis.ndim == 5:
+            input_vis = tf.argmax(input_vis[0], axis=-1).numpy()
 
-    input_vis = np.squeeze(input_vis)
-    sns.heatmap(input_vis, ax=axes[-2], cbar=False, cmap="viridis", square=True)
+        elif input_vis.ndim == 4:
+            input_vis = input_vis[0, :, :, 0]
+        elif input_vis.ndim == 3 and input_vis.shape[-1] > 1:
+            input_vis = input_vis[..., 0]
+        input_vis = np.squeeze(input_vis)
+
+        if input_vis.size != 900:
+            log(f"[VISUAL] ⚠️ input_vis com {input_vis.size} elementos. Substituindo por zeros.")
+            input_vis = np.zeros((30, 30))
+        else:
+            input_vis = input_vis.reshape((30, 30))
+
+    except Exception as e:
+        log(f"[VISUAL] Erro ao preparar input_vis: {e}")
+        input_vis = np.zeros((30, 30))
+
+    sns.heatmap(input_vis, ax=axes[-2], cbar=False, cmap="viridis", square=True, vmin=0, vmax=9)
     axes[-2].set_title("Input", fontsize=10)
     axes[-2].axis("off")
 
@@ -189,6 +218,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0,ta
     plt.savefig(filepath)
     plt.close()
     log(f"[VISUAL] Salvo mapa de votos + consenso em {filepath}")
+
 
 
 

@@ -60,7 +60,25 @@ def avaliar_consenso_com_confiança(votos_models: dict, confidence_manager, requ
             voto = tf.squeeze(voto, axis=0)
         votos_classe.append(voto)
 
-    votos_stacked = tf.stack([tf.reshape(v, (30, 30)) for v in votos_models.values()])
+    votos_stacked = []
+    for name, v in votos_models.items():
+        try:
+            v = tf.argmax(v, axis=-1)
+            if v.shape.rank > 3:
+                v = tf.squeeze(v, axis=0)
+            if tf.size(v) != 900:
+                print(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy()} elementos. Ignorado.")
+                continue
+            v = tf.reshape(v, (30, 30))
+            votos_stacked.append(v)
+        except Exception as e:
+            print(f"[CONSENSO] Erro ao processar voto de {name}: {e}")
+
+    if not votos_stacked:
+        print("[CONSENSO] Nenhum voto válido após filtragem.")
+        return 0.0
+
+    votos_stacked = tf.stack(votos_stacked)
 
 
     if votos_stacked.shape.rank != 3:

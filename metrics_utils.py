@@ -108,6 +108,10 @@ def safe_squeeze(tensor, axis):
 
 
 def preparar_voto_para_visualizacao(v):
+    if not isinstance(v, (np.ndarray, tf.Tensor)):
+        log(f"[VISUAL] Ignorando tipo inesperado: {type(v)}")
+        return None
+
     v = ensure_numpy(v)
 
     # Se ainda tiver logits (mais de 2 dimensões), transforma em classes
@@ -121,13 +125,12 @@ def preparar_voto_para_visualizacao(v):
         elif v.shape[-1] == 1:
             v = np.squeeze(v, axis=-1)
         else:
-            break  # Não dá para reduzir mais sem perder dados
+            break
 
-    # Se ainda for 3D, pega o primeiro canal (última dimensão)
+    # Se ainda for 3D, pega o primeiro canal
     if v.ndim == 3:
         v = v[..., 0]
 
-    # Verificação final de shape
     if v.size != 900:
         log(f"[VISUAL] ⚠️ Voto inválido com {v.size} elementos. Esperado 900 para shape (30, 30).")
         return np.zeros((30, 30), dtype=np.int32)
@@ -142,10 +145,16 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
     filepath = os.path.join(saida_dir, fname)
 
     votos_classes = []
-    for v in votos:
+    if isinstance(votos, dict):
+        iterator = votos.values()
+    else:
+        iterator = votos  # assume list de tensores
+
+    for v in iterator:
         if v is None:
             continue
         try:
+            log(f"[DEBUG] preparando voto: type={type(v)}, shape={getattr(v, 'shape', 'indefinido')}")
             votos_classes.append(preparar_voto_para_visualizacao(v))
         except Exception:
             votos_classes.append(np.zeros((30, 30), dtype=np.int32))

@@ -51,7 +51,13 @@ def prepare_input_for_model(model_index, base_input):
 def gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id):
     votos_visuais = []
     try:
-        for v in votos_models.values():
+        if isinstance(votos_models, dict):
+            iterator = votos_models.values()
+        else:
+            iterator = votos_models  # assume list de tensores
+
+        for v in iterator:
+            log(f"[DEBUG] preparando voto: type={type(v)}, shape={getattr(v, 'shape', 'indefinido')}")
             resultado = preparar_voto_para_visualizacao(v)
             if resultado is not None:
                 votos_visuais.append(resultado)

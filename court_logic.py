@@ -50,10 +50,14 @@ def prepare_input_for_model(model_index, base_input):
 
 def gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id):
     votos_visuais = []
-    for _, v in votos_models.items():
-        resultado = preparar_voto_para_visualizacao(v)
-        if resultado is not None:
-            votos_visuais.append(resultado)
+    try:
+        for v in votos_models.values():
+            resultado = preparar_voto_para_visualizacao(v)
+            if resultado is not None:
+                votos_visuais.append(resultado)
+    except Exception as e:
+        log(f"[VISUAL] Erro ao processar votos_models: {e}")
+
 
     try:
         # Extrai canal 0 e feature 0 corretamente

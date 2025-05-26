@@ -65,7 +65,7 @@ class ClippyX:
             x_juiz = tf.zeros((1, 30, 30, 1, 40), dtype=tf.float32)
         return x_outros, x_juiz
 
-    def julgar(self, x_input, raw_input, block_index, task_id, idx):
+    def julgar(self, x_input, raw_input, block_index, task_id, idx, iteracao):
         try:
             x_input = tf.expand_dims(tf.convert_to_tensor(x_input, dtype=tf.float32), axis=0)
             x_outros, _ = self.preparar_inputs(x_input)
@@ -121,12 +121,13 @@ class ClippyX:
 # Global cache para manter batches entre chamadas
 todos_os_batches = {}
 
-def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=10, consenso_minimo=0.9, idx=0):
+def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.9, idx=0):
     clippy = ClippyX()
     with open("arc-agi_test_challenges.json") as f:
         test_challenges = json.load(f)
     task_ids = list(test_challenges.keys())
-
+    clippy.models = []
+    clippy.models = [load_model(i, 0.0005) for i in range(clippy.num_modelos)]
     if idx not in todos_os_batches:
         todos_os_batches[idx] = []
 
@@ -163,7 +164,7 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=10, con
 
         while not sucesso and iteracao < max_iteracoes:
             log(f"[CLIPPYX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
-            resultado = clippy.julgar(X_test, raw_input, block_idx, task_id, idx)
+            resultado = clippy.julgar(X_test, raw_input, block_idx, task_id, idx, iteracao)
 
             consenso = resultado.get("consenso", 0)
             if consenso >= consenso_minimo:

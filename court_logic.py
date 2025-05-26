@@ -66,9 +66,9 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
             v = tf.squeeze(v)
             votos_visuais.append(v)
 
-        salvar_voto_visual(list(votos_visuais.values()).values(), iter_count, block_idx, input_tensor_outros, task_id=task_id, idx=idx)
+        salvar_voto_visual(votos_visuais, iter_count, block_idx, input_tensor_outros, task_id=task_id, idx=idx)
 
-        salvar_voto_visual(list(votos_visuais.values()).values(), idx, block_idx, input_tensor_outros, task_id=task_id, idx=idx)
+        salvar_voto_visual(votos_visuais, idx, block_idx, input_tensor_outros, task_id=task_id, idx=idx)
 
         consenso = avaliar_consenso_com_confiança(
             votos_models, confidence_manager=manager,

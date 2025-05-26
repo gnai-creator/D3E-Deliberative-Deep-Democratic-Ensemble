@@ -48,11 +48,11 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         log(f"[CICLO] Iteração {iter_count}")
         votos_models.clear()
 
-        # ADVOGADA - previsão inicial
+        # ADVOGADA - primeira previsão
         adv_input = prepare_input_for_model(3, input_tensor_outros)
         votos_models["modelo_3"] = models[3](adv_input, training=False)
 
-        # JURADAS aprendem com a advogada
+        # JURADAS aprendem com a advogada (com ruído no jurado 0 e 2)
         y_juradas = tf.argmax(votos_models["modelo_3"], axis=-1)
         for i in range(3):
             x_i = prepare_input_for_model(i, input_tensor_outros)
@@ -68,30 +68,26 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                 models[i].fit(x_i, y_juradas, epochs=epochs, verbose=0)
             votos_models[f"modelo_{i}"] = models[i](x_i, training=False)
 
-        # JUÍZA - previsão (ainda não treina)
+        # JUÍZA aprende com juradas + advogada
+        stack_juiza = [tf.argmax(votos_models[f"modelo_{i}"], axis=-1) for i in range(4)]
+        y_juiza = pixelwise_mode(tf.stack(stack_juiza, axis=0))
         x_juiza = prepare_input_for_model(4, input_tensor_outros)
+        models[4].fit(x_juiza, y_juiza, epochs=epochs, verbose=0)
         votos_models["modelo_4"] = models[4](x_juiza, training=False)
 
-        # SUPREMA - aprende com todos (0 a 4)
+        # SUPREMA aprende com todos
         stack_suprema = [tf.argmax(votos_models[f"modelo_{i}"], axis=-1) for i in range(5)]
         y_suprema = pixelwise_mode(tf.stack(stack_suprema, axis=0))
         x_suprema = prepare_input_for_model(5, input_tensor_outros)
         models[5].fit(x_suprema, y_suprema, epochs=epochs, verbose=0)
         votos_models["modelo_5"] = models[5](x_suprema, training=False)
 
-        # JUÍZA aprende com feedback da Suprema
-        y_juiza = tf.argmax(votos_models["modelo_5"], axis=-1)
-        log("A Suprema emitiu seu veredito. A Juíza deve reavaliar a causa.")
-        models[4].fit(x_juiza, y_juiza, epochs=epochs, verbose=0)
-        votos_models["modelo_4"] = models[4](x_juiza, training=False)
-
-        # ADVOGADA re-treina com feedback da Juíza
-        y_advogada = tf.argmax(votos_models["modelo_4"], axis=-1)
-        log("A Juíza respondeu. A Advogada atualiza sua tese com base nesse parecer.")
+        # ADVOGADA re-treina com feedback da juíza e suprema
+        stack_adv = [tf.argmax(votos_models[f"modelo_{i}"], axis=-1) for i in [4, 5]]
+        y_advogada = pixelwise_mode(tf.stack(stack_adv, axis=0))
         models[3].fit(adv_input, y_advogada, epochs=epochs, verbose=0)
-        votos_models["modelo_3"] = models[3](adv_input, training=False)
 
-        # VISUALIZAÇÃO
+        # VISUAL
         votos_visuais = []
         for i, v in votos_models.items():
             try:
@@ -103,33 +99,35 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                 log(f"[VISUAL] Erro ao preparar voto do modelo {i}: {e}")
 
         input_visual = tf.squeeze(input_tensor_outros[..., 0, 0])
-        salvar_voto_visual(votos_visuais, idx, block_idx, input_visual, task_id=task_id, idx=idx)
         # salvar_voto_visual(votos_visuais, iter_count, block_idx, input_visual, task_id=task_id, idx=idx)
+        salvar_voto_visual(votos_visuais, idx, block_idx, input_visual, task_id=task_id, idx=idx)
 
-        # CONSENSO = voto da Suprema Juíza
-        consenso = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(votos_models["modelo_5"], axis=-1), y_suprema), tf.float32)).numpy()
-        log(f"[CONSENSO] Score de consenso com Suprema = {consenso:.3f} (limite = {tol})")
+        # CONSENSO
+        consenso = avaliar_consenso_com_confiança(
+            votos_models, confidence_manager=manager,
+            required_votes=5, confidence_threshold=confidence_threshold
+        )
+        log(f"[CONSENSO] Score de consenso = {consenso:.3f} (limite = {tol})")
 
-        # CONFIANÇA: compara todos com Suprema
-        voto_suprema = tf.argmax(votos_models["modelo_5"], axis=-1)
+        # ATUALIZA CONFIANÇA DOS MODELOS COM BASE NO CONSENSO GERAL
+        stack_all = [tf.argmax(votos_models[f"modelo_{i}"], axis=-1) for i in range(6)]
+        consenso_pixel = pixelwise_mode(tf.stack(stack_all, axis=0))
         for i in range(6):
             voto_i = tf.argmax(votos_models[f"modelo_{i}"], axis=-1)
-            acertou = tf.reduce_all(tf.equal(voto_i, voto_suprema)).numpy()
+            acertou = tf.reduce_all(tf.equal(voto_i, consenso_pixel)).numpy()
             manager.update_confidence(f"modelo_{i}", bool(acertou))
-
-        manager.log_status(log)
-
+        
         if consenso >= tol:
             y_eval = tf.argmax(votos_models["modelo_4"], axis=-1)
             loss, acc = models[5].evaluate(x_suprema, y_eval, verbose=0)
             log(f"[SUPREMA] Avaliação: acc = {acc:.3f}, loss = {loss:.6f}")
 
             if acc < 1.0 or loss > 0.001:
-                log("[SUPREMA] A Suprema rejeitou o veredito da Juíza. Nova deliberação se faz necessária.")
+                log("[SUPREMA] Não aceita o consenso — requisita nova deliberação")
                 iter_count += 1
                 continue
             else:
-                log("[SUPREMA] Confiança plena atingida — consenso final aceito.")
+                log("[SUPREMA] Confiança plena atingida — consenso final aceito")
                 break
 
         iter_count += 1

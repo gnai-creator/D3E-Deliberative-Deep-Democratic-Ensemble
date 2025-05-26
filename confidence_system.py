@@ -1,5 +1,5 @@
 import tensorflow as tf
-
+from runtime_utils import log
 class ConfidenceManager:
     def __init__(self, models, initial_confidence=1.0, decay=0.9, recovery_rate=0.05, min_threshold=0.1):
         self.model_names = [f"modelo_{i}" for i in range(len(models))]
@@ -35,7 +35,7 @@ class ConfidenceManager:
         if logger:
             logger(linha)
         else:
-            print(linha)
+            log(linha)
 
 
 def flatten_voto_simbólico(v):
@@ -54,7 +54,7 @@ def avaliar_consenso_com_confiança(votos_models: dict, confidence_manager, requ
     active_names = confidence_manager.get_active_model_names(threshold=confidence_threshold)
 
     if not active_names:
-        print("[CONSENSO] Nenhum modelo com confiança suficiente.")
+        log("[CONSENSO] Nenhum modelo com confiança suficiente.")
         return 0.0
 
     votos_classe = []
@@ -71,15 +71,15 @@ def avaliar_consenso_com_confiança(votos_models: dict, confidence_manager, requ
             v = votos_models[name]
             v = flatten_voto_simbólico(v)
             if tf.size(v) != 900:
-                print(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy()} elementos. Ignorado.")
+                log(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy()} elementos. Ignorado.")
                 continue
             v = tf.reshape(v, (30, 30))
             votos_stacked.append(v)
         except Exception as e:
-            print(f"[CONSENSO] Erro ao processar voto de {name}: {e}")
+            log(f"[CONSENSO] Erro ao processar voto de {name}: {e}")
 
     if not votos_stacked:
-        print("[CONSENSO] Nenhum voto válido após filtragem.")
+        log("[CONSENSO] Nenhum voto válido após filtragem.")
         return 0.0
 
     votos_stacked = tf.stack(votos_stacked)
@@ -100,9 +100,9 @@ def avaliar_consenso_com_confiança(votos_models: dict, confidence_manager, requ
     consenso_bin = tf.cast(votos_majoritarios >= required_votes, tf.float32)
     consenso_final = tf.reduce_mean(consenso_bin).numpy()
 
-    print(f"[CONSENSO - COM CONFIANÇA] {len(votos_stacked)} modelos válidos contribuíram (≥{confidence_threshold:.2f})")
+    log(f"[CONSENSO - COM CONFIANÇA] {len(votos_stacked)} modelos válidos contribuíram (≥{confidence_threshold:.2f})")
     for name in active_names:
         conf = confidence_manager.get_confidence(name)
-        print(f" - {name}: {conf:.3f}")
+        log(f" - {name}: {conf:.3f}")
 
     return consenso_final

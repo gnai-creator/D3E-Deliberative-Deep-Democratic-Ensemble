@@ -6,7 +6,7 @@ import tensorflow as tf
 from confidence_system import avaliar_consenso_com_confiança
 from metrics_utils import salvar_voto_visual, preparar_voto_para_visualizacao
 from runtime_utils import log
-from metrics_utils import safe_squeeze
+from metrics_utils import safe_squeeze, ensure_numpy
  
 def normalizar_y_para_sparse(y):
     log(f"[DEBUG] Y SHAPE: {y.shape}")
@@ -47,15 +47,10 @@ def prepare_input_for_model(model_index, base_input):
         return pad_or_truncate_channels(base_input, 40)
 
 
-
 def gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id):
     votos_visuais = []
     try:
-        if isinstance(votos_models, dict):
-            iterator = votos_models.values()
-        else:
-            iterator = votos_models  # assume list de tensores
-
+        iterator = votos_models.values() if isinstance(votos_models, dict) else votos_models
         for v in iterator:
             log(f"[DEBUG] preparando voto: type={type(v)}, shape={getattr(v, 'shape', 'indefinido')}")
             resultado = preparar_voto_para_visualizacao(v)
@@ -64,20 +59,27 @@ def gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, 
     except Exception as e:
         log(f"[VISUAL] Erro ao processar votos_models: {e}")
 
-
     try:
-        # Extrai canal 0 e feature 0 corretamente
-        v = input_tensor_outros
-        if v.shape[-1] >= 1 and v.shape[-2] >= 1:
-            input_visual = v[0, :, :, 0, 0]  # shape: [30, 30]
+        input_tensor_outros = ensure_numpy(input_tensor_outros)
+
+        if input_tensor_outros.ndim == 5:
+            input_visual = input_tensor_outros[0, :, :, 0, 0]
+        elif input_tensor_outros.ndim == 4:
+            input_visual = input_tensor_outros[0, :, :, 0]
+        elif input_tensor_outros.ndim == 3:
+            input_visual = input_tensor_outros[0, :, :]
         else:
-            input_visual = tf.zeros((30, 30), dtype=tf.int32)
-        if len(input_visual.shape) != 2:
-            raise ValueError
-    except:
-        log("[VISUAL] input_visual com shape inesperado, substituindo por zeros.")
+            raise ValueError("Shape inesperado")
+
+        if input_visual.ndim != 2:
+            raise ValueError("input_visual não é 2D")
+
+    except Exception as e:
+        log(f"[VISUAL] input_visual com shape inesperado ({getattr(input_tensor_outros, 'shape', 'N/A')}): {e}")
         input_visual = tf.zeros((30, 30), dtype=tf.int32)
-    salvar_voto_visual(votos_visuais, idx, block_idx, input_visual, task_id=task_id, idx=idx)
+
+    salvar_voto_visual(votos_visuais, idx, block_idx, input_visual, task_id=task_id)
+
 
 
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,

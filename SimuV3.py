@@ -1,5 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras import layers
+from check_input_shape import shape_guard
 from neural_blocks import (
     LearnedColorPermutation,
     LearnedFlip,
@@ -77,7 +78,8 @@ class SimuV3(tf.keras.Model):
 
         # Ativa color_perm_train
         _ = self.color_perm_train(dummy_logits)
-
+   
+    # @shape_guard(expected_shape=[1, 30, 30, 1, 4], name="SimuV3 (Jurada)")
     def call(self, x, training=False):
         # Entrada esperada: [Batch, Height, Width, Class, Judge]
         # Combina as dimensões de Classe e Juízo para formar o canal de entrada

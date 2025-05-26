@@ -31,9 +31,9 @@ def pad_or_truncate_channels(tensor, target_channels=40):
         return tensor[..., :target_channels]
 
 def prepare_input_for_model(model_index, base_input):
-    if model_index in [0, 1, 2, 3]:  # Juradas e Advogada
+    if model_index in [0, 1, 2, 3]:
         return pad_or_truncate_channels(base_input, 4)
-    else:  # Juíza e Suprema
+    else:
         return pad_or_truncate_channels(base_input, 40)
 
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
@@ -48,9 +48,10 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         log(f"[CICLO] Iteração {iter_count}")
         votos_models.clear()
 
-        # ADVOGADA - previsão inicial
-        adv_input = prepare_input_for_model(3, input_tensor_outros)
-        votos_models["modelo_3"] = models[3](adv_input, training=False)
+        # TODOS os modelos, exceto Suprema, fazem previsão inicial com input cru
+        for i in range(5):
+            x_i = prepare_input_for_model(i, input_tensor_outros)
+            votos_models[f"modelo_{i}"] = models[i](x_i, training=False)
 
         # JURADAS aprendem com a advogada
         y_juradas = tf.argmax(votos_models["modelo_3"], axis=-1)
@@ -62,18 +63,12 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                 y_base = tf.squeeze(y_juradas, axis=-1)
                 y_ruidoso = tf.expand_dims((y_base + noise) % 10, axis=-1)
                 models[i].fit(x_i, y_ruidoso, epochs=epochs, verbose=0)
-            # elif i == 2:
-            #     noise = tf.random.uniform(shape=(1, 30, 30), minval=0, maxval=3, dtype=tf.int64)
-            #     y_base = tf.squeeze(y_juradas, axis=-1)
-            #     y_ruidoso = tf.expand_dims((y_base + noise) % 10, axis=-1)
-            #     models[i].fit(x_i, y_ruidoso, epochs=epochs, verbose=0)
             else:
                 models[i].fit(x_i, y_juradas, epochs=epochs, verbose=0)
             votos_models[f"modelo_{i}"] = models[i](x_i, training=False)
 
-        # JUÍZA - previsão (ainda não treina)
+        # JUÍZA - previsão já foi feita acima; agora treina com feedback da Suprema
         x_juiza = prepare_input_for_model(4, input_tensor_outros)
-        votos_models["modelo_4"] = models[4](x_juiza, training=False)
 
         # SUPREMA - aprende com todos (0 a 4)
         stack_suprema = [tf.argmax(votos_models[f"modelo_{i}"], axis=-1) for i in range(5)]
@@ -91,6 +86,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         votos_models["modelo_4"] = models[4](x_juiza, training=False)
 
         # ADVOGADA re-treina com feedback da Juíza
+        adv_input = prepare_input_for_model(3, input_tensor_outros)
         y_advogada = tf.argmax(votos_models["modelo_4"], axis=-1)
         y_advogada = tf.expand_dims(y_advogada, axis=-1)
         log("A Juíza respondeu. A Advogada atualiza sua tese com base nesse parecer.")
@@ -144,5 +140,5 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
 
     return {
         "class_logits": votos_models["modelo_5"],
-        "consenso": consenso
+        "consenso": tf.constant(consenso, dtype=tf.float32)
     }

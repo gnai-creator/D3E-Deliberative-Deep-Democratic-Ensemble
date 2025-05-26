@@ -41,16 +41,17 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
 
         # Juíza aprende com advogada
         y_juiza = tf.argmax(votos_models["modelo_3"], axis=-1)
-        entrada_juiza = input_tensor_outros
-        entrada_juiza = tf.reshape(entrada_crua, [1, 30, 30, 1, 10])
-        entrada_juiza = pad_or_truncate_channels(entrada_juiza, 40)
-        juiza.fit(entrada_juiza, y_juiza, epochs=epochs, verbose=0)
+        entrada_juiza = entrada_crua  # shape: (1, 30, 30)
+        entrada_juiza = tf.expand_dims(entrada_juiza, axis=-1)  # → (1, 30, 30, 1)
+        entrada_juiza = tf.expand_dims(entrada_juiza, axis=-1)  # → (1, 30, 30, 1, 1)
+        entrada_juiza = pad_or_truncate_channels(entrada_juiza, 40)  # → (1, 30, 30, 1, 40)
         votos_models["modelo_4"] = juiza(entrada_juiza, training=False)
 
         # Suprema Juíza aprende com dado cru (entrada original)
-        log(f"entrada_crua shape: {entrada_crua.shape}")
-        entrada_crua_suprema = tf.reshape(entrada_crua, [1, 30, 30, 1, 10])
-        entrada_crua_suprema = pad_or_truncate_channels(entrada_crua_suprema, 40)
+        entrada_crua_suprema = tf.expand_dims(entrada_crua, axis=-1)  # (1, 30, 30, 1)
+        entrada_crua_suprema = tf.expand_dims(entrada_crua_suprema, axis=-1)  # (1, 30, 30, 1, 1)
+        entrada_crua_suprema = pad_or_truncate_channels(entrada_crua_suprema, 40)  # (1, 30, 30, 1, 40)
+
         y_suprema = tf.argmax(votos_models["modelo_4"], axis=-1)
         suprema_juiza.fit(entrada_crua_suprema, y_suprema, epochs=epochs, verbose=0)
         votos_models["modelo_5"] = suprema_juiza(entrada_crua_suprema, training=False)

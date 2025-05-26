@@ -37,7 +37,7 @@ def prepare_input_for_model(model_index, base_input):
         return pad_or_truncate_channels(base_input, 40)
 
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
-                      max_cycles=10, tol=0.98, epochs=60, confidence_threshold=0.5,
+                      max_cycles=10, tol=0.98, epochs=1, confidence_threshold=0.5,
                       confidence_manager=[], idx=0):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
     manager = confidence_manager
@@ -58,15 +58,15 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         for i in range(3):
             x_i = prepare_input_for_model(i, input_tensor_outros)
             if i == 0:
-                noise = tf.random.uniform(shape=y_juradas.shape, minval=0, maxval=6, dtype=tf.int64)
-                y_ruidoso = (tf.squeeze(y_juradas, axis=-1) + noise) % 10
-                y_ruidoso = tf.cast(tf.expand_dims(y_ruidoso, axis=-1), dtype=tf.int64)
+                noise = tf.random.uniform(shape=(1, 30, 30), minval=0, maxval=6, dtype=tf.int64)
+                y_base = tf.squeeze(y_juradas, axis=-1)
+                y_ruidoso = tf.expand_dims((y_base + noise) % 10, axis=-1)
                 models[i].fit(x_i, y_ruidoso, epochs=epochs, verbose=0)
-            elif i == 2:
-                noise = tf.random.uniform(shape=y_juradas.shape, minval=0, maxval=3, dtype=tf.int64)
-                y_ruidoso = (tf.squeeze(y_juradas, axis=-1) + noise) % 10
-                y_ruidoso = tf.expand_dims(y_ruidoso, axis=-1)
-                models[i].fit(x_i, y_ruidoso, epochs=epochs, verbose=0)
+            # elif i == 2:
+            #     noise = tf.random.uniform(shape=(1, 30, 30), minval=0, maxval=3, dtype=tf.int64)
+            #     y_base = tf.squeeze(y_juradas, axis=-1)
+            #     y_ruidoso = tf.expand_dims((y_base + noise) % 10, axis=-1)
+            #     models[i].fit(x_i, y_ruidoso, epochs=epochs, verbose=0)
             else:
                 models[i].fit(x_i, y_juradas, epochs=epochs, verbose=0)
             votos_models[f"modelo_{i}"] = models[i](x_i, training=False)

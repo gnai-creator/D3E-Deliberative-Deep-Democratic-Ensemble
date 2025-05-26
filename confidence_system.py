@@ -1,7 +1,7 @@
 
 import tensorflow as tf
 from runtime_utils import log
-from metrics import safe_squeeze
+from metrics_utils import safe_squeeze
 class ConfidenceManager:
     def __init__(self, models, initial_confidence=1.0, decay=0.9, recovery_rate=0.05, min_threshold=0.1):
         self.model_names = [f"modelo_{i}" for i in range(len(models))]
@@ -48,7 +48,7 @@ def flatten_voto_simbólico(v):
     if v.shape.rank > 2 and v.shape[-1] > 1:
         v = tf.argmax(v, axis=-1)
     if v.shape.rank > 2:
-        v = tf.squeeze(v, axis=0)
+        v = safe_squeeze(v, axis=0)
     return tf.reshape(v, (1, -1))  # (1, 900)
 
 

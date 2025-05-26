@@ -109,7 +109,9 @@ class SimuV4(tf.keras.Model):
 
         def rotate_op(args):
             img, k_val = args
-            return tf.image.rot90(img, k=tf.cast(tf.squeeze(k_val), tf.int32))
+            return tf.image.rot90(img, k=tf.cast(tf.reshape(k_val, []), tf.int32))
+
+
 
         x = tf.map_fn(flip_op, (x, flip_code), fn_output_signature=x.dtype)
         x = tf.map_fn(rotate_op, (x, rotation_code), fn_output_signature=x.dtype)

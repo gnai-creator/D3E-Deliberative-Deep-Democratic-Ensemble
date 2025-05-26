@@ -9,7 +9,7 @@ import random
 import json
 from court_logic import arc_court_supreme
 from confidence_system import ConfidenceManager
-from metrics import safe_squeeze
+from metrics_utils import safe_squeeze
 from metrics_utils import plot_prediction_test, gerar_video_time_lapse, embutir_trilha_sonora
 from runtime_utils import save_debug_result
 from metrics_utils import log
@@ -184,18 +184,18 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
     return False
 
 
-if __name__ == "__main__":
-    tf.random.set_seed(42)
-    np.random.seed(42)
-    random.seed(42)
-    os.environ["TF_DETERMINISTIC_OPS"] = "1"
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-    idx = 0
-    while True:
-        while rodar_deliberacao_com_condicoes(
-            parar_se_sucesso=True,
-            max_iteracoes=150,
-            consenso_minimo=0.9,
-            idx=idx
-        ):
-            idx += 1
+# if __name__ == "__main__":
+#     tf.random.set_seed(42)
+#     np.random.seed(42)
+#     random.seed(42)
+#     os.environ["TF_DETERMINISTIC_OPS"] = "1"
+#     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+#     idx = 0
+#     while True:
+#         while rodar_deliberacao_com_condicoes(
+#             parar_se_sucesso=True,
+#             max_iteracoes=150,
+#             consenso_minimo=0.9,
+#             idx=idx
+#         ):
+#             idx += 1

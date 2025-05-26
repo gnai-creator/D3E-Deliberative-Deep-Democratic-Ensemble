@@ -90,10 +90,21 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
 def ensure_numpy(tensor):
     return tensor.numpy() if hasattr(tensor, "numpy") else tensor
 
-def safe_squeeze_axis(tensor, axis):
-    if tensor.shape[axis] == 1:
+def safe_squeeze(tensor, axis):
+    shape = tensor.shape
+    if shape.rank is not None and shape[axis] == 1:
         return tf.squeeze(tensor, axis=axis)
-    return tensor
+    elif shape.rank is not None and shape[axis] != 1:
+        return tensor
+    else:
+        # Fallback em execução dinâmica (por segurança absoluta)
+        shape_dyn = tf.shape(tensor)
+        return tf.cond(
+            tf.equal(shape_dyn[axis], 1),
+            lambda: tf.squeeze(tensor, axis=axis),
+            lambda: tensor
+        )
+
 
 
 def preparar_voto_para_visualizacao(v):
@@ -172,7 +183,8 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
         input_vis = input_vis[0, :, :, 0, 0]
     elif input_vis.ndim == 4:
         input_vis = input_vis[0, :, :, 0]
-    input_vis = np.squeeze(input_vis)
+    if input_vis.shape[3] == 1:
+        input_vis = tf.squeeze(input_vis, axis=3)
     input_vis = input_vis.reshape((30, 30)) if input_vis.size == 900 else np.zeros((30, 30))
 
     sns.heatmap(input_vis, ax=axes[-2], cbar=False, cmap="viridis", square=True, vmin=0, vmax=9)

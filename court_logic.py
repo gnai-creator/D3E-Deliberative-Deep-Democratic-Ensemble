@@ -50,8 +50,8 @@ def prepare_input_for_model(model_index, base_input):
 
 def gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id):
     votos_visuais = []
-    for i, v in votos_models.items():
-        resultado = preparar_voto_para_visualizacao(v, i)
+    for v in votos_models.items():
+        resultado = preparar_voto_para_visualizacao(v)
         if resultado is not None:
             votos_visuais.append(resultado)
 

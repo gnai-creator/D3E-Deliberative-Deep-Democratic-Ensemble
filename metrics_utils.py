@@ -188,12 +188,15 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
 
     # Input
     input_vis = ensure_numpy(input_tensor_outros)
+    log(f"[DEBUG] input_vis shape pós ensure_numpy: {getattr(input_vis, 'shape', 'N/A')}")
+
     if input_vis.ndim == 5:
         input_vis = input_vis[0, :, :, 0, 0]
     elif input_vis.ndim == 4:
         input_vis = input_vis[0, :, :, 0]
-    if input_vis.shape[3] == 1:
+    if input_vis.ndim == 4 and input_vis.shape[3] == 1:
         input_vis = tf.squeeze(input_vis, axis=3)
+    
     input_vis = input_vis.reshape((30, 30)) if input_vis.size == 900 else np.zeros((30, 30))
 
     sns.heatmap(input_vis, ax=axes[-2], cbar=False, cmap="viridis", square=True, vmin=0, vmax=9)

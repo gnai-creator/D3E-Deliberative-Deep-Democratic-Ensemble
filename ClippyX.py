@@ -87,7 +87,7 @@ class ClippyX:
             y_pred = resultados["class_logits"] if isinstance(resultados, dict) else resultados
             y_pred_np = y_pred.numpy() if isinstance(y_pred, tf.Tensor) else y_pred
 
-            flat = y_pred_np.flatten()
+            flat = tf.argmax(y_pred_np, axis=-1).numpy().flatten()
             label = 1.0 if consenso >= 0.9 else 0.0
             self.history_X.append(flat)
             self.history_y.append(label)

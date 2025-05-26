@@ -58,7 +58,16 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         votos_models["modelo_5"] = suprema_juiza(entrada_crua_suprema, training=False)
 
         # Visual
-        salvar_voto_visual(list(votos_models.values()), iter_count, block_idx, input_tensor_outros, task_id=task_id, idx=idx)
+        votos_visuais = []
+        for v in votos_models.values():
+            if len(v.shape) > 3 and v.shape[-1] > 1:
+                v = tf.reduce_mean(v, axis=-1)
+            v = tf.squeeze(v)
+            votos_visuais.append(v)
+
+        salvar_voto_visual(votos_visuais, iter_count, block_idx, input_tensor_outros, task_id=task_id, idx=idx)
+
+        salvar_voto_visual(votos_visuais, idx, block_idx, input_tensor_outros, task_id=task_id, idx=idx)
 
         consenso = avaliar_consenso_com_confiança(
             votos_models, confidence_manager=manager,

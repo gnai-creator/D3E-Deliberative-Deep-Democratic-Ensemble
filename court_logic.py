@@ -124,7 +124,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                 if len(v.shape) > 3 and v.shape[-1] > 1:
                     v = tf.argmax(v, axis=-1)
                 v = tf.squeeze(v, axis=0)
-                if len(v.shape) == 3 and v.shape[-1] == 1:
+                while v.shape[-1] == 1:
                     v = tf.squeeze(v, axis=-1)
                 v = tf.convert_to_tensor(v)
                 if v.shape != (30, 30):

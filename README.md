@@ -54,6 +54,24 @@ ClippyX is not just an ensemble — it's a simulation of a **symbolic deliberati
 
 ---
 
+## 🚀 Scalability
+
+ClippyX is designed with modularity and extensibility in mind. It can be applied in both individual model setups and collective multi-agent systems:
+
+- **Individual Mode**: A single agent (e.g., the Advocate or Supreme Judge) can be used for symbolic prediction, reasoning diagnostics, or as a pre-trained symbolic encoder in other workflows.
+- **Collective Mode**: All agents operate in a full deliberative court, exchanging symbolic knowledge iteratively. Ideal for tasks requiring consensus and agent interaction, such as the ARC Challenge in full block mode.
+
+Additional features:
+- Agents can be swapped, extended, or fine-tuned independently.
+- Supports more jurors or additional roles (e.g., revisors, auditors).
+- Symbolic state and trust logic are decoupled from network architecture.
+- Easily adapted to new symbolic tasks beyond ARC, including visual logic puzzles or symbolic reasoning games.. It can be applied in both individual model setups and collective multi-agent systems:
+
+- Agents can be swapped, extended, or fine-tuned independently.
+- Supports more jurors or additional roles (e.g., revisors, auditors).
+- Symbolic state and trust logic are decoupled from network architecture.
+- Easily adapted to new symbolic tasks beyond ARC, including visual logic puzzles or symbolic reasoning games.
+
 ## 🛠️ Requirements
 - TensorFlow 2.14+
 - Numpy, Matplotlib, Seaborn

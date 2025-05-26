@@ -5,6 +5,8 @@ from confidence_system import avaliar_consenso_com_confiança
 from metrics_utils import salvar_voto_visual
 from runtime_utils import log
 
+ 
+
 def pixelwise_mode(stack):
     stack = tf.transpose(stack, [1, 2, 3, 0])  # (1, 30, 30, N)
     flat = tf.reshape(stack, (-1, stack.shape[-1]))
@@ -36,6 +38,58 @@ def prepare_input_for_model(model_index, base_input):
     else:
         return pad_or_truncate_channels(base_input, 40)
 
+def safe_prepare_visual_tensor(v, i):
+    try:
+        if len(v.shape) > 3 and v.shape[-1] > 1:
+            v = tf.argmax(v, axis=-1)
+
+        try:
+            if v.shape[0] == 1:
+                v = tf.squeeze(v, axis=0)
+            if v.shape.ndims >= 3 and v.shape[-1] == 1:
+                v = tf.squeeze(v, axis=-1)
+            elif v.shape.ndims >= 3 and v.shape[-1] != 1:
+                log(f"[VISUAL] Dimensão final inesperada ao tentar squeeze: {v.shape}")
+                return None
+        except Exception as e:
+            log(f"[VISUAL] Falha ao ajustar shape do modelo {i}: {e}")
+            return None
+
+        v = tf.convert_to_tensor(v)
+
+        if v.shape.rank == 2 and v.shape != (30, 30):
+            v = tf.image.resize_with_crop_or_pad(tf.cast(v, tf.float32), 30, 30)
+            v = tf.cast(v, tf.int32)
+        elif v.shape.rank != 2:
+            log(f"[VISUAL] Tensor com rank inesperado após squeeze: {v.shape}")
+            return None
+
+        return v.numpy()
+
+    except Exception as e:
+        log(f"[VISUAL] Erro ao preparar voto do modelo {i}: {e}")
+        return None
+
+
+
+
+def gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id):
+    votos_visuais = []
+    for i, v in votos_models.items():
+        resultado = safe_prepare_visual_tensor(v, i)
+        if resultado is not None:
+            votos_visuais.append(resultado)
+
+    try:
+        input_visual = tf.squeeze(input_tensor_outros[..., 0, 0])
+        if len(input_visual.shape) != 2:
+            raise ValueError
+    except:
+        log("[VISUAL] input_visual com shape inesperado, substituindo por zeros.")
+        input_visual = tf.zeros((30, 30), dtype=tf.int32)
+    salvar_voto_visual(votos_visuais, idx, block_idx, input_visual, task_id=task_id, idx=idx)
+
+
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                       max_cycles=10, tol=0.98, epochs=60, confidence_threshold=0.5,
                       confidence_manager=[], idx=0):
@@ -47,36 +101,27 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
     while iter_count < max_cycles:
         log(f"[CICLO] Iteração {iter_count}")
         votos_models.clear()
-
-        # TODOS os modelos, exceto Suprema, fazem previsão inicial com input cru
+        log("Iniciando tribunal. Modelos irão fazer uma previsão do input cru")
         if iter_count == 0:
-            for i in range(5):
+            for i in range(6):
                 x_i = prepare_input_for_model(i, input_tensor_outros)
                 votos_models[f"modelo_{i}"] = models[i](x_i, training=False)
 
-        # JURADAS aprendem com a advogada ou se ajustam com a Suprema se divergiram
         y_juradas = tf.argmax(votos_models["modelo_3"], axis=-1)
         y_juradas = tf.cast(tf.expand_dims(y_juradas, axis=-1), dtype=tf.int64)
-
-        if "modelo_5" in votos_models:
-            voto_suprema = tf.argmax(votos_models["modelo_5"], axis=-1)
-        else:
-            voto_suprema = tf.argmax(votos_models["modelo_3"], axis=-1)  # fallback to advocate
-        voto_suprema_exp = tf.expand_dims(voto_suprema, axis=-1)
+        
 
         for i in range(3):
             x_i = prepare_input_for_model(i, input_tensor_outros)
 
             if i == 0:
-                # Jurada 0 - ruído espacial
-                drop_mask = tf.random.uniform((1, 30, 30)) > 0.95
-                noise = tf.random.uniform((1, 30, 30), minval=1, maxval=3, dtype=tf.int64)
+                drop_mask = tf.random.stateless_uniform((1, 30, 30), seed=[42, iter_count]) > 0.95
+                noise = tf.random.stateless_uniform((1, 30, 30), minval=1, maxval=3, dtype=tf.int64, seed=[43, iter_count])
                 y_ruidoso = tf.where(drop_mask, (y_juradas + noise) % 10, y_juradas)
                 y_ruidoso = tf.expand_dims(tf.squeeze(y_ruidoso, axis=-1), axis=-1)
                 models[i].fit(x_i, y_ruidoso, epochs=epochs, verbose=0)
 
             elif i == 2:
-                # Jurada 2 - se divergir da Suprema, ajusta
                 voto_i = tf.argmax(votos_models[f"modelo_{i}"], axis=-1)
                 acertou = tf.reduce_all(tf.equal(voto_i, voto_suprema))
                 if not acertou:
@@ -86,15 +131,12 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                     models[i].fit(x_i, y_juradas, epochs=epochs, verbose=0)
 
             else:
-                # Jurada 1 - fiel à advogada
                 models[i].fit(x_i, y_juradas, epochs=epochs, verbose=0)
 
             votos_models[f"modelo_{i}"] = models[i](x_i, training=False)
 
-        # JUÍZA - previsão já foi feita acima; agora treina com feedback da Suprema
         x_juiza = prepare_input_for_model(4, input_tensor_outros)
 
-        # SUPREMA - aprende com todos (0 a 4)
         stack_suprema = [tf.argmax(votos_models[f"modelo_{i}"], axis=-1) for i in range(5)]
         y_suprema = pixelwise_mode(tf.stack(stack_suprema, axis=0))
         y_suprema = tf.expand_dims(y_suprema, axis=-1)
@@ -102,14 +144,12 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         models[5].fit(x_suprema, y_suprema, epochs=epochs, verbose=0)
         votos_models["modelo_5"] = models[5](x_suprema, training=False)
 
-        # JUÍZA aprende com feedback da Suprema
         y_juiza = tf.argmax(votos_models["modelo_5"], axis=-1)
         y_juiza = tf.expand_dims(y_juiza, axis=-1)
         log("A Suprema emitiu seu veredito. A Juíza deve reavaliar a causa.")
         models[4].fit(x_juiza, y_juiza, epochs=epochs, verbose=0)
         votos_models["modelo_4"] = models[4](x_juiza, training=False)
 
-        # ADVOGADA re-treina com feedback da Juíza
         adv_input = prepare_input_for_model(3, input_tensor_outros)
         y_advogada = tf.argmax(votos_models["modelo_4"], axis=-1)
         y_advogada = tf.expand_dims(y_advogada, axis=-1)
@@ -117,31 +157,11 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         models[3].fit(adv_input, y_advogada, epochs=epochs, verbose=0)
         votos_models["modelo_3"] = models[3](adv_input, training=False)
 
-        # VISUALIZAÇÃO
-        votos_visuais = []
-        for i, v in votos_models.items():
-            try:
-                if len(v.shape) > 3 and v.shape[-1] > 1:
-                    v = tf.argmax(v, axis=-1)
-                v = tf.squeeze(v, axis=0)
-                while len(v.shape) > 2 and v.shape[-1] == 1:
-                    v = tf.squeeze(v, axis=-1)
-                v = tf.convert_to_tensor(v)
-                if v.shape != (30, 30):
-                    v = tf.image.resize_with_crop_or_pad(tf.cast(v, tf.float32), 30, 30)
-                    v = tf.cast(v, tf.int32)
-                votos_visuais.append(v.numpy())
-            except Exception as e:
-                log(f"[VISUAL] Erro ao preparar voto do modelo {i}: {e}")
+        gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id)
 
-        input_visual = tf.squeeze(input_tensor_outros[..., 0, 0])
-        salvar_voto_visual(votos_visuais, idx, block_idx, input_visual, task_id=task_id, idx=idx)
-
-        # CONSENSO = voto da Suprema Juíza
         consenso = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(votos_models["modelo_5"], axis=-1), tf.squeeze(y_suprema, axis=-1)), tf.float32)).numpy()
         log(f"[CONSENSO] Score de consenso com Suprema = {consenso:.3f} (limite = {tol})")
 
-        # CONFIANÇA: compara todos com Suprema
         voto_suprema = tf.argmax(votos_models["modelo_5"], axis=-1)
         for i in range(6):
             voto_i = tf.argmax(votos_models[f"modelo_{i}"], axis=-1)

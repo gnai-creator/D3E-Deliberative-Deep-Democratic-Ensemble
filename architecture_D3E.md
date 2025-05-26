@@ -1,117 +1,99 @@
-# D3E Architecture Specification
+# 🧠 ClippyX Architecture – Neural Deliberation with Symbolic Hierarchy
 
-This document provides a technical breakdown of the architecture behind the Deliberative Deep Democratic Ensemble (D3E), detailing the role, function, and interfaces of each model component within the system.
-
----
-
-## 🧠 Institutional Roles
-
-### 1. Jurors
-- **Type**: Independent neural models (e.g., CNNs)
-- **Function**: Generate base predictions for a given input.
-- **Input shape**: `(1, 30, 30, 1, 4)`
-- **Output shape**: `(1, 30, 30)` (binary class logits or probabilities)
-
-### 2. Lawyer (SimuV4)
-- **Type**: Aggregator model
-- **Function**: Synthesizes juror outputs into an intermediate representation
-- **Input shape**: `(1, 30, 30, 1, 4)`
-- **Output shape**: `(1, 30, 30)`
-- **Training target**: Consensus mask from jurors
-
-### 3. Judge (SimuV5)
-- **Type**: Decision-making model
-- **Function**: Learns patterns in the lawyer's synthesis and produces refined verdicts
-- **Input shape**: `(1, 30, 30, 1, 40)`
-- **Output shape**: `(1, 30, 30)`
-
-### 4. Supreme Judge
-- **Type**: Meta-evaluator
-- **Function**: Verifies verdict quality using confidence metrics (accuracy, loss)
-- **Decision criteria**:
-  - `loss < 0.001`
-  - `accuracy == 1.0`
-  - Optional: detector confidence or anomaly scoring
+ClippyX is an architecture inspired by judicial institutions, where neural models assume distinct social roles, engaging in hierarchical learning, deliberative cycles, and adaptive trust mechanisms.
 
 ---
 
-## ⚙️ Internal Functions
+## ⚖️ Overview
 
-### `add_judge_channel()`
-Adds an additional dimension to a tensor with duplicated judgment or confidence channels. Used to prepare inputs for Lawyer and Judge.
+The architecture simulates a judicial system with six neural agents:
 
----
+- 3 **Jurors**
+- 1 **Advocate**
+- 1 **Judge**
+- 1 **Supreme Judge**
 
-## 🔄 Deliberation Process
-
-1. **Juror Voting**: Each model votes independently.
-2. **Aggregation**: Lawyer converts votes into learned intermediate representation.
-3. **Refinement**: Judge processes this tensor into a final proposal.
-4. **Evaluation**: Supreme Judge checks if proposal meets confidence threshold.
-5. **Repetition**: If rejected, process restarts.
+Each agent is a neural model trained with role-specific data during the deliberative cycle. Agents are not independent: they share context, interact through predictions and feedback, and adapt behavior based on authority and disagreement.
 
 ---
 
-## 🧪 Confidence Evaluation
+## 🧩 Institutional Roles
 
-Each stage includes confidence metrics:
-- **Consensus score** (across jurors)
-- **Agreement level** (via accuracy/loss comparison)
-- **Internal detector** (simple binary classifier trained on good vs. rejected masks)
-
----
-
-## 📦 Integration Interfaces
-
-### Module I/O Summary
-| Component     | Input Shape               | Output Shape            |
-|---------------|----------------------------|--------------------------|
-| Jurors        | `(1, 30, 30, 1, 4)`        | `(1, 30, 30)`           |
-| Lawyer (V4)   | `(1, 30, 30, 1, 4)`        | `(1, 30, 30)`           |
-| Judge (V5)    | `(1, 30, 30, 1, 40)`       | `(1, 30, 30)`           |
-| Supreme Judge | `(1, 30, 30)` + metrics    | `accept/reject`         |
+| Agent          | Role                                       | Initial Training                 | Adaptation                            |
+|----------------|---------------------------------------------|----------------------------------|----------------------------------------|
+| Juror 0        | Juror with behavioral noise                | Learns from Advocate + noise     | Does not adapt                         |
+| Juror 1        | Loyal juror                                | Learns from Advocate             | Does not adapt                         |
+| Juror 2        | Juror with Theory of Mind                  | Learns from Advocate             | Adapts to Supreme if divergent         |
+| Advocate       | Starts the legal thesis                    | Learns from Judge's feedback     | Continuously adapts                    |
+| Judge          | Weighs jurors and advocate                 | Learns from Supreme              | Re-evaluates based on Supreme's ruling |
+| Supreme Judge  | Final authority                            | Learns from all others           | Defines final consensus                |
 
 ---
 
-## 🌐 Federation Architecture (Optional)
+## 🔁 Deliberation Cycle
 
-For multi-agent systems:
-- Each robot has its own D3E instance
-- Verdicts + confidences can be sent to central coordinator via REST/ROS
-- Central node may:
-  - log global consensus rates
-  - override individual outcomes if quorum is broken
+1. **Initial predictions (iteration 0)**:
+   - All models (except the Supreme) predict based on symbolic input.
+   - **All agents always receive the same raw symbolic input (`X`)**.
+   - This `X` represents the raw state of the problem and remains constant across iterations.
+
+2. **Training phase**:
+   - Jurors learn from the Advocate.
+     - Juror 0 applies spatial noise (DropBlock).
+     - Juror 2 may be retrained based on the Supreme if divergence is detected.
+   - The Supreme learns from all (jurors, advocate, judge).
+   - The Judge is updated with the Supreme's feedback.
+   - The Advocate refines their thesis with the Judge's feedback.
+
+3. **Visualization and consensus analysis**:
+   - Votes are visualized.
+   - Entropy maps highlight pixel-level disagreement.
+   - Trust system evaluates each model based on agreement with the Supreme.
+
+4. **Repeat until consensus**:
+   - If the Supreme achieves full accuracy on the Judge's output, the cycle ends.
+   - Otherwise, a new iteration begins with updated votes.
 
 ---
 
-## 🛠️ Example API
-```json
-POST /api/deliberate
-{
-  "task_id": "001",
-  "input": [[[[...]]]],
-  "robot_id": "R2D3",
-  "consensus_level": 0.88,
-  "verdict": [[...]]
-}
+## 📐 Symbolic Interaction Diagram
+
+```text
+Raw Input
+   │
+   ├──▶ Advocate
+   │       │
+   │       ├──▶ Juror 0 (noisy)
+   │       ├──▶ Juror 1 (loyal)
+   │       └──▶ Juror 2 (with ToM)
+   │
+   └──▶ Judge ◀── Supreme Judge
+                     ▲
+           ┌─────────┴──────────┐
+           │                   │
+     Jurors, Judge, Advocate ──┘
 ```
 
 ---
 
-## 📚 Recommendations
-- Log all intermediate decisions
-- Include timestamps and robot ID for traceability
-- Store consensus failures for further training of the Supreme Judge
+## 🎯 Advanced Features
+
+- Modeling of **localized cognitive noise** (Juror 0)
+- Simulation of **symbolic authority** (Supreme)
+- Implementation of **adaptive Theory of Mind** (Juror 2)
+- **Evolving symbolic trust system** with penalties
+- Visualization of divergence using **symbolic entropy maps**
 
 ---
 
-## 🔮 Future Enhancements
-- Lawyer LLM for natural-language explanation of consensus
-- Visual heatmaps of disagreements
-- Online learning for all roles
-- Swarm jurisprudence: case law across robots
+## 💡 Applications
+
+- ARC Challenge benchmark
+- Simulation of adaptive judgment
+- Study of distributed trust in ensembles
+- Symbolic metaphor for explainable AI
 
 ---
 
-## Author
-Felipe Maya Muniz — Independent Researcher
+## 📜 License and Ownership
+This system is protected against unauthorized commercial use. Royalties are required as described in the main license.

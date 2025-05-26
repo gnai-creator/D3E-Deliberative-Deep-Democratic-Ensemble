@@ -123,55 +123,30 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
     filepath = os.path.join(saida_dir, fname)
 
     votos_classes = []
-    for i, v in enumerate(votos):
+    for v in votos:
         if v is None:
             continue
         try:
-            v_cls = preparar_voto_para_visualizacao(v)
-            log(f"[VISUAL DEBUG] modelo_{i}: únicos = {np.unique(v_cls)}")
-            votos_classes.append(v_cls)
-        except Exception as e:
-            log(f"[VISUAL] Erro ao preparar voto do modelo_{i}: {e}")
+            votos_classes.append(preparar_voto_para_visualizacao(v))
+        except Exception:
+            votos_classes.append(np.zeros((30, 30), dtype=np.int32))
 
     num_modelos = len(votos_classes)
-
     if not votos_classes:
-        log("[VISUAL] Nenhuma predição válida para visualização.")
-        fig, ax = plt.subplots(figsize=(6, 6))
-
-        raw_input = np.squeeze(input_tensor_outros[0])
-        if raw_input.ndim == 3:
-            H, W, C = raw_input.shape
-            heatmap = np.zeros((H, W))
-            for i in range(H):
-                for j in range(W):
-                    vals, counts = np.unique(raw_input[i, j, :], return_counts=True)
-                    probs = counts / np.sum(counts)
-                    entropy = -np.sum(probs * np.log2(probs + 1e-9))
-                    heatmap[i, j] = entropy
-            sns.heatmap(heatmap, ax=ax, cmap="magma", square=True, cbar=True)
-            ax.set_title("Entropia dos Pixels (Sem votos válidos)", fontsize=10)
-        else:
-            ax.text(0.5, 0.5, "Sem votos válidos", ha="center", va="center", fontsize=14)
-            ax.axis("off")
-
-        plt.tight_layout()
-        plt.savefig(filepath)
-        plt.close()
-        log(f"[VISUAL] Salvou fallback visual em {filepath}")
         return
 
-    # Mapa de consenso
     votos_stack = np.stack(votos_classes, axis=0)
-    consenso_map = np.zeros((30, 30), dtype=np.uint8)
+
+    # Mapa de divergencia (entropia)
+    divergencia_map = np.zeros((30, 30), dtype=np.float32)
     for i in range(30):
         for j in range(30):
-            _, counts = np.unique(votos_stack[:, i, j], return_counts=True)
-            if np.max(counts) >= 3:
-                consenso_map[i, j] = 1
+            vals, counts = np.unique(votos_stack[:, i, j], return_counts=True)
+            probs = counts / np.sum(counts)
+            entropy = -np.sum(probs * np.log2(probs + 1e-9))
+            divergencia_map[i, j] = entropy
 
     fig, axes = plt.subplots(1, num_modelos + 2, figsize=(4 * (num_modelos + 2), 4))
-
     cargos = {
         0: "Jurada 1", 1: "Jurada 2", 2: "Jurada 3",
         3: "Advogada", 4: "Juíza", 5: "Suprema Juíza"
@@ -183,41 +158,27 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
         ax.set_title(f"{nome}", fontsize=10)
         ax.axis("off")
 
-    # Prepara input visual
-    try:
-        input_vis = ensure_numpy(input_tensor_outros)
-        if input_vis.ndim == 5:
-            input_vis = tf.argmax(input_vis[0], axis=-1).numpy()
-
-        elif input_vis.ndim == 4:
-            input_vis = input_vis[0, :, :, 0]
-        elif input_vis.ndim == 3 and input_vis.shape[-1] > 1:
-            input_vis = input_vis[..., 0]
-        input_vis = np.squeeze(input_vis)
-
-        if input_vis.size != 900:
-            log(f"[VISUAL] ⚠️ input_vis com {input_vis.size} elementos. Substituindo por zeros.")
-            input_vis = np.zeros((30, 30))
-        else:
-            input_vis = input_vis.reshape((30, 30))
-
-    except Exception as e:
-        log(f"[VISUAL] Erro ao preparar input_vis: {e}")
-        input_vis = np.zeros((30, 30))
+    # Input
+    input_vis = ensure_numpy(input_tensor_outros)
+    if input_vis.ndim == 5:
+        input_vis = input_vis[0, :, :, 0, 0]
+    elif input_vis.ndim == 4:
+        input_vis = input_vis[0, :, :, 0]
+    input_vis = np.squeeze(input_vis)
+    input_vis = input_vis.reshape((30, 30)) if input_vis.size == 900 else np.zeros((30, 30))
 
     sns.heatmap(input_vis, ax=axes[-2], cbar=False, cmap="viridis", square=True, vmin=0, vmax=9)
     axes[-2].set_title("Input", fontsize=10)
     axes[-2].axis("off")
 
-    sns.heatmap(consenso_map, ax=axes[-1], cbar=False, cmap="Greens", square=True)
-    axes[-1].set_title("Mapa de Consenso (≥3)", fontsize=10)
+    sns.heatmap(divergencia_map, ax=axes[-1], cbar=True, cmap="Reds", square=True)
+    axes[-1].set_title("Divergência (Entropia)", fontsize=10)
     axes[-1].axis("off")
 
     plt.suptitle(f"Predições dos Modelos - Iteração {iteracao}", fontsize=12)
     plt.tight_layout()
     plt.savefig(filepath)
     plt.close()
-    log(f"[VISUAL] Salvo mapa de votos + consenso em {filepath}")
 
 
 

@@ -1,112 +1,74 @@
-# D3E: Deliberative Deep Democratic Ensemble
+# 🧠 ClippyX: Neural Deliberative Court
 
-A neural architecture for model-level consensus inspired by deliberative democratic systems. Each model acts as an autonomous entity with a defined institutional role: jurors, lawyer, judge, and supreme judge. Together, they simulate a courtroom-like process to iteratively refine and validate predictions.
-
----
-
-## 🧠 Core Idea
-
-Traditional ensemble methods aggregate predictions statically. D3E, in contrast, uses a **hierarchical and deliberative approach**:
-
-1. **Jurors** independently vote on a sample.
-2. **Lawyer (SimuV4)** synthesizes these votes into a higher-level representation.
-3. **Judge (SimuV5)** interprets this representation and outputs a refined decision.
-4. **Supreme Judge** evaluates the confidence and decides to accept or request a new deliberation round.
+ClippyX is a symbolic architecture inspired by judicial systems, designed to solve problems through collaborative learning, with multiple neural agents performing distinct institutional roles.
 
 ---
 
-## 🧱 Architecture Overview
-
-```text
-[Sensor Input]
-      ↓
-[Jurors (N)]
-      ↓
-[Lawyer (SimuV4)]
-      ↓
-[Judge (SimuV5)]
-      ↓
-[Supreme Judge]
-      ↓
-[Final Decision + Confidence Score]
-```
+## 🎯 Objective
+Simulate deliberation, conflict, and consensus among multiple neural models on tasks such as the ARC Challenge, modeling decision-making, trust, and authority.
 
 ---
 
-## 🤖 Scaling to Multiple Robots
+## 👥 Institutional Structure
 
-Each robot runs a local instance of the entire D3E stack. Coordination between robots is optional and occurs only at the Supreme level if needed.
-
-### Local Roles per Robot:
-| Role          | Description                              |
-|---------------|------------------------------------------|
-| Jurors        | Local classifiers                         |
-| Lawyer        | Aggregates local juror decisions          |
-| Judge         | Makes informed decisions from aggregation |
-| Supreme Judge | Validates confidence and consensus        |
-
-### Federation (optional):
-Robots can send their local consensus decisions to a central coordination node for arbitration or global consensus tracking.
+- **Advocate**: initiates the thesis (prediction) based on the raw input. Trained with feedback from the Judge.
+- **Jurors 0, 1, 2**:
+  - **Juror 0**: has spatial behavioral noise (DropBlock)
+  - **Juror 1**: loyal to the advocate
+  - **Juror 2**: possesses "theory of mind": follows the advocate but adjusts if diverging from the Supreme
+- **Judge**: judges based on jurors and the advocate; learns from Supreme feedback
+- **Supreme Judge**: final authority; learns from all and validates the consensus
 
 ---
 
-## 🔌 Input / Output Specification
+## 🔁 Deliberation Cycle
 
-### Input:
-- Tensor of shape `(1, 30, 30, 1, C)` where `C` = channels (4 for jurors, 40 for judge)
-
-### Output:
-```json
-{
-  "decision": [[...]],
-  "confidence": 0.92,
-  "consensus": true,
-  "task_id": "abc123"
-}
-```
+1. **Iteration 0**:
+   - All models (except the Supreme) make an initial prediction using the raw input.
+2. **Jurors** are trained based on the advocate, each applying their individual strategy.
+3. **Supreme Judge** learns from the collective votes of jurors + advocate + judge.
+4. **Judge** is updated with the Supreme's feedback.
+5. **Advocate** retrains their thesis based on the Judge’s verdict.
+6. The cycle repeats until consensus is achieved.
 
 ---
 
-## 📦 Directory Structure
-
-```bash
-D3E/
-├── ClippyX.py                # Core deliberation engine
-├── SimuV4.py                 # Lawyer model
-├── SimuV5.py                 # Judge model
-├── court_logic.py            # Consensus, voting, and arbitration
-├── data_loader.py            # Input pipeline
-├── neural_blocks.py          # Custom attention, rotation, fractals
-├── train_all.py              # Training pipeline for all roles
-└── README.md                 # This document
-```
+## 📈 Trust and Evaluation
+- Each agent has a **symbolic trust score** based on its agreement with the Supreme.
+- An **adaptive trust system** penalizes models that frequently diverge from the final consensus.
 
 ---
 
-## 📌 How to Run
-
-```bash
-python ClippyX.py
-```
-
-To trigger multi-model deliberation and consensus resolution.
+## 🧪 Application: ARC Challenge
+- Input: symbolic grid from ARC (e.g., `(1, 30, 30, 1, 4)`)
+- Output: per-pixel class prediction
+- Final consensus is defined by the Supreme Judge
+- Metrics for divergence, entropy, and trust are recorded at each iteration
 
 ---
 
-## 📄 Paper
+## 🧬 Philosophy
+ClippyX is not just an ensemble — it's a simulation of a **symbolic deliberative system** with autonomous agents learning under authority, noise, and cognitive conflict.
 
-Published at ResearchGate:
-[D3E: A Deliberative Deep Democratic Ensemble for Model-Level Consensus Through Neural Jurisprudence](https://www.researchgate.net/publication/392083156_D3E_A_Deliberative_Deep_Democratic_Ensemble_for_Model-Level_Consensus_Through_Neural_Jurisprudence)
-
----
-
-## ✨ Future Work
-- Swarm coordination among robots
-- Cross-agent jurisprudence tracking
-- Integration with language models for argument generation
-- Distributed learning between agents
+> "Justice is not immediate consensus, but the struggle for understanding through multiple perspectives."
 
 ---
 
-## Author
-Felipe Maya Muniz — Independent Researcher
+## 🛠️ Requirements
+- TensorFlow 2.14+
+- Numpy, Matplotlib, Seaborn
+- Python 3.10+
+
+---
+
+## 📁 Core Structure
+- `ClippyX.py` — main execution
+- `court_logic.py` — deliberation logic
+- `confidence_system.py` — symbolic trust system
+- `metrics_utils.py` — visualizations and analysis
+- `SimuV*.py` — neural model definitions by role
+
+---
+
+## 📜 License
+This project is protected from commercial use until official royalty release. See the repository license for more information.

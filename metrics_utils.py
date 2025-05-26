@@ -176,7 +176,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0,ta
         input_vis = np.mean(input_vis, axis=-1)
 
     input_vis = np.squeeze(input_vis)
-    sns.heatmap(input_vis, ax=axes[-2], cbar=False, cmap="gray", square=True)
+    sns.heatmap(input_vis, ax=axes[-2], cbar=False, cmap="viridis", square=True)
     axes[-2].set_title("Input", fontsize=10)
     axes[-2].axis("off")
 

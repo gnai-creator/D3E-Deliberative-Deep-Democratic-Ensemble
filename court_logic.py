@@ -102,7 +102,7 @@ def instanciar_promotor_e_supremo(models):
     return models
 
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
-                      max_cycles=10, tol=0.98, epochs=60, confidence_threshold=0.5,
+                      max_cycles=10, tol=0.98, epochs=10, confidence_threshold=0.5,
                       confidence_manager=[], idx=0):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
     votos_models = {}
@@ -148,16 +148,16 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         x_suprema = prepare_input_for_model(5, input_tensor_outros)
         modelos[5].fit(x=x_suprema, y=y_suprema, epochs=epochs, verbose=0)
 
-        for i in range(5):
-            x_i = prepare_input_for_model(i, input_tensor_outros)
-            y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1)
-            y_pred = tf.expand_dims(y_pred, axis=-1)
-            match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_suprema), tf.float32)).numpy()
-            if match < 0.95:
-                log(f"[REEDUCAÇÃO] Modelo_{i} está em desacordo com Suprema ({match:.3f}) — retreinando...")
-                modelos[i].fit(x=x_i, y=y_suprema, epochs=epochs, verbose=0)
-            else:
-                log(f"[ALINHADO] Modelo_{i} já está de acordo com Suprema ({match:.3f})")
+        # for i in range(5):
+        #     x_i = prepare_input_for_model(i, input_tensor_outros)
+        #     y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1)
+        #     y_pred = tf.expand_dims(y_pred, axis=-1)
+        #     match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_suprema), tf.float32)).numpy()
+        #     if match < 0.95:
+        #         log(f"[REEDUCAÇÃO] Modelo_{i} está em desacordo com Suprema ({match:.3f}) — retreinando...")
+        #         modelos[i].fit(x=x_i, y=y_suprema, epochs=epochs, verbose=0)
+        #     else:
+        #         log(f"[ALINHADO] Modelo_{i} já está de acordo com Suprema ({match:.3f})")
 
         x_promotor = prepare_input_for_model(6, input_tensor_outros)
         y_sup = tf.squeeze(y_suprema)
@@ -190,21 +190,34 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
  
 
         if consenso >= tol:
-            y_juiza = tf.argmax(votos_models["modelo_4"], axis=-1)
+            # Conversão segura dos logits da Juíza
+            y_juiza_logits = votos_models["modelo_4"]
+            if y_juiza_logits.shape[-1] > 1:
+                y_juiza = tf.argmax(y_juiza_logits, axis=-1)
+            else:
+                y_juiza = tf.squeeze(y_juiza_logits)
+
             y_suprema = tf.argmax(modelos[5](x_suprema), axis=-1)
             y_promotor = tf.argmax(modelos[6](x_promotor), axis=-1)
             y_promotor_corrigido = tf.clip_by_value(9 - y_promotor, 0, 9)
 
+            # Comparações literais
             acordo_juiza_suprema = tf.reduce_all(tf.equal(y_suprema, y_juiza)).numpy()
             acordo_promotor_juiza = tf.reduce_all(tf.equal(y_promotor_corrigido, y_juiza)).numpy()
+            acordo_promotor_suprema = tf.reduce_all(tf.equal(y_promotor, y_suprema)).numpy()
 
-            if acordo_juiza_suprema and acordo_promotor_juiza:
+            log(f"[CHECK] Suprema == Juíza? {acordo_juiza_suprema}")
+            log(f"[CHECK] Promotor corrigido == Juíza? {acordo_promotor_juiza}")
+            log(f"[CHECK] Promotor corrigido == Suprema? {acordo_promotor_suprema}")
+
+            if acordo_juiza_suprema and acordo_promotor_juiza and acordo_promotor_suprema:
                 log("[SUPREMA] Suprema, Juíza e Promotor (corrigido) estão em acordo literal. Prosseguindo para próximo bloco.")
                 break
             else:
                 log("[SUPREMA] Divergência detectada entre Juíza, Suprema ou Promotor. Nova deliberação se faz necessária.")
                 iter_count += 1
                 continue
+
 
 
 

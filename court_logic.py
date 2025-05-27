@@ -217,7 +217,10 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
 
             if acordo_juiza_suprema and acordo_promotor_juiza and acordo_promotor_suprema:
                 log("[SUPREMA] Suprema, Juíza e Promotor (corrigido) estão em acordo literal. Prosseguindo para próximo bloco.")
-                break
+                return {
+                    "class_logits": votos_models["modelo_5"],
+                    "consenso": float(consenso)
+                }
             else:
                 log("[SUPREMA] Divergência detectada entre Juíza, Suprema ou Promotor. Nova deliberação se faz necessária.")
                 iter_count += 1

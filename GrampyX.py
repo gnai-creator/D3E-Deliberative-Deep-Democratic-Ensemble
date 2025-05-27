@@ -173,7 +173,7 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             if consenso >= consenso_minimo:
                 log(f"[GrampyX] Consenso alcançado ({consenso:.2f}), encerrando iteração.")
                 sucesso = True
-                return
+                break
             else:
                 log(f"[GrampyX] Consenso insuficiente ({consenso:.2f}), nova rodada.")
                 iteracao += 1
@@ -183,4 +183,4 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             log(f"[GrampyX] Máximo de iterações atingido para bloco {block_idx}. Partindo pro próximo.")
 
     log("[GrampyX] Deliberação encerrada.")
-    return False
+    return True

@@ -160,6 +160,7 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
                 pad_value=0,
             )
             todos_os_batches[idx].extend(batches)
+    sucesso_global = False
 
     for (X_train, X_val, Y_train, Y_val, X_test, raw_input, block_idx, task_id) in todos_os_batches[idx]:
         iteracao = 0
@@ -173,14 +174,14 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             if consenso >= consenso_minimo:
                 log(f"[GrampyX] Consenso alcançado ({consenso:.2f}), encerrando iteração.")
                 sucesso = True
+                sucesso_global = True
                 break
             else:
                 log(f"[GrampyX] Consenso insuficiente ({consenso:.2f}), nova rodada.")
                 iteracao += 1
-                
 
         if not sucesso and parar_se_sucesso:
             log(f"[GrampyX] Máximo de iterações atingido para bloco {block_idx}. Partindo pro próximo.")
 
     log("[GrampyX] Deliberação encerrada.")
-    return True
+    return sucesso_global

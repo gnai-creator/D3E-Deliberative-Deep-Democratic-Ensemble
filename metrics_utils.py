@@ -90,10 +90,6 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
 def ensure_numpy(tensor):
     return tensor.numpy() if hasattr(tensor, "numpy") else tensor
 
-def safe_squeeze_axis(tensor, axis):
-    if tensor.shape[axis] == 1:
-        return tf.squeeze(tensor, axis=axis)
-    return tensor
 
 def preparar_voto_para_visualizacao(v):
     v = ensure_numpy(v)

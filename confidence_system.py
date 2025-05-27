@@ -1,6 +1,5 @@
 import tensorflow as tf
 from runtime_utils import log
-from metrics_utils import safe_squeeze_axis
 
 class ConfidenceManager:
     def __init__(self, models, initial_confidence=1.0, decay=0.9, recovery_rate=0.05, min_threshold=0.1):
@@ -39,13 +38,6 @@ class ConfidenceManager:
         else:
             log(linha)
 
-def flatten_voto_simbólico(v):
-    v = tf.convert_to_tensor(v)
-    if v.shape.rank > 2 and v.shape[-1] > 1:
-        v = tf.argmax(v, axis=-1)
-    if v.shape.rank > 2:
-        v = safe_squeeze_axis(v, axis=0)
-    return tf.reshape(v, (1, -1))
 
 def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, required_votes=5, confidence_threshold=0.5, voto_reverso_ok=None):
     active_names = confidence_manager.get_active_model_names(threshold=confidence_threshold)

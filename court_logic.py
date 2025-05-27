@@ -37,7 +37,12 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
     classes_validas = extrair_classes_validas(X_test, pad_value=pad_value)
 
     y_sup = gerar_padrao_simbolico(X_test)
-    y_sup = tf.squeeze(y_sup, axis=-1) if y_sup.shape.rank == 4 and y_sup.shape[-1] == 1 else y_sup
+    log(f"[DEBUG] y_sup shape antes do squeeze: {y_sup.shape}")
+    if y_sup.shape.rank >= 4 and y_sup.shape[-1] == 1:
+        y_sup = tf.squeeze(y_sup, axis=-1)
+    elif y_sup.shape.rank > 3:
+        log(f"[ERRO] y_sup possui rank incompatível para squeeze: {y_sup.shape}")
+    y_sup = tf.cast(y_sup, tf.int32)
     y_suprema = tf.one_hot(y_sup, depth=40, axis=-1)
     y_suprema = tf.tile(y_suprema, [1, 1, 1, 10, 1])
     y_suprema = tf.cast(y_suprema, tf.float32)
@@ -73,7 +78,12 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
         juradas_preds = [votos_models[f"modelo_{i}"] for i in range(3)]
         juradas_classes = tf.stack([tf.argmax(p, axis=-1, output_type=tf.int64) for p in juradas_preds], axis=0)
         y_sup = pixelwise_mode(juradas_classes)
-        y_sup = tf.squeeze(y_sup, axis=-1) if y_sup.shape.rank == 4 and y_sup.shape[-1] == 1 else y_sup
+        log(f"[DEBUG] y_sup shape antes do squeeze: {y_sup.shape}")
+        if y_sup.shape.rank >= 4 and y_sup.shape[-1] == 1:
+            y_sup = tf.squeeze(y_sup, axis=-1)
+        elif y_sup.shape.rank > 3:
+            log(f"[ERRO] y_sup possui rank incompatível para squeeze: {y_sup.shape}")
+        y_sup = tf.cast(y_sup, tf.int32)
         y_suprema = tf.one_hot(y_sup, depth=40, axis=-1)
         y_suprema = tf.tile(y_suprema, [1, 1, 1, 10, 1])
         y_suprema = tf.cast(y_suprema, tf.float32)

@@ -123,29 +123,28 @@ class GrampyX:
 
 # Global cache para manter batches entre chamadas
 todos_os_batches = {}
-
 def extrair_classes_validas(y_real, pad_value=0):
     y_real = tf.convert_to_tensor(y_real)
-    # log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
-
-    # try:
-    #     log(f"[DEBUG] y_real preview: {y_real.numpy()[0, 0, 0]}")
-    # except:
-    #     pass
+    log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
 
     # Se a forma for (H, W, 1, 4) ou (30, 30, 1, 4), extrai canal de cor
     if y_real.shape.rank == 4 and y_real.shape[-1] == 4:
         y_real = y_real[..., 0]  # Pega apenas o canal da classe
 
-    y_real = tf.squeeze(y_real)  # remove dimensões 1 desnecessárias
+    # Remover dimensão -1 apenas se ela for 1
+    if y_real.shape.rank >= 4 and y_real.shape[-1] == 1:
+        y_real = tf.squeeze(y_real, axis=-1)
+    elif y_real.shape.rank >= 4 and y_real.shape[-1] != 1:
+        log(f"[WARN] Tentativa de squeeze em shape incompatível: {y_real.shape}")
 
     valores = tf.unique(tf.reshape(y_real, [-1]))[0]
     valores = tf.cast(valores, tf.int32)
     valores_validos = tf.boolean_mask(valores, valores != pad_value)
 
-    # log(f"[DEBUG] Valores únicos: {valores.numpy().tolist()}")
-    # log(f"[DEBUG] Classes extraídas: {valores_validos.numpy().tolist()}")
+    log(f"[DEBUG] Valores únicos: {valores.numpy().tolist()}")
+    log(f"[DEBUG] Classes extraídas: {valores_validos.numpy().tolist()}")
     return valores_validos
+
 
 
 

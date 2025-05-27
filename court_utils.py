@@ -123,10 +123,13 @@ def instanciar_promotor_e_supremo(models):
     models.append(model)
     return models
 
+def safe_squeeze_last_dim(t):
+    return tf.squeeze(t, axis=-1) if t.shape.rank is not None and t.shape[-1] == 1 else t
 
 def extrair_classes_validas(y_real, pad_value=0):
-    y_real = tf.convert_to_tensor(y_real)
     log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
+    y_real = safe_squeeze_last_dim(y_real)
+    y_real = tf.convert_to_tensor(y_real)
 
     try:
         log(f"[DEBUG] y_real preview: {y_real.numpy()[0, 0, 0]}")
@@ -149,30 +152,22 @@ def extrair_classes_validas(y_real, pad_value=0):
 
 
 def inverter_classes_respeitando_valores(y, classes_validas, pad_value=0):
-    """
-    Inverte classes com base nos dois valores mais frequentes nas classes válidas.
-    Se o valor de y é igual ao primeiro, troca pelo segundo e vice-versa.
-    Se não for nenhum dos dois, retorna pad_value.
-    """
     y = tf.convert_to_tensor(y)
     y_shape = tf.shape(y)
     original_rank = y.shape.rank
 
-    # Garante que y tenha shape (H, W)
-    if original_rank == 4:
+    # Squeeze apenas se a dimensão for 1
+    if original_rank == 4 and y.shape[0] == 1:
         y = tf.squeeze(y, axis=0)
     if y.shape.rank == 3 and y.shape[-1] == 1:
         y = tf.squeeze(y, axis=-1)
-    elif y.shape.rank == 3:
-        y = y[0]  # assume (1, H, W)
+    elif y.shape.rank == 3 and y.shape[0] == 1:
+        y = y[0]
 
     y_flat = tf.reshape(y, [-1])
-
-    # Garante tipo consistente
     classes_validas = tf.cast(classes_validas, tf.int32)
     y_flat = tf.cast(y_flat, tf.int32)
 
-    # Seleciona os dois valores mais frequentes
     valores, _, counts = tf.unique_with_counts(tf.reshape(classes_validas, [-1]))
     idx_sorted = tf.argsort(counts, direction="DESCENDING")
     valores_sorted = tf.gather(valores, idx_sorted)
@@ -191,10 +186,10 @@ def inverter_classes_respeitando_valores(y, classes_validas, pad_value=0):
     resultado_flat = tf.cond(tf.size(valores_sorted) < 2, fallback, alternar)
     resultado = tf.reshape(resultado_flat, tf.shape(y))  # (H, W)
 
-    # Reconstrói para shape (1, H, W, 1)
     resultado = tf.expand_dims(resultado, axis=-1)  # (H, W, 1)
     resultado = tf.expand_dims(resultado, axis=0)   # (1, H, W, 1)
     return resultado
+
 
 
 def filtrar_classes_respeitando_valores(y, classes_validas, pad_value=0, preserve_invalids=False):

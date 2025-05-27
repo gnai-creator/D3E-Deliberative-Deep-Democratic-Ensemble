@@ -28,8 +28,8 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
             raw_inputs.append(input_grid)
             raw_test_inputs.append(test_input_grid)
 
-            log(f"TRAIN TASK {task_id}  SHAPE: - {input_grid.shape}")
-            log(f"TEST TASK {task_id}  SHAPE: - {test_input_grid.shape}")
+            # log(f"TRAIN TASK {task_id}  SHAPE: - {input_grid.shape}")
+            # log(f"TEST TASK {task_id}  SHAPE: - {test_input_grid.shape}")
         except Exception as e:
             log(f"[BROKE]: {e}")
             continue
@@ -76,9 +76,9 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
     #     Y_train = tf.expand_dims(Y_train, axis=0)
     # if len(Y_val.shape) == 4:
     #     Y_val = tf.expand_dims(Y_val, axis=0)
-    log(f"[DEBUG] X_TRAIN SHAPE : {X_train.shape}")
-    log(f"[DEBUG] Y_VAL SHAPE : {Y_val.shape}")
-    log(f"[DEBUG] X_TEST SHAPE : {X_test.shape}")
+    # log(f"[DEBUG] X_TRAIN SHAPE : {X_train.shape}")
+    # log(f"[DEBUG] Y_VAL SHAPE : {Y_val.shape}")
+    # log(f"[DEBUG] X_TEST SHAPE : {X_test.shape}")
     
     sw_train = np.ones_like(Y_train[..., 0], dtype=np.float32)
     sw_val = np.ones_like(Y_val[..., 0], dtype=np.float32)

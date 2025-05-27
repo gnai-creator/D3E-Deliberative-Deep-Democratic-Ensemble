@@ -180,7 +180,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id)
 
         votos_models = garantir_dict_votos_models(votos_models)
-        consenso = avaliar_consenso_com_confianca(modelos, confidence_manager, 6, 0.5)
+        consenso = avaliar_consenso_com_confianca(modelos, confidence_manager, 4, 0.5)
 
         if consenso >= tol:
             y_eval = tf.argmax(votos_models["modelo_4"], axis=-1)

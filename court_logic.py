@@ -183,7 +183,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         consenso = avaliar_consenso_com_confianca(
             votos_models,
             confidence_manager,
-            required_votes=6,
+            required_votes=5,
             confidence_threshold=0.5,
             voto_reverso_ok=["modelo_6"]
         )

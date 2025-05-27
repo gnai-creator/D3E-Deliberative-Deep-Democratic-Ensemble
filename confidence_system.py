@@ -86,7 +86,7 @@ def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, requi
     votos_moda = tf.cast(tf.round(tf.reduce_mean(votos_stacked_tensor, axis=0)), tf.int32)
 
     for name in votos_dict:
-        acertou = tf.reduce_all(tf.equal(votos_dict[name], votos_moda)).numpy()
+        acertou = tf.reduce_all(tf.equal(tf.cast(votos_dict[name], tf.int64), tf.cast(votos_moda, tf.int64))).numpy()
         confidence_manager.update_confidence(name, acertou)
 
     def contar_consenso(votos_pixel):

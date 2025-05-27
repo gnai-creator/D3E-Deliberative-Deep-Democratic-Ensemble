@@ -52,7 +52,7 @@ def flatten_voto_simbólico(v):
     return tf.reshape(v, (1, -1))  # (1, 900)
 
 
-def avaliar_consenso_com_confiança(votos_models: dict, confidence_manager, required_votes=5, confidence_threshold=0.5):
+def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, required_votes=5, confidence_threshold=0.5):
     active_names = confidence_manager.get_active_model_names(threshold=confidence_threshold)
 
     if not active_names:

@@ -54,6 +54,10 @@ def training_process(
         task_id,
     ) = batches[batch_index]
 
+    if n_model >= 5:
+        log(f"[SKIP] Índice {n_model} fora da lista de modelos ({len(models)})")
+        return
+
     model = models[n_model]
     if model is None:
         raise ValueError(f"[FATAL] Modelo {n_model} não foi carregado corretamente.")

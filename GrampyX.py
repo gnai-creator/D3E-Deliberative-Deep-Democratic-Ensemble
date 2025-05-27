@@ -25,7 +25,7 @@ DETECTOR_WEIGHTS = os.path.join(PERSIST_DIR, "detector.h5")
 HISTORY_PATH = os.path.join(PERSIST_DIR, "history.pkl")
 
 class GrampyX:
-    def __init__(self, num_modelos=5):
+    def __init__(self, num_modelos=6):
         os.makedirs(PERSIST_DIR, exist_ok=True)
 
         self.num_modelos = num_modelos
@@ -105,7 +105,7 @@ class GrampyX:
             self.salvar_estado()
 
             salvar_path = f"images/clippy/JULGAMENTO_{block_index}_{task_id}"
-            plot_prediction_test(raw_input=raw_input, predicted_output=y_pred_np, save_path=salvar_path)
+            plot_prediction_test(raw_input=raw_input, predicted_output=y_pred_np, save_path=salvar_path, pad_value=0)
 
             self.submission_dict.append({"task_id": task_id, "prediction": y_pred_np})
             save_debug_result(self.submission_dict, "submission.json")
@@ -182,20 +182,3 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
 
     log("[GrampyX] Deliberação encerrada.")
     return False
-
-
-# if __name__ == "__main__":
-#     tf.random.set_seed(42)
-#     np.random.seed(42)
-#     random.seed(42)
-#     os.environ["TF_DETERMINISTIC_OPS"] = "1"
-#     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-#     idx = 0
-#     while True:
-#         while rodar_deliberacao_com_condicoes(
-#             parar_se_sucesso=True,
-#             max_iteracoes=150,
-#             consenso_minimo=0.9,
-#             idx=idx
-#         ):
-#             idx += 1

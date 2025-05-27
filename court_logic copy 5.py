@@ -15,15 +15,7 @@ def normalizar_y_para_sparse(y):
         y = tf.expand_dims(y, axis=-1)
     return y
 
-def garantir_dict_votos_models(votos_models):
-    if isinstance(votos_models, dict):
-        return votos_models
-    elif isinstance(votos_models, list):
-        return {f"modelo_{i}": v for i, v in enumerate(votos_models)}
-    else:
-        log(f"[SECURITY] votos_models tinha tipo inesperado: {type(votos_models)}. Substituindo por dict vazio.")
-        return {}
-
+# Calcula a moda por pixel de uma pilha de predições
 def pixelwise_mode(stack):
     stack = tf.transpose(stack, [1, 2, 3, 0])
     flat = tf.reshape(stack, (-1, stack.shape[-1]))
@@ -34,6 +26,7 @@ def pixelwise_mode(stack):
     moda_flat = tf.map_fn(pixel_mode, flat, fn_output_signature=tf.int64)
     return tf.reshape(moda_flat, (1, 30, 30))
 
+# Ajusta tensor para ter exatamente target_channels canais
 def pad_or_truncate_channels(tensor, target_channels=40):
     current_channels = tensor.shape[-1]
     rank = len(tensor.shape)
@@ -47,17 +40,19 @@ def pad_or_truncate_channels(tensor, target_channels=40):
     else:
         return tensor[..., :target_channels]
 
+# Redireciona entrada para número de canais esperado pelo modelo
 def prepare_input_for_model(model_index, base_input):
-    if model_index in [0, 1, 2, 3]:
+    if model_index in [0, 1, 2, 3]:  # juradas e advogada
         return pad_or_truncate_channels(base_input, 4)
-    else:
+    else:  # juíza, suprema e promotor
         return pad_or_truncate_channels(base_input, 40)
 
+# Gera e salva imagem com votos dos modelos
 def gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id):
-    votos_models = garantir_dict_votos_models(votos_models)
     votos_visuais = []
     try:
-        for v in votos_models.values():
+        iterator = votos_models.values() if isinstance(votos_models, dict) else votos_models
+        for v in iterator:
             log(f"[DEBUG] preparando voto: type={type(v)}, shape={getattr(v, 'shape', 'indefinido')}")
             resultado = preparar_voto_para_visualizacao(v)
             if resultado is not None:
@@ -81,14 +76,18 @@ def gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, 
         input_visual = tf.zeros((30, 30), dtype=tf.int32)
     salvar_voto_visual(votos_visuais, idx, block_idx, input_visual, task_id=task_id)
 
+# Promotor treina com antítese da moda das juradas
+# Se concordar com juradas, força Suprema a reconsiderar
 def treinar_promotor_inicial(models, input_tensor_outros, votos_models, epochs):
-    votos_models = garantir_dict_votos_models(votos_models)
+    # Obtém as predições das juradas (modelo_0 a modelo_2) e calcula a classe majoritária por pixel.
+    # Isso representa a opinião coletiva das juradas, que será usada como base para construir a antítese do Promotor.
+
     juradas_preds = [votos_models[f"modelo_{i}"] for i in range(3)]
     juradas_classes = tf.stack([tf.argmax(p, axis=-1) for p in juradas_preds], axis=0)
     y_moda = pixelwise_mode(juradas_classes)
-    y_antitese = 9 - y_moda
+    y_antitese = 9 - y_moda  # Mantém shape (1, 30, 30)
     y_antitese = tf.clip_by_value(y_antitese, 0, 9)
-    y_antitese = tf.expand_dims(y_antitese, axis=-1)
+    y_antitese = tf.expand_dims(y_antitese, axis=-1)  # Final shape: (1, 30, 30, 1)
 
     x_promotor = prepare_input_for_model(6, input_tensor_outros)
     log(f"[DEBUG] x_promotor shape: {x_promotor.shape}")
@@ -96,42 +95,73 @@ def treinar_promotor_inicial(models, input_tensor_outros, votos_models, epochs):
     log("[PROMOTOR] Treinando promotor com antítese da moda das juradas.")
     models[6].fit(x=x_promotor, y=y_antitese, epochs=epochs, verbose=0)
 
+# Função que inicializa promotor e supremo
 def instanciar_promotor_e_supremo(models):
-    model = load_model(6, 0.0005)
+    # model = load_model(5, 0.0005) 
+    # models.append(model)
+    model = load_model(6, 0.0005) 
     models.append(model)
     return models
 
+def garantir_dict_votos_models(votos_models):
+    """
+    Garante que votos_models seja um dicionário com chaves do tipo 'modelo_i'.
+    Se for uma lista, converte automaticamente.
+    Se for None ou outro tipo inesperado, retorna um dict vazio e emite log.
+    """
+    if isinstance(votos_models, dict):
+        return votos_models
+
+    elif isinstance(votos_models, list):
+        return {f"modelo_{i}": v for i, v in enumerate(votos_models)}
+
+    else:
+        log(f"[SECURITY] votos_models tinha tipo inesperado: {type(votos_models)}. Substituindo por dict vazio.")
+        return {}
+
+
+# Função principal do tribunal
+# Essa função representa o ciclo completo de julgamento simbólico:
+# 1. Todos os modelos fazem uma previsão do input inicial (juradas, advogada, juíza, suprema e promotor).
+# 2. A Suprema gera uma proposta baseada na moda dos votos das juradas.
+# 3. A Suprema reeduca os demais modelos se houver desacordo com seu parecer.
+# 4. O Promotor é treinado com a antítese da proposta da Suprema e pode forçar uma reavaliação se concordar com as juradas.
+# 5. O processo se repete até atingir um consenso simbólico validado pela Suprema ou atingir o limite de ciclos.
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                       max_cycles=10, tol=0.98, epochs=60, confidence_threshold=0.5,
                       confidence_manager=[], idx=0):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
     votos_models = {}
+    iter_count = 0
+    consenso = 0.0
     modelos = instanciar_promotor_e_supremo(models)
-
+    # Etapa 0 — Geração inicial de votos (sem treinamento)
     for i in range(7):
         x_i = prepare_input_for_model(i, input_tensor_outros)
         votos_models[f"modelo_{i}"] = modelos[i](x_i, training=False)
 
-    votos_models = garantir_dict_votos_models(votos_models)
+    # Treinamento do Promotor com antítese da moda das juradas
     treinar_promotor_inicial(modelos, input_tensor_outros, votos_models, epochs)
 
+    log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
+    votos_models = {}
     iter_count = 0
     consenso = 0.0
 
     while iter_count < max_cycles:
         log(f"[CICLO] Iteração {iter_count}")
+        log("[CORTE] Iniciando tribunal. Modelos irão fazer uma previsão do input cru")
+
         for i in range(7):
             x_i = prepare_input_for_model(i, input_tensor_outros)
             votos_models[f"modelo_{i}"] = modelos[i](x_i, training=False)
-
-        votos_models = garantir_dict_votos_models(votos_models)
 
         if "modelo_3" not in votos_models:
             log("[CORTE] modelo_3 ainda não está disponível. Pulando rodada.")
             return {"consenso": 0.0, "votos_models": votos_models}
 
         y_juradas = tf.argmax(votos_models["modelo_3"], axis=-1)
-        y_juradas = tf.expand_dims(y_juradas, axis=-1)
+        y_juradas = tf.cast(tf.expand_dims(y_juradas, axis=-1), dtype=tf.int64)
         log(f"[DEBUG] y_juradas shape: {y_juradas.shape}")
 
         if iter_count == 0:
@@ -139,8 +169,11 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
             iter_count += 1
             continue
 
-        votos_models = garantir_dict_votos_models(votos_models)
-        juradas_preds = [votos_models[f"modelo_{i}"] for i in range(3)]
+        if isinstance(votos_models, dict):
+            juradas_preds = [votos_models[f"modelo_{i}"] for i in range(3)]
+        else:
+            juradas_preds = votos_models[:3]  # caso esteja em lista
+
         juradas_classes = tf.stack([tf.argmax(p, axis=-1) for p in juradas_preds], axis=0)
         y_suprema = pixelwise_mode(juradas_classes)
         y_suprema = tf.expand_dims(y_suprema, axis=-1)
@@ -151,7 +184,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         for i in range(5):
             x_i = prepare_input_for_model(i, input_tensor_outros)
             y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1)
-            y_pred = tf.expand_dims(y_pred, axis=-1)
+            y_pred = tf.cast(tf.expand_dims(y_pred, axis=-1), dtype=tf.int64)
             match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_suprema), tf.float32)).numpy()
             if match < 0.95:
                 log(f"[REEDUCAÇÃO] Modelo_{i} está em desacordo com Suprema ({match:.3f}) — retreinando...")
@@ -160,9 +193,13 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                 log(f"[ALINHADO] Modelo_{i} já está de acordo com Suprema ({match:.3f})")
 
         x_promotor = prepare_input_for_model(6, input_tensor_outros)
-        y_sup = tf.squeeze(y_suprema)
+        # Garante que y_suprema está em (1, 30, 30)
+        log(f"[DEBUG] Y_SUPREMA shape: {y_suprema.shape}")
+        y_sup = tf.squeeze(y_suprema)  # (30, 30) ou (1, 30, 30) → reduzido
         if y_sup.shape.rank == 2:
-            y_sup = tf.expand_dims(y_sup, axis=0)
+            y_sup = tf.expand_dims(y_sup, axis=0)  # (1, 30, 30)
+
+        # Calcula a antítese e garante shape final (1, 30, 30, 1)
         y_antitese = 9 - y_sup
         y_antitese = tf.clip_by_value(y_antitese, 0, 9)
         y_antitese = tf.expand_dims(y_antitese, axis=-1)
@@ -179,7 +216,6 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
 
         gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id)
 
-        votos_models = garantir_dict_votos_models(votos_models)
         consenso = avaliar_consenso_com_confianca(modelos, confidence_manager, 6, 0.5)
 
         if consenso >= tol:

@@ -40,7 +40,7 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
             log(f"[WARN] Grid maior que 30x30: {max_h}x{max_w} — pulando")
             continue
         
-        if model_idx == 4:
+        if model_idx >= 4:
             X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=1, confidence_value=40))
             X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=1, confidence_value=40))
             Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=1, confidence_value=40))

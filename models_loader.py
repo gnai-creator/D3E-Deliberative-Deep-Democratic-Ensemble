@@ -9,12 +9,13 @@ from SimuV6 import SimuV6
 
 # Configurações de cada modelo: classe e hidden_dim
 MODEL_CONFIGS = {
-    0: (SimuV1, 128),
-    1: (SimuV2, 256),
-    2: (SimuV3, 128),
-    3: (SimuV4, 256),
-    4: (SimuV5, 128),
-    5: (SimuV6, 256),
+    0: (SimuV1, 128),   # jurada
+    1: (SimuV2, 256),   # jurada
+    2: (SimuV3, 128),   # jurada
+    3: (SimuV4, 256),   # advogada
+    4: (SimuV5, 128),   # juiza
+    5: (SimuV6, 256),   # suprema
+    6: (SimuV5, 256)    # promotor
 }
 
 def load_model(index, learning_rate):

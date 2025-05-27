@@ -50,27 +50,42 @@ def prepare_display_image(img, pad_value, h, w):
 def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
     try:
         print(f"[DEBUG] plot_prediction_test - predicted_output original shape: {getattr(predicted_output, 'shape', 'N/A')}")
-        predicted_output = prepare_display_image(predicted_output, pad_value, 30, 30)
+
+        # Conversão para numpy e ajuste do predicted_output
+        predicted_output = ensure_numpy(predicted_output)
+        if predicted_output.ndim == 4:
+            predicted_output = predicted_output[0]  # remove batch
+        if predicted_output.ndim == 3 and predicted_output.shape[-1] == 10:
+            predicted_output = np.argmax(predicted_output, axis=-1)
+        if predicted_output.ndim == 3 and predicted_output.shape[-1] == 1:
+            predicted_output = predicted_output[..., 0]
+
         print(f"[DEBUG] plot_prediction_test - predicted_output processed shape: {predicted_output.shape}")
 
+        # Ajuste do raw_input
         if raw_input is not None:
             print(f"[DEBUG] plot_prediction_test - raw_input original shape: {getattr(raw_input, 'shape', 'N/A')}")
-            raw_input = prepare_display_image(raw_input, pad_value, 30, 30)
+            raw_input = ensure_numpy(raw_input)
+            if raw_input.ndim == 5:
+                raw_input = raw_input[0, :, :, 0, 0]
+            elif raw_input.ndim == 4:
+                raw_input = raw_input[0, :, :, 0]
+            elif raw_input.ndim == 3 and raw_input.shape[-1] == 1:
+                raw_input = raw_input[:, :, 0]
             print(f"[DEBUG] plot_prediction_test - raw_input processed shape: {raw_input.shape}")
         else:
             raw_input = np.zeros_like(predicted_output)
 
-        if predicted_output.ndim in [2, 3]:
-            predicted_output = np.squeeze(predicted_output).astype(np.int32)
-        else:
-            raise ValueError(f"Unexpected shape for predicted_output: {predicted_output.shape}")
+        # Confirma formato 2D final para plotagem
+        if predicted_output.ndim != 2:
+            raise ValueError(f"Invalid shape {predicted_output.shape} for image data")
 
-        h, w = predicted_output.shape[:2] if predicted_output.ndim == 3 else predicted_output.shape
+        h, w = predicted_output.shape
 
         fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-        axes[0].imshow(raw_input)
+        axes[0].imshow(raw_input, cmap="viridis", vmin=0, vmax=9)
         axes[0].set_title("Input")
-        axes[1].imshow(predicted_output)
+        axes[1].imshow(predicted_output, cmap="viridis", vmin=0, vmax=9)
         axes[1].set_title("Prediction")
 
         for ax in axes:
@@ -84,6 +99,7 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
 
     except Exception as e:
         print("[ERROR] Falha ao gerar plot de teste:", str(e))
+
 
 
 
@@ -177,7 +193,8 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
     fig, axes = plt.subplots(1, num_modelos + 2, figsize=(4 * (num_modelos + 2), 4))
     cargos = {
         0: "Jurada 1", 1: "Jurada 2", 2: "Jurada 3",
-        3: "Advogada", 4: "Juíza", 5: "Suprema Juíza"
+        3: "Advogada", 4: "Juíza", 5: "Suprema Juíza",
+        6: "Promotor"
     }
     nomes = [cargos.get(i, f"Modelo {i}") for i in range(num_modelos)]
 

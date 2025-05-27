@@ -115,6 +115,32 @@ def treinar_promotor_inicial(models, input_tensor_outros, votos_models, epochs):
     log("[PROMOTOR] Treinando promotor com antítese baseada nas classes válidas.")
     models[6].fit(x=x_promotor, y=y_antitese, epochs=epochs, verbose=0)
 
+def filtrar_classes_respeitando_valores(y, classes_validas, pad_value=0):
+    """
+    Mantém apenas os valores de classe em `classes_validas` no canal [2] do tensor `y`,
+    substituindo os demais por `pad_value`.
+
+    Espera y com shape (H, W, 1) ou (1, H, W, 1).
+    """
+    y = tf.convert_to_tensor(y)
+
+    # Remove batch se existir
+    if y.shape.rank == 4 and y.shape[0] == 1:
+        y = tf.squeeze(y, axis=0)
+
+    # Extrai canal de classe
+    channel = y[..., 0]  # (H, W)
+
+    # Gera máscara: True onde channel ∈ classes_validas
+    mask = tf.reduce_any(tf.equal(channel[..., tf.newaxis], tf.cast(classes_validas, channel.dtype)), axis=-1)
+
+    # Substitui classes inválidas por pad_value
+    filtrado = tf.where(mask, channel, tf.constant(pad_value, dtype=channel.dtype))
+
+    return tf.expand_dims(filtrado, axis=-1)  # volta para shape (H, W, 1)
+
+
+
 
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                       max_cycles=10, tol=0.98, epochs=10, confidence_threshold=0.5,
@@ -136,21 +162,19 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
     while iter_count < max_cycles:
         log(f"[CICLO] Iteração {iter_count}")
 
-        num_modelos = len(models)
-        for i in range(num_modelos):
+        for i in range(6):
             x_i = prepare_input_for_model(i, input_tensor_outros)
             votos_models[f"modelo_{i}"] = modelos[i](x_i, training=False)
-
 
         votos_models = garantir_dict_votos_models(votos_models)
         gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id)
 
         # Suprema
         juradas_preds = [votos_models[f"modelo_{i}"] for i in range(3)]
-        juradas_classes = tf.stack([tf.argmax(p, axis=-1) for p in juradas_preds], axis=0)
+        juradas_classes = tf.stack([tf.argmax(p, axis=-1, output_type=tf.int64) for p in juradas_preds], axis=0)
         y_sup = pixelwise_mode(juradas_classes)
         classes_validas = extrair_classes_validas(y_sup, pad_value=pad_value)
-        y_sup_corrigido = inverter_classes_respeitando_valores(y_sup, classes_validas, pad_value=pad_value)
+        y_sup_corrigido = filtrar_classes_respeitando_valores(y_sup, classes_validas, pad_value=pad_value)
         y_suprema = tf.expand_dims(y_sup_corrigido, axis=-1)
 
         x_suprema = prepare_input_for_model(5, input_tensor_outros)
@@ -159,9 +183,9 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         # Reeducar modelos 0 a 4
         for i in range(5):
             x_i = prepare_input_for_model(i, input_tensor_outros)
-            y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1)
+            y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1, output_type=tf.int64)
             y_pred = tf.expand_dims(y_pred, axis=-1)
-            match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_suprema), tf.float32)).numpy()
+            match = tf.reduce_mean(tf.cast(tf.equal(y_pred, tf.cast(y_suprema, tf.int64)), tf.float32)).numpy()
             if match < 0.95:
                 log(f"[REEDUCAÇÃO] Modelo_{i} em desacordo com Suprema ({match:.3f}) - retreinando...")
                 modelos[i].fit(x=x_i, y=y_suprema, epochs=epochs, verbose=0)
@@ -174,7 +198,8 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         if y_sup_squeezed.shape.rank == 2:
             y_sup_squeezed = tf.expand_dims(y_sup_squeezed, axis=0)
 
-        classes_validas = extrair_classes_validas(y_sup_squeezed, pad_value=pad_value)
+        # classes_validas já extraídas anteriormente
+        # classes_validas = extrair_classes_validas(y_sup_squeezed, pad_value=pad_value)
         y_antitese = inverter_classes_respeitando_valores(y_sup_squeezed, classes_validas, pad_value=pad_value)
         y_antitese = tf.expand_dims(y_antitese, axis=-1)
 

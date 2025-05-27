@@ -58,14 +58,12 @@ def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, requi
     for name in active_names:
         try:
             v = votos_models[name]
+            v = tf.convert_to_tensor(v)
+            if v.shape[-1] > 1:
+                v = tf.argmax(v, axis=-1)
+            v = tf.squeeze(v)
             if voto_reverso_ok and name in voto_reverso_ok:
-                v = tf.convert_to_tensor(v)
-                if v.shape[-1] > 1:
-                    v = tf.argmax(v, axis=-1)
-                v = tf.squeeze(v)
-                v = 9 - v  # inverte antítese para tese
-            else:
-                v = flatten_voto_simbólico(v)
+                v = 9 - v
             if tf.size(v) != 900:
                 log(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy()} elementos. Ignorado.")
                 continue

@@ -189,17 +189,17 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         )
 
         if consenso >= tol:
-            y_eval = tf.argmax(votos_models["modelo_4"], axis=-1)
-            y_eval = tf.expand_dims(y_eval, axis=-1)
-            loss, acc = modelos[5].evaluate(x_suprema, normalizar_y_para_sparse(y_eval), verbose=0)
-            log(f"[SUPREMA] Avaliação: acc = {acc:.3f}, loss = {loss:.6f}")
-            if acc < 1.0 or loss > 0.001:
-                log("[SUPREMA] A Suprema rejeitou o veredito da Juíza. Nova deliberação se faz necessária.")
+            y_suprema_pred = tf.argmax(modelos[5](x_suprema), axis=-1)
+            y_juiza = tf.argmax(votos_models["modelo_4"], axis=-1)
+
+            if not tf.reduce_all(tf.equal(y_suprema_pred, y_juiza)).numpy():
+                log("[SUPREMA] A Suprema rejeitou o veredito da Juíza (diferença literal). Nova deliberação se faz necessária.")
                 iter_count += 1
                 continue
             else:
                 log("[SUPREMA] Confiança plena atingida — consenso final aceito.")
                 break
+
 
         iter_count += 1
 

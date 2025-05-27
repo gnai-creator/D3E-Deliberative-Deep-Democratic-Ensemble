@@ -49,8 +49,8 @@ class SimuV6(tf.keras.Model):
         self.init_conv = layers.Conv2D(self.hidden_dim, 1, activation='relu')
 
         # 🚨 Força criação de pesos com input realista
-        x = tf.zeros((1, 30, 30, 1, 40))
-        x = tf.reshape(x, [1, 30, 30, 40])
+        x = tf.zeros((None, 30, 30, 10, 40))
+        x = tf.reshape(x, [None, 30, 30, 400])
         x = self.init_conv(x)
         x = self.pos_enc(x)
         x = self.focal_expand(x)
@@ -78,17 +78,12 @@ class SimuV6(tf.keras.Model):
 
         # Ativa color_perm_train
         _ = self.color_perm_train(dummy_logits)
-    # @shape_guard(expected_shape=[1, 30, 30, 1, 40], name="SimuV6 (Suprema)")
+    @shape_guard(expected_shape=[None, 30, 30, 10, 40], name="SimuV1 (Jurada)")
     def call(self, x, training=False):
-        # Entrada esperada: [Batch, Height, Width, Class, Judge]
-        # Combina as dimensões de Classe e Juízo para formar o canal de entrada
         if x.shape.rank == 5:
-            B, H, W, C, J = tf.unstack(tf.shape(x))
+            shape_dyn = tf.shape(x)
+            B, H, W, C, J = shape_dyn[0], shape_dyn[1], shape_dyn[2], shape_dyn[3], shape_dyn[4]
             x = tf.reshape(x, [B, H, W, C * J])
-        elif x.shape.rank == 4:
-            pass
-        else:
-            raise ValueError(f"[ERRO] Entrada com shape inesperado: {x.shape}")
 
         features = tf.reduce_mean(x, axis=[1, 2])
         features = self.from_40(features)

@@ -170,7 +170,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
         if v is None:
             continue
         try:
-            log(f"[DEBUG] preparando voto: type={type(v)}, shape={getattr(v, 'shape', 'indefinido')}")
+            # log(f"[DEBUG] preparando voto: type={type(v)}, shape={getattr(v, 'shape', 'indefinido')}")
             votos_classes.append(preparar_voto_para_visualizacao(v))
         except Exception:
             votos_classes.append(np.zeros((30, 30), dtype=np.int32))

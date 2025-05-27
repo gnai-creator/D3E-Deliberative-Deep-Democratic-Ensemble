@@ -4,7 +4,7 @@ from runtime_utils import log
 
 JUDGE = 40
 OTHERS = 4
-CHANNELS = 1
+CHANNELS = 10
 
 
 def add_judge_channel(input_grid, juizo_value, channel_value, confidence_value):

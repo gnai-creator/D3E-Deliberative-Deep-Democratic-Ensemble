@@ -41,13 +41,13 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
             continue
         
         if model_idx >= 4:
-            X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=1, confidence_value=40))
-            X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=1, confidence_value=40))
-            Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=1, confidence_value=40))
+            X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=10, confidence_value=40))
+            X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=10, confidence_value=40))
+            Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=10, confidence_value=40))
         else:
-            X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=1, confidence_value=4))
-            X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=1, confidence_value=4))
-            Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=1, confidence_value=4))
+            X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=10, confidence_value=4))
+            X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=10, confidence_value=4))
+            Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=10, confidence_value=4))
 
         info.append({"task_id": task_id})
 
@@ -76,7 +76,9 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
     #     Y_train = tf.expand_dims(Y_train, axis=0)
     # if len(Y_val.shape) == 4:
     #     Y_val = tf.expand_dims(Y_val, axis=0)
-
+    log(f"[DEBUG] X_TRAIN SHAPE : {X_train.shape}")
+    log(f"[DEBUG] Y_VAL SHAPE : {Y_val.shape}")
+    log(f"[DEBUG] X_TEST SHAPE : {X_test.shape}")
     
     sw_train = np.ones_like(Y_train[..., 0], dtype=np.float32)
     sw_val = np.ones_like(Y_val[..., 0], dtype=np.float32)
@@ -84,8 +86,9 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
     return (
         tf.convert_to_tensor(X_train, dtype=tf.float32),
         tf.convert_to_tensor(X_val, dtype=tf.float32),
-        tf.cast(Y_train[..., 0], dtype=tf.int32),
-        tf.cast(Y_val[..., 0], dtype=tf.int32),
+        tf.cast(Y_train[:, :, :, 0, 0], dtype=tf.int32),
+        tf.cast(Y_val[:, :, :, 0, 0], dtype=tf.int32),
+
         tf.convert_to_tensor(sw_train, dtype=tf.float32),
         tf.convert_to_tensor(sw_val, dtype=tf.float32),
         tf.convert_to_tensor(X_test, dtype=tf.float32),

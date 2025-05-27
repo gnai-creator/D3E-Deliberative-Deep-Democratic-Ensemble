@@ -62,10 +62,10 @@ class GrampyX:
     def preparar_inputs(self, x):
         if x.shape[-1] == 40:
             x_juiz = x
-            x_outros = tf.concat(tf.split(x, num_or_size_splits=10, axis=-1)[:1], axis=-1)
+            x_outros = x
         else:
             x_outros = x
-            x_juiz = tf.zeros((1, 30, 30, 1, 40), dtype=tf.float32)
+            x_juiz = tf.zeros((1, 30, 30, 10, 40), dtype=tf.float32)
         return x_outros, x_juiz
 
     def julgar(self, x_input, raw_input, block_index, task_id, idx, iteracao, Y_val):
@@ -84,7 +84,7 @@ class GrampyX:
                 block_idx=block_index,
                 confidence_manager=self.manager,
                 idx=idx,
-                Y_val=Y_val
+                Y_val=None
             )
 
             consenso = resultados.get("consenso", 0.0)
@@ -127,26 +127,29 @@ todos_os_batches = {}
 
 def extrair_classes_validas(y_real, pad_value=0):
     y_real = tf.convert_to_tensor(y_real)
-    log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
+    # log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
 
-    # Se o tensor tiver 5D: [B, H, W, 1, C] → squeeze o canal singleton antes
-    if y_real.shape.rank == 5 and y_real.shape[-2] == 1:
-        y_real = tf.squeeze(y_real, axis=-2)
+    # try:
+    #     log(f"[DEBUG] y_real preview: {y_real.numpy()[0, 0, 0]}")
+    # except:
+    #     pass
 
-    # Se o último eixo for de classes (one-hot), aplicar argmax
-    if y_real.shape.rank >= 3 and y_real.shape[-1] > 1:
-        y_real = tf.argmax(y_real, axis=-1)
+    # Se a forma for (H, W, 1, 4) ou (30, 30, 1, 4), extrai canal de cor
+    if y_real.shape.rank == 4 and y_real.shape[-1] == 4:
+        y_real = y_real[..., 0]  # Pega apenas o canal da classe
 
-    # Garantir remoção de dimensões extras
-    y_real = tf.squeeze(y_real)
+    y_real = tf.squeeze(y_real)  # remove dimensões 1 desnecessárias
 
-    # Extrair valores únicos válidos
     valores = tf.unique(tf.reshape(y_real, [-1]))[0]
     valores = tf.cast(valores, tf.int32)
     valores_validos = tf.boolean_mask(valores, valores != pad_value)
 
-    log(f"[DEBUG] Classes extraídas: {valores_validos.numpy().tolist()}")
+    # log(f"[DEBUG] Valores únicos: {valores.numpy().tolist()}")
+    # log(f"[DEBUG] Classes extraídas: {valores_validos.numpy().tolist()}")
     return valores_validos
+
+
+
 
 
 

@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-def shape_guard(expected_shape=None, name="UNKNOWN"):
+def shape_guard(expected_shape=10, name="UNKNOWN"):
     """
     Decorator to validate input tensor shapes for model calls.
     

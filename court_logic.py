@@ -148,16 +148,16 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         x_suprema = prepare_input_for_model(5, input_tensor_outros)
         modelos[5].fit(x=x_suprema, y=y_suprema, epochs=epochs, verbose=0)
 
-        # for i in range(5):
-        #     x_i = prepare_input_for_model(i, input_tensor_outros)
-        #     y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1)
-        #     y_pred = tf.expand_dims(y_pred, axis=-1)
-        #     match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_suprema), tf.float32)).numpy()
-        #     if match < 0.95:
-        #         log(f"[REEDUCAÇÃO] Modelo_{i} está em desacordo com Suprema ({match:.3f}) — retreinando...")
-        #         modelos[i].fit(x=x_i, y=y_suprema, epochs=epochs, verbose=0)
-        #     else:
-        #         log(f"[ALINHADO] Modelo_{i} já está de acordo com Suprema ({match:.3f})")
+        for i in range(5):
+            x_i = prepare_input_for_model(i, input_tensor_outros)
+            y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1)
+            y_pred = tf.expand_dims(y_pred, axis=-1)
+            match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_suprema), tf.float32)).numpy()
+            if match < 0.95:
+                log(f"[REEDUCAÇÃO] Modelo_{i} está em desacordo com Suprema ({match:.3f}) — retreinando...")
+                modelos[i].fit(x=x_i, y=y_suprema, epochs=epochs, verbose=0)
+            else:
+                log(f"[ALINHADO] Modelo_{i} já está de acordo com Suprema ({match:.3f})")
 
         x_promotor = prepare_input_for_model(6, input_tensor_outros)
         y_sup = tf.squeeze(y_suprema)

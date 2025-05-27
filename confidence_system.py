@@ -51,6 +51,8 @@ def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, requi
     for name in active_names:
         try:
             v = votos_models[name]
+            log(f"[DEBUG] Shape do voto {name}: {v.shape}")
+
             v = tf.convert_to_tensor(v)
             if v.shape[-1] > 1:
                 v = tf.argmax(v, axis=-1)

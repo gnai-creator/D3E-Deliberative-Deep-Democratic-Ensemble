@@ -53,8 +53,10 @@ def pad_or_truncate_channels(tensor, target_channels=40):
 
 def prepare_input_for_model(model_index, base_input):
     # Garante que input seja 4D antes de truncar canais
+    log(f"[DEBUG] PREPARE_INPUT_FOR_MODEL BASEINPUT SHAPE : {base_input.shape}")
+    log(f"[DEBUG] PREPARE_INPUT_FOR_MODEL MODEL INDEX : {model_index}")
     if len(base_input.shape) == 5:
-        base_input = tf.squeeze(base_input, axis=-2)  # remove eixo de tempo (ex: 1)
+        base_input = safe_total_squeeze(base_input)  # remove eixo de tempo (ex: 1)
     
     # Aplica truncagem/padding
     if model_index in [0, 1, 2, 3]:
@@ -123,12 +125,28 @@ def instanciar_promotor_e_supremo(models):
     models.append(model)
     return models
 
+def safe_squeeze(tensor, axis):
+    shape = tf.shape(tensor)
+    if tensor.shape.rank is not None and tensor.shape[axis] == 1:
+        return tf.squeeze(tensor, axis=axis)
+    else:
+        log(f"[WARN] Tentativa de squeeze em dim {axis} com size != 1: {tensor.shape}")
+        return tensor
+
+def safe_total_squeeze(t):
+    shape = t.shape
+    if shape.rank is None:
+        return tf.squeeze(t)
+    axes = [i for i in range(shape.rank) if shape[i] == 1]
+    return tf.squeeze(t, axis=axes)
+
+
 def safe_squeeze_last_dim(t):
     return tf.squeeze(t, axis=-1) if t.shape.rank is not None and t.shape[-1] == 1 else t
 
 def extrair_classes_validas(y_real, pad_value=0):
     log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
-    y_real = safe_squeeze_last_dim(y_real)
+    y_real = safe_total_squeeze(y_real)
     y_real = tf.convert_to_tensor(y_real)
 
     try:

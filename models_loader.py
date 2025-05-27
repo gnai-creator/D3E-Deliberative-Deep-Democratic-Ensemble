@@ -22,7 +22,9 @@ def load_model(index, learning_rate):
     model = model_class(hidden_dim=hidden_dim)
     model = compile_model(model, lr=learning_rate)
 
-    # Removido: chamada com dummy_input que causava problemas de shape
-    # A inicialização real deve ser feita no main.py com X_train
+    # Chamada inicial com dummy_input para forçar construção
+    dummy_shape = (1, 30, 30, 10, 40) if index >= 4 else (1, 30, 30, 10, 4)
+    dummy_input = tf.zeros(dummy_shape, dtype=tf.float32)
+    _ = model(dummy_input, training=False)
 
     return model

@@ -183,22 +183,29 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         consenso = avaliar_consenso_com_confianca(
             votos_models,
             confidence_manager,
-            required_votes=5,
-            confidence_threshold=0.8,
+            required_votes=6,
+            confidence_threshold=0.5,
             voto_reverso_ok=["modelo_6"]
         )
+ 
 
         if consenso >= tol:
-            y_suprema_pred = tf.argmax(modelos[5](x_suprema), axis=-1)
             y_juiza = tf.argmax(votos_models["modelo_4"], axis=-1)
+            y_suprema = tf.argmax(modelos[5](x_suprema), axis=-1)
+            y_promotor = tf.argmax(modelos[6](x_promotor), axis=-1)
+            y_promotor_corrigido = tf.clip_by_value(9 - y_promotor, 0, 9)
 
-            if not tf.reduce_all(tf.equal(y_suprema_pred, y_juiza)).numpy():
-                log("[SUPREMA] A Suprema rejeitou o veredito da Juíza (diferença literal). Nova deliberação se faz necessária.")
+            acordo_juiza_suprema = tf.reduce_all(tf.equal(y_suprema, y_juiza)).numpy()
+            acordo_promotor_juiza = tf.reduce_all(tf.equal(y_promotor_corrigido, y_juiza)).numpy()
+
+            if acordo_juiza_suprema and acordo_promotor_juiza:
+                log("[SUPREMA] Suprema, Juíza e Promotor (corrigido) estão em acordo literal. Prosseguindo para próximo bloco.")
+                break
+            else:
+                log("[SUPREMA] Divergência detectada entre Juíza, Suprema ou Promotor. Nova deliberação se faz necessária.")
                 iter_count += 1
                 continue
-            else:
-                log("[SUPREMA] Confiança plena atingida — consenso final aceito.")
-                break
+
 
 
         iter_count += 1

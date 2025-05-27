@@ -55,6 +55,7 @@ def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, requi
         return 0.0
 
     votos_stacked = []
+    votos_dict = {}
     for name in active_names:
         try:
             v = votos_models[name]
@@ -69,6 +70,7 @@ def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, requi
                 continue
             v = tf.reshape(v, (30, 30))
             votos_stacked.append(v)
+            votos_dict[name] = v
         except Exception as e:
             log(f"[CONSENSO] Erro ao processar voto de {name}: {e}")
 
@@ -76,10 +78,16 @@ def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, requi
         log("[CONSENSO] Nenhum voto válido após filtragem.")
         return 0.0
 
-    votos_stacked = tf.stack(votos_stacked)
+    votos_stacked_tensor = tf.stack(votos_stacked)
 
-    if votos_stacked.shape.rank != 3:
-        raise ValueError(f"[ERRO] Shape inesperado em votos_stacked: {votos_stacked.shape}. Esperado (N, H, W)")
+    if votos_stacked_tensor.shape.rank != 3:
+        raise ValueError(f"[ERRO] Shape inesperado em votos_stacked: {votos_stacked_tensor.shape}. Esperado (N, H, W)")
+
+    votos_moda = tf.cast(tf.round(tf.reduce_mean(votos_stacked_tensor, axis=0)), tf.int32)
+
+    for name in votos_dict:
+        acertou = tf.reduce_all(tf.equal(tf.cast(votos_dict[name], tf.int64), tf.cast(votos_moda, tf.int64))).numpy()
+        confidence_manager.update_confidence(name, acertou)
 
     def contar_consenso(votos_pixel):
         uniques, _, count = tf.unique_with_counts(votos_pixel)
@@ -87,13 +95,14 @@ def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, requi
 
     votos_majoritarios = tf.map_fn(
         lambda x: tf.map_fn(lambda y: contar_consenso(y), x, dtype=tf.int32),
-        tf.transpose(votos_stacked, [1, 2, 0]),
+        tf.transpose(votos_stacked_tensor, [1, 2, 0]),
         dtype=tf.int32
     )
 
     consenso_bin = tf.cast(votos_majoritarios >= required_votes, tf.float32)
     consenso_final = float(tf.reduce_all(consenso_bin).numpy())
-    
+
+
     log(f"[CONSENSO - COM CONFIANÇA] {len(votos_stacked)} modelos válidos contribuíram (≥{confidence_threshold:.2f})")
     for name in active_names:
         conf = confidence_manager.get_confidence(name)

@@ -183,7 +183,7 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         consenso = avaliar_consenso_com_confianca(
             votos_models,
             confidence_manager,
-            required_votes=5,
+            required_votes=4,
             confidence_threshold=0.5,
             voto_reverso_ok=["modelo_6"]
         )
@@ -197,18 +197,23 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
             else:
                 y_juiza = tf.squeeze(y_juiza_logits)
 
-            y_suprema = tf.argmax(modelos[5](x_suprema), axis=-1)
-            y_promotor = tf.argmax(modelos[6](x_promotor), axis=-1)
-            y_promotor_corrigido = tf.clip_by_value(9 - y_promotor, 0, 9)
+            y_suprema_pred = tf.argmax(modelos[5](x_suprema), axis=-1)
+            y_promotor_pred = tf.argmax(modelos[6](x_promotor), axis=-1)
+            y_promotor_corrigido = tf.clip_by_value(9 - y_promotor_pred, 0, 9)
 
-            # Comparações literais
-            acordo_juiza_suprema = tf.reduce_all(tf.equal(y_suprema, y_juiza)).numpy()
+            # Cast explícito para garantir que todos sejam int64
+            y_juiza = tf.cast(y_juiza, tf.int64)
+            y_suprema_pred = tf.cast(y_suprema_pred, tf.int64)
+            y_promotor_pred = tf.cast(y_promotor_pred, tf.int64)
+            y_promotor_corrigido = tf.cast(y_promotor_corrigido, tf.int64)
+
+            acordo_juiza_suprema = tf.reduce_all(tf.equal(y_suprema_pred, y_juiza)).numpy()
             acordo_promotor_juiza = tf.reduce_all(tf.equal(y_promotor_corrigido, y_juiza)).numpy()
-            acordo_promotor_suprema = tf.reduce_all(tf.equal(y_promotor, y_suprema)).numpy()
+            acordo_promotor_suprema = tf.reduce_all(tf.equal(y_promotor_pred, y_suprema_pred)).numpy()
 
             log(f"[CHECK] Suprema == Juíza? {acordo_juiza_suprema}")
             log(f"[CHECK] Promotor corrigido == Juíza? {acordo_promotor_juiza}")
-            log(f"[CHECK] Promotor corrigido == Suprema? {acordo_promotor_suprema}")
+            log(f"[CHECK] Promotor == Suprema? {acordo_promotor_suprema}")
 
             if acordo_juiza_suprema and acordo_promotor_juiza and acordo_promotor_suprema:
                 log("[SUPREMA] Suprema, Juíza e Promotor (corrigido) estão em acordo literal. Prosseguindo para próximo bloco.")

@@ -7,7 +7,25 @@ from runtime_utils import log
 from metrics_utils import safe_squeeze, ensure_numpy
 from models_loader import load_model
 
-# Converte logits para rótulos se necessário
+
+def extrair_classes_validas(y_real, pad_value=0):
+    valores = tf.unique(tf.reshape(y_real, [-1]))[0]
+    valores = tf.cast(valores, tf.int32)
+    return tf.boolean_mask(valores, valores != pad_value)
+
+def inverter_classes_respeitando_valores(y, classes_validas, pad_value=0):
+    y_flat = tf.reshape(y, [-1])
+    classes_validas = tf.reshape(classes_validas, [-1])
+    classes_validas = tf.boolean_mask(classes_validas, classes_validas != pad_value)
+    if tf.size(classes_validas) == 0:
+        return tf.identity(y)  # fallback: nenhuma classe válida além do pad_value
+
+    classes_validas = tf.reshape(classes_validas, [-1, 1])
+    diffs = tf.abs(tf.cast(classes_validas, tf.int32) - tf.cast(y_flat, tf.int32))
+    idx_max = tf.argmax(diffs, axis=0)
+    antitese = tf.gather(tf.reshape(classes_validas, [-1]), idx_max)
+    return tf.reshape(antitese, tf.shape(y))
+
 def normalizar_y_para_sparse(y):
     log(f"[DEBUG] Y SHAPE: {y.shape}")
     if y.shape.rank == 4 and y.shape[-1] != 1:
@@ -86,27 +104,24 @@ def treinar_promotor_inicial(models, input_tensor_outros, votos_models, epochs):
     juradas_preds = [votos_models[f"modelo_{i}"] for i in range(3)]
     juradas_classes = tf.stack([tf.argmax(p, axis=-1) for p in juradas_preds], axis=0)
     y_moda = pixelwise_mode(juradas_classes)
-    y_antitese = 9 - y_moda
-    y_antitese = tf.clip_by_value(y_antitese, 0, 9)
+
+    classes_validas = extrair_classes_validas(y_moda, pad_value=0)
+    y_antitese = inverter_classes_respeitando_valores(y_moda, classes_validas, pad_value=0)
     y_antitese = tf.expand_dims(y_antitese, axis=-1)
 
     x_promotor = prepare_input_for_model(6, input_tensor_outros)
     log(f"[DEBUG] x_promotor shape: {x_promotor.shape}")
     log(f"[DEBUG] y_antitese shape: {y_antitese.shape}")
-    log("[PROMOTOR] Treinando promotor com antítese da moda das juradas.")
+    log("[PROMOTOR] Treinando promotor com antítese baseada nas classes válidas.")
     models[6].fit(x=x_promotor, y=y_antitese, epochs=epochs, verbose=0)
 
-def instanciar_promotor_e_supremo(models):
-    model = load_model(6, 0.0005)
-    models.append(model)
-    return models
 
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                       max_cycles=10, tol=0.98, epochs=10, confidence_threshold=0.5,
-                      confidence_manager=[], idx=0):
+                      confidence_manager=[], idx=0, pad_value=0):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
     votos_models = {}
-    modelos = instanciar_promotor_e_supremo(models)
+    modelos = models.copy()
 
     for i in range(7):
         x_i = prepare_input_for_model(i, input_tensor_outros)
@@ -120,117 +135,72 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
 
     while iter_count < max_cycles:
         log(f"[CICLO] Iteração {iter_count}")
-        for i in range(7):
+
+        num_modelos = len(models)
+        for i in range(num_modelos):
             x_i = prepare_input_for_model(i, input_tensor_outros)
             votos_models[f"modelo_{i}"] = modelos[i](x_i, training=False)
 
-        votos_models = garantir_dict_votos_models(votos_models)
-
-        if "modelo_3" not in votos_models:
-            log("[CORTE] modelo_3 ainda não está disponível. Pulando rodada.")
-            return {"consenso": 0.0, "votos_models": votos_models}
-
-        y_juradas = tf.argmax(votos_models["modelo_3"], axis=-1)
-        y_juradas = tf.expand_dims(y_juradas, axis=-1)
-        log(f"[DEBUG] y_juradas shape: {y_juradas.shape}")
-
-        if iter_count == 0:
-            gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id)
-            iter_count += 1
-            continue
 
         votos_models = garantir_dict_votos_models(votos_models)
+        gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id)
+
+        # Suprema
         juradas_preds = [votos_models[f"modelo_{i}"] for i in range(3)]
         juradas_classes = tf.stack([tf.argmax(p, axis=-1) for p in juradas_preds], axis=0)
-        y_suprema = pixelwise_mode(juradas_classes)
-        y_suprema = tf.expand_dims(y_suprema, axis=-1)
+        y_sup = pixelwise_mode(juradas_classes)
+        classes_validas = extrair_classes_validas(y_sup, pad_value=pad_value)
+        y_sup_corrigido = inverter_classes_respeitando_valores(y_sup, classes_validas, pad_value=pad_value)
+        y_suprema = tf.expand_dims(y_sup_corrigido, axis=-1)
 
         x_suprema = prepare_input_for_model(5, input_tensor_outros)
         modelos[5].fit(x=x_suprema, y=y_suprema, epochs=epochs, verbose=0)
 
+        # Reeducar modelos 0 a 4
         for i in range(5):
             x_i = prepare_input_for_model(i, input_tensor_outros)
             y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1)
             y_pred = tf.expand_dims(y_pred, axis=-1)
             match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_suprema), tf.float32)).numpy()
             if match < 0.95:
-                log(f"[REEDUCAÇÃO] Modelo_{i} está em desacordo com Suprema ({match:.3f}) — retreinando...")
+                log(f"[REEDUCAÇÃO] Modelo_{i} em desacordo com Suprema ({match:.3f}) - retreinando...")
                 modelos[i].fit(x=x_i, y=y_suprema, epochs=epochs, verbose=0)
             else:
-                log(f"[ALINHADO] Modelo_{i} já está de acordo com Suprema ({match:.3f})")
+                log(f"[ALINHADO] Modelo_{i} está em acordo com Suprema ({match:.3f})")
 
+        # Promotor
         x_promotor = prepare_input_for_model(6, input_tensor_outros)
-        y_sup = tf.squeeze(y_suprema)
-        if y_sup.shape.rank == 2:
-            y_sup = tf.expand_dims(y_sup, axis=0)
-        y_antitese = 9 - y_sup
-        y_antitese = tf.clip_by_value(y_antitese, 0, 9)
+        y_sup_squeezed = tf.squeeze(y_suprema)
+        if y_sup_squeezed.shape.rank == 2:
+            y_sup_squeezed = tf.expand_dims(y_sup_squeezed, axis=0)
+
+        classes_validas = extrair_classes_validas(y_sup_squeezed, pad_value=pad_value)
+        y_antitese = inverter_classes_respeitando_valores(y_sup_squeezed, classes_validas, pad_value=pad_value)
         y_antitese = tf.expand_dims(y_antitese, axis=-1)
+
         log("[PROMOTOR] Propondo antítese ao parecer da Suprema.")
         modelos[6].fit(x=x_promotor, y=y_antitese, epochs=epochs, verbose=0)
 
-        promotor_pred = tf.argmax(modelos[6](x_promotor, training=False), axis=-1)
-        juradas_consenso = pixelwise_mode(tf.stack([tf.argmax(votos_models[f"modelo_{i}"], axis=-1) for i in range(3)], axis=0))
-        promotor_agreement = tf.reduce_mean(tf.cast(tf.equal(promotor_pred, juradas_consenso), tf.float32)).numpy()
-
-        if promotor_agreement > 0.9:
-            log("[PROMOTOR] Promotor está alinhado com juradas — Suprema deve reconsiderar.")
-            modelos[5].fit(x=x_suprema, y=juradas_consenso[..., tf.newaxis], epochs=epochs, verbose=0)
-
-        gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id)
-
+        # Checagem de consenso simbólico
         votos_models = garantir_dict_votos_models(votos_models)
         consenso = avaliar_consenso_com_confianca(
             votos_models,
             confidence_manager,
-            required_votes=4,
-            confidence_threshold=0.5,
+            required_votes=3,
+            confidence_threshold=confidence_threshold,
             voto_reverso_ok=["modelo_6"]
         )
- 
 
         if consenso >= tol:
-            # Conversão segura dos logits da Juíza
-            y_juiza_logits = votos_models["modelo_4"]
-            if y_juiza_logits.shape[-1] > 1:
-                y_juiza = tf.argmax(y_juiza_logits, axis=-1)
-            else:
-                y_juiza = tf.squeeze(y_juiza_logits)
-
-            y_suprema_pred = tf.argmax(modelos[5](x_suprema), axis=-1)
-            y_promotor_pred = tf.argmax(modelos[6](x_promotor), axis=-1)
-            y_promotor_corrigido = tf.clip_by_value(9 - y_promotor_pred, 0, 9)
-
-            # Cast explícito para garantir que todos sejam int64
-            y_juiza = tf.cast(y_juiza, tf.int64)
-            y_suprema_pred = tf.cast(y_suprema_pred, tf.int64)
-            y_promotor_pred = tf.cast(y_promotor_pred, tf.int64)
-            y_promotor_corrigido = tf.cast(y_promotor_corrigido, tf.int64)
-
-            acordo_juiza_suprema = tf.reduce_all(tf.equal(y_suprema_pred, y_juiza)).numpy()
-            acordo_promotor_juiza = tf.reduce_all(tf.equal(y_promotor_corrigido, y_juiza)).numpy()
-            acordo_promotor_suprema = tf.reduce_all(tf.equal(y_promotor_pred, y_suprema_pred)).numpy()
-
-            log(f"[CHECK] Suprema == Juíza? {acordo_juiza_suprema}")
-            log(f"[CHECK] Promotor corrigido == Juíza? {acordo_promotor_juiza}")
-            log(f"[CHECK] Promotor == Suprema? {acordo_promotor_suprema}")
-
-            if acordo_juiza_suprema and acordo_promotor_juiza and acordo_promotor_suprema:
-                log("[SUPREMA] Suprema, Juíza e Promotor (corrigido) estão em acordo literal. Prosseguindo para próximo bloco.")
-                return {
-                    "class_logits": votos_models["modelo_5"],
-                    "consenso": float(consenso)
-                }
-            else:
-                log("[SUPREMA] Divergência detectada entre Juíza, Suprema ou Promotor. Nova deliberação se faz necessária.")
-                iter_count += 1
-                continue
-
-
-
+            log("[SUPREMA] Consenso atingido. Encerrando deliberação.")
+            return {
+                "class_logits": votos_models["modelo_5"],
+                "consenso": float(consenso)
+            }
 
         iter_count += 1
 
+    log("[SUPREMA] Deliberação encerrada sem consenso total.")
     return {
         "class_logits": votos_models["modelo_5"],
         "consenso": float(consenso)

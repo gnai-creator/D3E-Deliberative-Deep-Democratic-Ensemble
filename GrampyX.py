@@ -25,7 +25,7 @@ DETECTOR_WEIGHTS = os.path.join(PERSIST_DIR, "detector.h5")
 HISTORY_PATH = os.path.join(PERSIST_DIR, "history.pkl")
 
 class GrampyX:
-    def __init__(self, num_modelos=6):
+    def __init__(self, num_modelos=7):
         os.makedirs(PERSIST_DIR, exist_ok=True)
 
         self.num_modelos = num_modelos

@@ -68,7 +68,7 @@ class GrampyX:
             x_juiz = tf.zeros((1, 30, 30, 1, 40), dtype=tf.float32)
         return x_outros, x_juiz
 
-    def julgar(self, x_input, raw_input, block_index, task_id, idx, iteracao):
+    def julgar(self, x_input, raw_input, block_index, task_id, idx, iteracao, Y_val):
         try:
             x_input = tf.expand_dims(tf.convert_to_tensor(x_input, dtype=tf.float32), axis=0)
             x_outros, _ = self.preparar_inputs(x_input)
@@ -84,6 +84,7 @@ class GrampyX:
                 block_idx=block_index,
                 confidence_manager=self.manager,
                 idx=idx,
+                Y_val=Y_val
             )
 
             consenso = resultados.get("consenso", 0.0)
@@ -123,6 +124,31 @@ class GrampyX:
 
 # Global cache para manter batches entre chamadas
 todos_os_batches = {}
+
+def extrair_classes_validas(y_real, pad_value=0):
+    y_real = tf.convert_to_tensor(y_real)
+    log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
+
+    # Se o tensor tiver 5D: [B, H, W, 1, C] → squeeze o canal singleton antes
+    if y_real.shape.rank == 5 and y_real.shape[-2] == 1:
+        y_real = tf.squeeze(y_real, axis=-2)
+
+    # Se o último eixo for de classes (one-hot), aplicar argmax
+    if y_real.shape.rank >= 3 and y_real.shape[-1] > 1:
+        y_real = tf.argmax(y_real, axis=-1)
+
+    # Garantir remoção de dimensões extras
+    y_real = tf.squeeze(y_real)
+
+    # Extrair valores únicos válidos
+    valores = tf.unique(tf.reshape(y_real, [-1]))[0]
+    valores = tf.cast(valores, tf.int32)
+    valores_validos = tf.boolean_mask(valores, valores != pad_value)
+
+    log(f"[DEBUG] Classes extraídas: {valores_validos.numpy().tolist()}")
+    return valores_validos
+
+
 
 def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.9, idx=0):
     clippy = GrampyX()
@@ -168,7 +194,10 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
 
         while not sucesso and iteracao < max_iteracoes:
             log(f"[GrampyX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
-            resultado = clippy.julgar(X_test, raw_input, block_idx, task_id, idx, iteracao)
+            y_val_test = extrair_classes_validas(X_test, 0)
+            log(f"[GRAMPYX] y_val_test: {y_val_test}")
+            resultado = clippy.julgar(
+                x_input=X_test, raw_input=raw_input, block_index=block_idx, task_id=task_id, idx=idx, iteracao=iteracao, Y_val=y_val_test )
 
             consenso = resultado.get("consenso", 0)
             if consenso >= consenso_minimo:

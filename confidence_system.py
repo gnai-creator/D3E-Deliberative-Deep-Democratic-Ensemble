@@ -99,8 +99,9 @@ def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, requi
         dtype=tf.int32
     )
 
-    consenso_bin = tf.cast(votos_majoritarios >= required_votes, tf.float32)
+    consenso_bin = votos_majoritarios >= required_votes
     consenso_final = float(tf.reduce_all(consenso_bin).numpy())
+
 
 
     log(f"[CONSENSO - COM CONFIANÇA] {len(votos_stacked)} modelos válidos contribuíram (≥{confidence_threshold:.2f})")

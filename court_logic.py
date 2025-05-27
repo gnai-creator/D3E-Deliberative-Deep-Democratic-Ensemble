@@ -7,25 +7,7 @@ from runtime_utils import log
 from metrics_utils import safe_squeeze, ensure_numpy
 from models_loader import load_model
 
-
-def extrair_classes_validas(y_real, pad_value=0):
-    valores = tf.unique(tf.reshape(y_real, [-1]))[0]
-    valores = tf.cast(valores, tf.int32)
-    return tf.boolean_mask(valores, valores != pad_value)
-
-def inverter_classes_respeitando_valores(y, classes_validas, pad_value=0):
-    y_flat = tf.reshape(y, [-1])
-    classes_validas = tf.reshape(classes_validas, [-1])
-    classes_validas = tf.boolean_mask(classes_validas, classes_validas != pad_value)
-    if tf.size(classes_validas) == 0:
-        return tf.identity(y)  # fallback: nenhuma classe válida além do pad_value
-
-    classes_validas = tf.reshape(classes_validas, [-1, 1])
-    diffs = tf.abs(tf.cast(classes_validas, tf.int32) - tf.cast(y_flat, tf.int32))
-    idx_max = tf.argmax(diffs, axis=0)
-    antitese = tf.gather(tf.reshape(classes_validas, [-1]), idx_max)
-    return tf.reshape(antitese, tf.shape(y))
-
+# Converte logits para rótulos se necessário
 def normalizar_y_para_sparse(y):
     log(f"[DEBUG] Y SHAPE: {y.shape}")
     if y.shape.rank == 4 and y.shape[-1] != 1:
@@ -104,47 +86,90 @@ def treinar_promotor_inicial(models, input_tensor_outros, votos_models, epochs):
     juradas_preds = [votos_models[f"modelo_{i}"] for i in range(3)]
     juradas_classes = tf.stack([tf.argmax(p, axis=-1) for p in juradas_preds], axis=0)
     y_moda = pixelwise_mode(juradas_classes)
-
-    classes_validas = extrair_classes_validas(y_moda, pad_value=0)
-    y_antitese = inverter_classes_respeitando_valores(y_moda, classes_validas, pad_value=0)
+    y_antitese = 9 - y_moda
+    y_antitese = tf.clip_by_value(y_antitese, 0, 9)
     y_antitese = tf.expand_dims(y_antitese, axis=-1)
 
     x_promotor = prepare_input_for_model(6, input_tensor_outros)
     log(f"[DEBUG] x_promotor shape: {x_promotor.shape}")
     log(f"[DEBUG] y_antitese shape: {y_antitese.shape}")
-    log("[PROMOTOR] Treinando promotor com antítese baseada nas classes válidas.")
+    log("[PROMOTOR] Treinando promotor com antítese da moda das juradas.")
     models[6].fit(x=x_promotor, y=y_antitese, epochs=epochs, verbose=0)
 
-def filtrar_classes_respeitando_valores(y, classes_validas, pad_value=0):
-    """
-    Mantém apenas os valores de classe em `classes_validas` no canal [2] do tensor `y`,
-    substituindo os demais por `pad_value`.
+def instanciar_promotor_e_supremo(models):
+    model = load_model(6, 0.0005)
+    models.append(model)
+    return models
 
-    Espera y com shape (H, W, 1) ou (1, H, W, 1).
-    """
+
+def extrair_classes_validas(y_real, pad_value=0):
+    y_real = tf.convert_to_tensor(y_real)
+    log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
+    if y_real.shape.rank == 4:
+        y_real = tf.squeeze(y_real, axis=0)
+    if y_real.shape.rank == 3 and y_real.shape[-1] == 1:
+        y_real = tf.squeeze(y_real, axis=-1)
+    valores = tf.unique(tf.reshape(y_real, [-1]))[0]
+    valores = tf.cast(valores, tf.int32)
+    return tf.boolean_mask(valores, valores != pad_value)
+
+def inverter_classes_respeitando_valores(y, classes_validas, pad_value=0):
     y = tf.convert_to_tensor(y)
+    log(f"[DEBUG] inverter_classes — y.shape={y.shape}, classes_validas={classes_validas.numpy()}")
 
-    # Remove batch se existir
-    if y.shape.rank == 4 and y.shape[0] == 1:
+    # Padroniza para (H, W)
+    if y.shape.rank == 4:
         y = tf.squeeze(y, axis=0)
+    if y.shape.rank == 3 and y.shape[-1] == 1:
+        y = tf.squeeze(y, axis=-1)
+    elif y.shape.rank == 3:
+        y = y[0]  # assume (1, H, W)
 
-    # Extrai canal de classe
-    channel = y[..., 0]  # (H, W)
+    y_flat = tf.reshape(y, [-1])
+    classes_validas = tf.reshape(classes_validas, [-1])
+    classes_validas = tf.boolean_mask(classes_validas, classes_validas != pad_value)
+    if tf.size(classes_validas) == 0:
+        antitese = y_flat
+    else:
+        classes_validas = tf.reshape(classes_validas, [-1, 1])
+        diffs = tf.abs(tf.cast(classes_validas, tf.int32) - tf.cast(y_flat, tf.int32))
+        idx_max = tf.argmax(diffs, axis=0)
+        antitese = tf.gather(tf.reshape(classes_validas, [-1]), idx_max)
 
-    # Gera máscara: True onde channel ∈ classes_validas
+    antitese = tf.reshape(antitese, tf.shape(y))  # (H, W)
+    antitese = tf.expand_dims(antitese, axis=-1)  # (H, W, 1)
+    antitese = tf.expand_dims(antitese, axis=0)   # (1, H, W, 1)
+    return antitese
+
+def filtrar_classes_respeitando_valores(y, classes_validas, pad_value=0):
+    y = tf.convert_to_tensor(y)
+    log(f"[DEBUG] filtrando classes — y.shape={y.shape}, classes_validas={classes_validas.numpy()}")
+
+    # Ajusta para formato comum (H, W)
+    if y.shape.rank == 4:
+        y = tf.squeeze(y, axis=0)  # (H, W, C)
+    if y.shape.rank == 3 and y.shape[-1] == 1:
+        channel = y[..., 0]  # (H, W)
+    elif y.shape.rank == 3:
+        channel = y[0]  # assume (1, H, W)
+    elif y.shape.rank == 2:
+        channel = y
+    else:
+        raise ValueError(f"[filtrar_classes_respeitando_valores] Shape inesperado: {y.shape}")
+
+    # Filtra classes
     mask = tf.reduce_any(tf.equal(channel[..., tf.newaxis], tf.cast(classes_validas, channel.dtype)), axis=-1)
+    filtrado = tf.where(mask, channel, tf.constant(pad_value, dtype=channel.dtype))  # (H, W)
 
-    # Substitui classes inválidas por pad_value
-    filtrado = tf.where(mask, channel, tf.constant(pad_value, dtype=channel.dtype))
-
-    return tf.expand_dims(filtrado, axis=-1)  # volta para shape (H, W, 1)
-
-
+    # Reconstrói shape (1, H, W, 1)
+    filtrado = tf.expand_dims(filtrado, axis=-1)  # (H, W, 1)
+    filtrado = tf.expand_dims(filtrado, axis=0)   # (1, H, W, 1)
+    return filtrado
 
 
 def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
                       max_cycles=10, tol=0.98, epochs=10, confidence_threshold=0.5,
-                      confidence_manager=[], idx=0, pad_value=0):
+                      confidence_manager=[], idx=0, pad_value=0, Y_val=None):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
     votos_models = {}
     modelos = models.copy()
@@ -154,7 +179,26 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         votos_models[f"modelo_{i}"] = modelos[i](x_i, training=False)
 
     votos_models = garantir_dict_votos_models(votos_models)
-    treinar_promotor_inicial(modelos, input_tensor_outros, votos_models, epochs)
+
+    if Y_val is None:
+        raise ValueError("[SUPREMA] Y_val (resposta esperada) é obrigatório para extrair as cores válidas da tarefa.")
+    classes_validas = extrair_classes_validas(Y_val, pad_value=pad_value)
+
+    # Atualiza voto da Suprema antes do treino do promotor
+    juradas_preds = [votos_models[f"modelo_{i}"] for i in range(3)]
+    juradas_classes = tf.stack([tf.argmax(p, axis=-1, output_type=tf.int64) for p in juradas_preds], axis=0)
+    y_sup = pixelwise_mode(juradas_classes)
+    y_sup_corrigido = filtrar_classes_respeitando_valores(y_sup, classes_validas, pad_value=pad_value)
+    y_suprema = tf.expand_dims(y_sup_corrigido, axis=-1)
+    x_suprema = prepare_input_for_model(5, input_tensor_outros)
+    modelos[5].fit(x=x_suprema, y=y_suprema, epochs=epochs, verbose=0)
+
+    # Promotor treinado com antítese coerente
+    x_promotor = prepare_input_for_model(6, input_tensor_outros)
+    y_antitese = inverter_classes_respeitando_valores(y_sup_corrigido, classes_validas, pad_value=pad_value)
+    y_antitese = tf.expand_dims(y_antitese, axis=-1)
+    log("[PROMOTOR] Treinando promotor com antítese da Suprema.")
+    modelos[6].fit(x=x_promotor, y=y_antitese, epochs=epochs, verbose=0)
 
     iter_count = 0
     consenso = 0.0
@@ -173,7 +217,6 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         juradas_preds = [votos_models[f"modelo_{i}"] for i in range(3)]
         juradas_classes = tf.stack([tf.argmax(p, axis=-1, output_type=tf.int64) for p in juradas_preds], axis=0)
         y_sup = pixelwise_mode(juradas_classes)
-        classes_validas = extrair_classes_validas(y_sup, pad_value=pad_value)
         y_sup_corrigido = filtrar_classes_respeitando_valores(y_sup, classes_validas, pad_value=pad_value)
         y_suprema = tf.expand_dims(y_sup_corrigido, axis=-1)
 
@@ -185,7 +228,8 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
             x_i = prepare_input_for_model(i, input_tensor_outros)
             y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1, output_type=tf.int64)
             y_pred = tf.expand_dims(y_pred, axis=-1)
-            match = tf.reduce_mean(tf.cast(tf.equal(y_pred, tf.cast(y_suprema, tf.int64)), tf.float32)).numpy()
+            y_pred_corrigido = filtrar_classes_respeitando_valores(y_pred, classes_validas, pad_value=pad_value)
+            match = tf.reduce_mean(tf.cast(tf.equal(y_pred_corrigido, tf.cast(y_suprema, tf.int64)), tf.float32)).numpy()
             if match < 0.95:
                 log(f"[REEDUCAÇÃO] Modelo_{i} em desacordo com Suprema ({match:.3f}) - retreinando...")
                 modelos[i].fit(x=x_i, y=y_suprema, epochs=epochs, verbose=0)
@@ -198,8 +242,6 @@ def arc_court_supreme(models, input_tensor_outros, task_id=None, block_idx=None,
         if y_sup_squeezed.shape.rank == 2:
             y_sup_squeezed = tf.expand_dims(y_sup_squeezed, axis=0)
 
-        # classes_validas já extraídas anteriormente
-        # classes_validas = extrair_classes_validas(y_sup_squeezed, pad_value=pad_value)
         y_antitese = inverter_classes_respeitando_valores(y_sup_squeezed, classes_validas, pad_value=pad_value)
         y_antitese = tf.expand_dims(y_antitese, axis=-1)
 

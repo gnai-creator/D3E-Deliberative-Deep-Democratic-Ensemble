@@ -62,9 +62,9 @@ def training_process(
     if model is None:
         raise ValueError(f"[FATAL] Modelo {n_model} não foi carregado corretamente.")
 
-    log(f"[INFO] Treinando modelo {n_model} no exemplo {batch_index}")
-    log(f"[INFO] SHAPE X TRAIN : {X_train.shape}")
-    log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")
+    # log(f"[INFO] Treinando modelo {n_model} no exemplo {batch_index}")
+    # log(f"[INFO] SHAPE X TRAIN : {X_train.shape}")
+    # log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")
 
     _ = model(X_train, training=False)
 

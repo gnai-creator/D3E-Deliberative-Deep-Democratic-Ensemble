@@ -67,7 +67,13 @@ def training_process(
     # log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")
 
     _ = model(X_train, training=False)
+    # Y_train = tf.argmax(Y_train, axis=-1)
+    if n_model in [0, 1, 2, 3, 4]:
+        if Y_train.shape[-1] == 40:  # se estiver one-hot
+            Y_train = tf.argmax(Y_train, axis=-1)  # -> (batch, 30, 30, 10)
 
+        if Y_val.shape[-1] == 40:
+            Y_val = tf.argmax(Y_val, axis=-1)
     for cycle in range(cycles):
         log(f"Cycle {cycle} — Modelo {n_model}")
         model.fit(
@@ -77,7 +83,7 @@ def training_process(
             batch_size=batch_size,
             epochs=epochs,
             callbacks=[
-                EarlyStopping(monitor="val_shape_acc", patience=patience, restore_best_weights=True),
+                # EarlyStopping(monitor="val_shape_acc", patience=patience, restore_best_weights=True),
                 ReduceLROnPlateau(monitor="val_loss", factor=factor, patience=2, min_lr=rl_lr),
             ],
             verbose=0,
@@ -99,7 +105,7 @@ def training_process(
             if np.sum(valid_mask) == 0:
                 log(f"[WARN] Nenhum pixel válido para comparação. Task: {task_id}")
                 continue
-
+                
             pixel_color_perfect, pixel_shape_perfect = plot_prediction_debug(
                 raw_input=raw_input[0],
                 expected_output=y_val_expected,

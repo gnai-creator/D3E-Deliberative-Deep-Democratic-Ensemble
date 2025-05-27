@@ -9,7 +9,6 @@ import random
 import json
 from court_logic import arc_court_supreme
 from confidence_system import ConfidenceManager
-from metrics_utils import safe_squeeze
 from metrics_utils import plot_prediction_test, gerar_video_time_lapse, embutir_trilha_sonora
 from runtime_utils import save_debug_result
 from metrics_utils import log

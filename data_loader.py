@@ -86,9 +86,8 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
     return (
         tf.convert_to_tensor(X_train, dtype=tf.float32),
         tf.convert_to_tensor(X_val, dtype=tf.float32),
-        tf.cast(Y_train[:, :, :, 0, 0], dtype=tf.int32),
-        tf.cast(Y_val[:, :, :, 0, 0], dtype=tf.int32),
-
+        tf.cast(Y_train[..., 0], dtype=tf.int32),
+        tf.cast(Y_val[..., 0], dtype=tf.int32),
         tf.convert_to_tensor(sw_train, dtype=tf.float32),
         tf.convert_to_tensor(sw_val, dtype=tf.float32),
         tf.convert_to_tensor(X_test, dtype=tf.float32),

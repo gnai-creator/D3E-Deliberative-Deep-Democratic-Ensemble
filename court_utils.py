@@ -34,8 +34,12 @@ def pixelwise_mode(stack):
     return tf.reshape(moda_flat, (1, 30, 30))
 
 def pad_or_truncate_channels(tensor, target_channels=40):
+    """
+    Ajusta o número de canais no último eixo, preservando as demais dimensões.
+    """
     current_channels = tensor.shape[-1]
     rank = len(tensor.shape)
+
     if current_channels == target_channels:
         return tensor
     elif current_channels < target_channels:
@@ -46,11 +50,30 @@ def pad_or_truncate_channels(tensor, target_channels=40):
     else:
         return tensor[..., :target_channels]
 
+
 def prepare_input_for_model(model_index, base_input):
+    # Garante que input seja 4D antes de truncar canais
+    if len(base_input.shape) == 5:
+        base_input = tf.squeeze(base_input, axis=-2)  # remove eixo de tempo (ex: 1)
+    
+    # Aplica truncagem/padding
     if model_index in [0, 1, 2, 3]:
-        return pad_or_truncate_channels(base_input, 4)
+        x = pad_or_truncate_channels(base_input, 4)
     else:
-        return pad_or_truncate_channels(base_input, 40)
+        x = pad_or_truncate_channels(base_input, 40)
+
+    # Agora adiciona eixo do tempo
+    if len(x.shape) == 4:
+        x = tf.expand_dims(x, axis=-2)
+    elif len(x.shape) != 5:
+        raise ValueError(f"[SECURITY] Entrada inválida para modelo_{model_index}: {x.shape}")
+
+    log(f"[DEBUG] Modelo_{model_index} - shape final antes de entrar no modelo: {x.shape}")
+    return x
+
+
+
+
 
 def gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id):
     votos_models = garantir_dict_votos_models(votos_models)
@@ -232,3 +255,24 @@ def gerar_padrao_simbolico(x_input):
             else:
                 padrao[i, j] = b.numpy()
     return tf.convert_to_tensor(padrao[None, ...], dtype=tf.int32)
+
+
+def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
+    """Treina modelo garantindo que y_input esteja no formato correto."""
+    if y_input.shape.rank == 5:
+        y_sparse = tf.argmax(y_input, axis=-1)  # (B, H, W, C)
+    elif y_input.shape.rank == 4 and y_input.shape[-1] > 1:
+        y_sparse = tf.argmax(y_input, axis=-1)
+    else:
+        y_sparse = tf.squeeze(y_input)
+
+    # Garante que a forma esteja compatível
+    tf.debugging.assert_shapes([
+        (x_input, ('N', 30, 30, 10, None)),
+        (y_sparse, ('N', 30, 30, 10)),
+    ], message="Shape incompatível entre X e Y")
+
+    log(f"[DEBUG] x_input shape: {x_input.shape}")
+    log(f"[DEBUG] y_sparse shape: {y_sparse.shape}")
+
+    modelo.fit(x=x_input, y=y_sparse, epochs=epochs, verbose=0)

@@ -1,6 +1,6 @@
 import tensorflow as tf
 from runtime_utils import log
-from metrics_utils import safe_squeeze
+from metrics_utils import safe_squeeze_axis
 
 class ConfidenceManager:
     def __init__(self, models, initial_confidence=1.0, decay=0.9, recovery_rate=0.05, min_threshold=0.1):
@@ -44,7 +44,7 @@ def flatten_voto_simbólico(v):
     if v.shape.rank > 2 and v.shape[-1] > 1:
         v = tf.argmax(v, axis=-1)
     if v.shape.rank > 2:
-        v = safe_squeeze(v, axis=0)
+        v = safe_squeeze_axis(v, axis=0)
     return tf.reshape(v, (1, -1))
 
 def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, required_votes=5, confidence_threshold=0.5, voto_reverso_ok=None):
@@ -125,18 +125,25 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
     for name, voto in votos_models.items():
         try:
             v = tf.convert_to_tensor(voto)
-            if v.shape[-1] > 1:
+
+            if v.shape.rank >= 4 and v.shape[-1] > 1:
                 v = tf.argmax(v, axis=-1)
-            v = tf.cast(tf.squeeze(v), tf.int64)
+            if v.shape.rank == 4 and v.shape[-1] == 1:
+                v = tf.squeeze(v, axis=-1)
+            v = tf.cast(v, tf.int64)
+
             if voto_reverso_ok and name in voto_reverso_ok:
                 v = 9 - v
+
             if tf.size(v) != 900:
                 log(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy()} elementos. Ignorado.")
                 continue
+
             v = tf.reshape(v, (30, 30))
             votos_stacked.append(v)
             votos_dict[name] = v
             pesos_usados.append(pesos.get(name, 1.0))
+
         except Exception as e:
             log(f"[CONSENSO] Erro ao processar voto de {name}: {e}")
 

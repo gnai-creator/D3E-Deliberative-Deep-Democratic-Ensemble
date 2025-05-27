@@ -1,143 +1,67 @@
 import tensorflow as tf
 from tensorflow.keras import layers
-from check_input_shape import shape_guard
-from neural_blocks import (
-    LearnedColorPermutation,
-    LearnedFlip,
-    DiscreteRotation,
-    PositionalEncoding2D,
-    AttentionOverMemory,
-    FractalBlock,
-    DynamicClassPermuter,
-    SpatialFocusTemporalMarking,
-    ClassTemporalAlignmentBlock,
-)
-
-NUM_CLASSES = 10
 
 class SimuV1(tf.keras.Model):
-    def __init__(self, hidden_dim=128):
+    def __init__(self, hidden_dim=32, num_classes=10):
         super().__init__()
-        self.hidden_dim = hidden_dim
 
-        self.focal_expand = SpatialFocusTemporalMarking()
-        self.flip = LearnedFlip()
-        self.rotation = DiscreteRotation()
-        self.pos_enc = PositionalEncoding2D(hidden_dim)
-        self.temporal_shape_encoder = ClassTemporalAlignmentBlock(hidden_dim)
+        # Encoder
+        self.conv1 = layers.Conv3D(hidden_dim, kernel_size=3, padding='same', activation='relu')
+        self.pool1 = layers.MaxPool3D(pool_size=2, padding='same')
 
-        self.encoder = tf.keras.Sequential([
-            layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
-            layers.Conv2D(hidden_dim, 3, padding='same', activation='relu'),
-        ])
+        self.conv2 = layers.Conv3D(hidden_dim * 2, kernel_size=3, padding='same', activation='relu')
+        self.pool2 = layers.MaxPool3D(pool_size=2, padding='same')
 
-        self.fractal = FractalBlock(hidden_dim)
-        self.attn_memory = AttentionOverMemory(hidden_dim)
-        self.mha = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=hidden_dim)
-        self.norm = tf.keras.layers.LayerNormalization()
+        self.conv3 = layers.Conv3D(hidden_dim * 4, kernel_size=3, padding='same', activation='relu')
 
-        self.decoder = tf.keras.Sequential([
-            layers.Conv2D(hidden_dim // 2, 3, padding='same', activation='relu'),
-            layers.Conv2D(NUM_CLASSES, 1)
-        ])
+        # Decoder
+        self.up1 = layers.UpSampling3D(size=2)
+        self.deconv1 = layers.Conv3D(hidden_dim * 2, kernel_size=3, padding='same', activation='relu')
 
-        self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
-        self.permutation_eval = tf.range(NUM_CLASSES)
-        self.color_perm_train = LearnedColorPermutation(NUM_CLASSES)
+        self.up2 = layers.UpSampling3D(size=2)
+        self.deconv2 = layers.Conv3D(hidden_dim, kernel_size=3, padding='same', activation='relu')
 
-        self.from_40 = tf.keras.layers.Dense(4)
-        self.init_conv = layers.Conv2D(self.hidden_dim, 1, activation='relu')
+        # Output
+        self.output_layer = layers.Conv3D(num_classes, kernel_size=1, padding='same', activation='softmax')
 
-        # 🚨 Força criação de pesos com input realista
-        x = tf.zeros((1, 30, 30, 10, 4))
-        x = tf.reshape(x, [1, 30, 30, 40])
-        x = self.init_conv(x)
-        x = self.pos_enc(x)
-        x = self.focal_expand(x)
-        x = self.temporal_shape_encoder(x)
-        x = self.encoder(x)
-        x = self.fractal(x)
-
-        pooled = tf.reduce_mean(x, axis=[1, 2])
-        memory = tf.expand_dims(pooled, axis=1)
-        memory_out = self.attn_memory(memory, pooled)
-        memory_out = tf.reshape(memory_out, [-1, 1, 1, x.shape[-1]])
-        memory_out = tf.tile(memory_out, [1, x.shape[1], x.shape[2], 1])
-        x = x + memory_out
-
-        b, h, w, c = x.shape
-        x_flat = tf.reshape(x, [1, h * w, c])
-        x_attn = self.mha(x_flat, x_flat)
-        x_attn = self.norm(x_attn + x_flat)
-        x = tf.reshape(x_attn, [1, h, w, c])
-        _ = self.decoder(x)
-
-        # 💥 Aqui está o patch: ativa o sequential_2 (shape_type_predictor)
-        dummy_logits = tf.zeros((1, 30, 30, NUM_CLASSES))
-        _ = self.permuter(x, dummy_logits)
-
-        # Ativa color_perm_train
-        _ = self.color_perm_train(dummy_logits)
-
-
-    @shape_guard(expected_shape=[None, 30, 30, 10, 4], name="SimuV1 (Jurada 1)")
     def call(self, x, training=False):
-        if x.shape.rank == 5:
-            shape_dyn = tf.shape(x)
-            B, H, W, C, J = shape_dyn[0], shape_dyn[1], shape_dyn[2], shape_dyn[3], shape_dyn[4]
-            x = tf.reshape(x, [B, H, W, C * J])
+        assert len(x.shape) == 5, f"[SECURITY] SimuV1 recebeu input com shape inválido: {x.shape}"
+        # tf.print("[SimuV1] Input shape:", tf.shape(x))
 
+        # Encoder
+        x1 = self.conv1(x)
+        x2 = self.pool1(x1)
 
-        features = tf.reduce_mean(x, axis=[1, 2])
-        features = self.from_40(features)
+        x3 = self.conv2(x2)
+        x4 = self.pool2(x3)
 
-        flip_logits = self.flip.logits_layer(features)
-        rotation_logits = self.rotation.classifier(features)
-        flip_code = tf.argmax(flip_logits, axis=-1)
-        rotation_code = tf.argmax(rotation_logits, axis=-1)
+        x5 = self.conv3(x4)
 
-        def flip_op(args):
-            img, code = args
-            return tf.case([
-                (tf.equal(code, 1), lambda: tf.image.flip_left_right(img)),
-                (tf.equal(code, 2), lambda: tf.image.flip_up_down(img)),
-                (tf.equal(code, 3), lambda: tf.image.flip_up_down(tf.image.flip_left_right(img))),
-            ], default=lambda: img)
+        # Decoder
+        x6 = self.up1(x5)
+        x6 = self._crop_or_pad_to_match(x6, x3)
+        x6 = self.deconv1(x6)
 
-        def rotate_op(args):
-            img, k_val = args
-            return tf.image.rot90(img, k=tf.cast(tf.reshape(k_val, []), tf.int32))
-            
+        x7 = self.up2(x6)
+        x7 = self._crop_or_pad_to_match(x7, x1)
+        x7 = self.deconv2(x7)
 
-        x = tf.map_fn(flip_op, (x, flip_code), fn_output_signature=x.dtype)
-        x = tf.map_fn(rotate_op, (x, rotation_code), fn_output_signature=x.dtype)
+        return self.output_layer(x7)
 
-        x = self.init_conv(x)
-        x = self.pos_enc(x)
-        x = self.focal_expand(x)
-        x = self.temporal_shape_encoder(x)
-        x = self.encoder(x)
-        x = self.fractal(x)
+    def _crop_or_pad_to_match(self, source, target):
+        """Ajusta o shape de `source` para coincidir com `target` via crop ou padding."""
+        source_shape = tf.shape(source)[1:4]
+        target_shape = tf.shape(target)[1:4]
 
-        pooled = tf.reduce_mean(x, axis=[1, 2])
-        memory = tf.expand_dims(pooled, axis=1)
-        memory_out = self.attn_memory(memory, pooled)
-        memory_out = tf.reshape(memory_out, [-1, 1, 1, x.shape[-1]])
-        memory_out = tf.tile(memory_out, [1, tf.shape(x)[1], tf.shape(x)[2], 1])
-        x = x + memory_out
+        diffs = target_shape - source_shape
+        paddings = tf.maximum(diffs, 0)
+        croppings = tf.maximum(-diffs, 0)
 
-        b, h, w, c = tf.shape(x)[0], tf.shape(x)[1], tf.shape(x)[2], x.shape[-1]
-        x_flat = tf.reshape(x, [b, h * w, c])
-        x_attn = self.mha(x_flat, x_flat)
-        x_attn = self.norm(x_attn + x_flat)
-        x = tf.reshape(x_attn, [b, h, w, x_attn.shape[-1]])
+        # Aplica padding
+        paddings_tf = tf.stack([[0, paddings[0]], [0, paddings[1]], [0, paddings[2]]])
+        source = tf.pad(source, tf.concat([[[0, 0]], paddings_tf, [[0, 0]]], axis=0))
 
-        raw_logits = self.decoder(x)
-        # tf.print("[DEBUG] raw_logits:", tf.reduce_mean(raw_logits))
+        # Aplica cropping
+        source = source[:, :target_shape[0], :target_shape[1], :target_shape[2], :]
 
-        if training:
-            output = self.color_perm_train(raw_logits, training=True)
-            # tf.print("[DEBUG] final output mean:", tf.reduce_mean(output))
-            return output
-        else:
-            return raw_logits
+        return source

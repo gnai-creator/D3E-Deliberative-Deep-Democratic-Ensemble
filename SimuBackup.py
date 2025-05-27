@@ -15,7 +15,7 @@ from neural_blocks import (
 
 NUM_CLASSES = 10
 
-class SimuV2(tf.keras.Model):
+class SimuV6(tf.keras.Model):
     def __init__(self, hidden_dim=128):
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -41,16 +41,16 @@ class SimuV2(tf.keras.Model):
             layers.Conv2D(NUM_CLASSES, 1)
         ])
 
-        self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
+        # self.permuter = DynamicClassPermuter(num_shape_types=4, num_classes=NUM_CLASSES)
         self.permutation_eval = tf.range(NUM_CLASSES)
-        self.color_perm_train = LearnedColorPermutation(NUM_CLASSES)
+        # self.color_perm_train = LearnedColorPermutation(NUM_CLASSES)
 
         self.from_40 = tf.keras.layers.Dense(4)
         self.init_conv = layers.Conv2D(self.hidden_dim, 1, activation='relu')
 
         # 🚨 Força criação de pesos com input realista
-        x = tf.zeros((1, 30, 30, 10, 4))
-        x = tf.reshape(x, [1, 30, 30, 40])
+        x = tf.zeros((1, 30, 30, 10, 40))
+        x = tf.reshape(x, [1, 30, 30, 400])
         x = self.init_conv(x)
         x = self.pos_enc(x)
         x = self.focal_expand(x)
@@ -73,19 +73,19 @@ class SimuV2(tf.keras.Model):
         _ = self.decoder(x)
 
         # 💥 Aqui está o patch: ativa o sequential_2 (shape_type_predictor)
-        dummy_logits = tf.zeros((1, 30, 30, NUM_CLASSES))
-        _ = self.permuter(x, dummy_logits)
+        # dummy_logits = tf.zeros((1, 30, 30, NUM_CLASSES))
+        # _ = self.permuter(x, dummy_logits)
 
         # Ativa color_perm_train
-        _ = self.color_perm_train(dummy_logits)
-    
-    @shape_guard(expected_shape=[None, 30, 30, 10, 4], name="SimuV2 (Jurada 2)")
+        # _ = self.color_perm_train(dummy_logits)
+
+
+    @shape_guard(expected_shape=[None, 30, 30, 10, 40], name="SimuV6 (Sumpremo)")
     def call(self, x, training=False):
         if x.shape.rank == 5:
             shape_dyn = tf.shape(x)
             B, H, W, C, J = shape_dyn[0], shape_dyn[1], shape_dyn[2], shape_dyn[3], shape_dyn[4]
             x = tf.reshape(x, [B, H, W, C * J])
-
 
         features = tf.reduce_mean(x, axis=[1, 2])
         features = self.from_40(features)
@@ -132,10 +132,10 @@ class SimuV2(tf.keras.Model):
 
         raw_logits = self.decoder(x)
         # tf.print("[DEBUG] raw_logits:", tf.reduce_mean(raw_logits))
-
-        if training:
-            output = self.color_perm_train(raw_logits, training=True)
-            # tf.print("[DEBUG] final output mean:", tf.reduce_mean(output))
-            return output
-        else:
-            return raw_logits
+        return raw_logits
+        # if training:
+        #     output = self.color_perm_train(raw_logits, training=True)
+        #     # tf.print("[DEBUG] final output mean:", tf.reduce_mean(output))
+        #     return output
+        # else:
+        #     return raw_logits

@@ -49,8 +49,8 @@ class SimuV6(tf.keras.Model):
         self.init_conv = layers.Conv2D(self.hidden_dim, 1, activation='relu')
 
         # 🚨 Força criação de pesos com input realista
-        x = tf.zeros((None, 30, 30, 10, 40))
-        x = tf.reshape(x, [None, 30, 30, 400])
+        x = tf.zeros((1, 30, 30, 10, 40))
+        x = tf.reshape(x, [1, 30, 30, 400])
         x = self.init_conv(x)
         x = self.pos_enc(x)
         x = self.focal_expand(x)

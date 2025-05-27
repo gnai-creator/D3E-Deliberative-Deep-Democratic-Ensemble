@@ -80,7 +80,7 @@ class SimuV1(tf.keras.Model):
         _ = self.color_perm_train(dummy_logits)
 
 
-    @shape_guard(expected_shape=[None, 30, 30, 10, 4], name="SimuV1 (Jurada)")
+    @shape_guard(expected_shape=[None, 30, 30, 10, 4], name="SimuV1 (Jurada 1)")
     def call(self, x, training=False):
         if x.shape.rank == 5:
             shape_dyn = tf.shape(x)

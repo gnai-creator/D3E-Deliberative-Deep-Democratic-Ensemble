@@ -1,7 +1,7 @@
+
 import tensorflow as tf
 from runtime_utils import log
 from metrics_utils import safe_squeeze
-
 class ConfidenceManager:
     def __init__(self, models, initial_confidence=1.0, decay=0.9, recovery_rate=0.05, min_threshold=0.1):
         self.model_names = [f"modelo_{i}" for i in range(len(models))]
@@ -39,33 +39,39 @@ class ConfidenceManager:
         else:
             log(linha)
 
+
 def flatten_voto_simbólico(v):
+    """
+    Converte tensor de voto para shape (1, 900), adequado para encoder/RNN de confiança.
+    """
     v = tf.convert_to_tensor(v)
     if v.shape.rank > 2 and v.shape[-1] > 1:
         v = tf.argmax(v, axis=-1)
     if v.shape.rank > 2:
         v = safe_squeeze(v, axis=0)
-    return tf.reshape(v, (1, -1))
+    return tf.reshape(v, (1, -1))  # (1, 900)
 
-def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, required_votes=5, confidence_threshold=0.5, voto_reverso_ok=None):
+
+def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, required_votes=5, confidence_threshold=0.5):
     active_names = confidence_manager.get_active_model_names(threshold=confidence_threshold)
 
     if not active_names:
         log("[CONSENSO] Nenhum modelo com confiança suficiente.")
         return 0.0
 
+    votos_classe = []
+    for name in active_names:
+        logits = votos_models[name]
+        voto = tf.argmax(logits, axis=-1)
+        if voto.shape.rank > 3:
+            voto = tf.squeeze(voto, axis=0)
+        votos_classe.append(voto)
+
     votos_stacked = []
     for name in active_names:
         try:
             v = votos_models[name]
-            if voto_reverso_ok and name in voto_reverso_ok:
-                v = tf.convert_to_tensor(v)
-                if v.shape[-1] > 1:
-                    v = tf.argmax(v, axis=-1)
-                v = tf.squeeze(v)
-                v = 9 - v  # inverte antítese para tese
-            else:
-                v = flatten_voto_simbólico(v)
+            v = flatten_voto_simbólico(v)
             if tf.size(v) != 900:
                 log(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy()} elementos. Ignorado.")
                 continue
@@ -89,7 +95,7 @@ def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, requi
 
     votos_majoritarios = tf.map_fn(
         lambda x: tf.map_fn(lambda y: contar_consenso(y), x, dtype=tf.int32),
-        tf.transpose(votos_stacked, [1, 2, 0]),
+        tf.transpose(votos_stacked, [1, 2, 0]),  # [H, W, N]
         dtype=tf.int32
     )
 

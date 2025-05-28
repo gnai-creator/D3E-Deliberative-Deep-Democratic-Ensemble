@@ -109,7 +109,7 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
         # if iter_count == 0:
         #     gerar_visualizacao_votos(votos_iniciais, X_test, idx, block_idx, task_id)
         # else:
-        gerar_visualizacao_votos(votos_models, X_test, idx, block_idx, task_id)
+        gerar_visualizacao_votos(votos_models=votos_models, input_tensor_outros=X_test, iteracao=iter_count,idx=idx , block_idx=block_idx, task_id=task_id)
         if iter_count > 0:
             for i in range(5):
                 x_i = prepare_input_for_model(i, X_test)

@@ -98,7 +98,7 @@ def prepare_input_for_model(model_index, base_input):
 
 
 
-def gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, task_id):
+def gerar_visualizacao_votos(votos_models, input_tensor_outros, iteracao, idx, block_idx, task_id):
     votos_models = garantir_dict_votos_models(votos_models)
     votos_visuais = []
     try:
@@ -124,7 +124,7 @@ def gerar_visualizacao_votos(votos_models, input_tensor_outros, idx, block_idx, 
     except Exception as e:
         log(f"[VISUAL] input_visual com shape inesperado ({getattr(input_tensor_outros, 'shape', 'N/A')}): {e}")
         input_visual = tf.zeros((30, 30), dtype=tf.int32)
-    salvar_voto_visual(votos_visuais, idx, block_idx, input_visual, task_id=task_id)
+    salvar_voto_visual(votos=votos_visuais, iteracao=iteracao, idx=idx, block_idx=block_idx, input_tensor_outros=input_visual, task_id=task_id)
 
 def treinar_promotor_inicial(models, input_tensor_outros, votos_models, epochs):
     votos_models = garantir_dict_votos_models(votos_models)

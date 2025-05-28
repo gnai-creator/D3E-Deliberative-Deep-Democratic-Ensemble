@@ -23,33 +23,33 @@ def garantir_dict_votos_models(votos_models):
         log(f"[SECURITY] votos_models tinha tipo inesperado: {type(votos_models)}. Substituindo por dict vazio.")
         return {}
 
+@tf.function
 def pixelwise_mode(stack):
     """
     Calcula a moda (valor mais frequente) por pixel ao longo do eixo 0.
-    Espera entrada com shape (N, 30, 30, 10)
-    Retorna tensor com shape (1, 30, 30, 10)
+    Espera entrada com shape (N, H, W, C), onde C = número de classes.
+    Retorna tensor com shape (1, H, W, C)
     """
     log(f"[DEBUG] pixelwise_mode - shape de entrada original: {stack.shape}")
 
     if tf.rank(stack) != 4:
         raise ValueError(f"[pixelwise_mode] Tensor esperado com rank=4, mas recebeu shape={stack.shape}")
 
-    # Transpõe de (N, H, W, D) → (H, W, D, N)
-    stack = tf.transpose(stack, [1, 2, 3, 0])  # (30, 30, 10, N)
+    pred_classes = tf.argmax(stack, axis=-1, output_type=tf.int32)  # (N, H, W)
+    transposed = tf.transpose(pred_classes, [1, 2, 0])  # (H, W, N)
+    flat = tf.reshape(transposed, [-1, tf.shape(transposed)[-1]])  # (H*W, N)
 
-    # Achata para (H * W * D, N)
-    flat = tf.reshape(stack, (-1, stack.shape[-1]))  # (9000, N)
+    with tf.device('/CPU:0'):
+        moda_pixel = tf.map_fn(
+            lambda x: tf.math.bincount(x, minlength=10, maxlength=10),
+            flat,
+            fn_output_signature=tf.TensorSpec(shape=(10,), dtype=tf.int32)
+        )
 
-    # Moda por voxel
-    def pixel_mode(x):
-        with tf.device("/CPU:0"):
-            bincount = tf.math.bincount(tf.cast(x, tf.int32), minlength=10)
-        return tf.argmax(bincount)
+    moda_reshaped = tf.reshape(moda_pixel, [tf.shape(transposed)[0], tf.shape(transposed)[1], 10])
+    return tf.cast(tf.expand_dims(moda_reshaped, axis=0), tf.float32)  # (1, H, W, C)
 
-    moda_flat = tf.map_fn(pixel_mode, flat, fn_output_signature=tf.int64)
 
-    # Reshape correto: (1, 30, 30, 10)
-    return tf.reshape(moda_flat, (1, 30, 30, 10))
 
 
 
@@ -265,20 +265,20 @@ def filtrar_classes_respeitando_valores(y, classes_validas, pad_value=0, preserv
 
 
 
-
-def gerar_padrao_simbolico(x_input):
+def gerar_padrao_simbolico(x_input, pad_value=0):
     """
     Gera uma previsão simbólica baseada em alternância pura entre valores presentes no input.
-    Ideal para tarefas onde se espera generalização de padrões lógicos (ex: alternar pares de cores).
+    Ideal para inicialização de y_sup quando há colapso de classe.
     """
     if x_input.shape.rank == 5:
-        canal_cor = x_input[0, :, :, 0, 0]
+        canal_cor = x_input[0, :, :, 0, 0]  # assume canal simbólico
     else:
         canal_cor = x_input[0, :, :]
 
     valores_unicos = tf.unique(tf.reshape(canal_cor, [-1]))[0]
-    valores_unicos = tf.boolean_mask(valores_unicos, valores_unicos != 0)
+    valores_unicos = tf.boolean_mask(valores_unicos, valores_unicos != pad_value)
     valores = tf.sort(valores_unicos)
+
     if tf.size(valores) < 2:
         return tf.zeros((1, 30, 30), dtype=tf.int32)
 
@@ -286,11 +286,10 @@ def gerar_padrao_simbolico(x_input):
     padrao = np.zeros((30, 30), dtype=np.int32)
     for i in range(30):
         for j in range(30):
-            if (i + j) % 2 == 0:
-                padrao[i, j] = a.numpy()
-            else:
-                padrao[i, j] = b.numpy()
+            padrao[i, j] = a.numpy() if (i + j) % 2 == 0 else b.numpy()
+
     return tf.convert_to_tensor(padrao[None, ...], dtype=tf.int32)
+
 
 
 def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):

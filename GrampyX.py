@@ -72,8 +72,9 @@ class GrampyX:
             x_input = tf.expand_dims(tf.convert_to_tensor(x_input, dtype=tf.float32), axis=0)
             x_outros, _ = self.preparar_inputs(x_input)
 
-            if len(self.models) <= 5:
-                self.models.append(load_model(5, 0.0005))  # Suprema Juíza
+            # if len(self.models) <= 5:
+            #     self.models.append(load_model(5, 0.0005))  # Suprema Juíza
+            #     self.models.append(load_model(6, 0.0005))  # Promotor
             log(f"[DEBUG] Shape final input para modelos: {x_outros.shape}")
 
             log(f"[GrampyX] Julgando bloco {block_index} — Task {task_id}")

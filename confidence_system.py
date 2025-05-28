@@ -40,14 +40,11 @@ class ConfidenceManager:
 
 
 # consensus_system_weighted.py — Consenso ponderado por hierarquia de modelos
-
 def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5.0, voto_reverso_ok=None):
     """
     Avalia consenso ponderado usando pesos hierárquicos definidos para cada modelo.
     Cada pixel é decidido com base na soma dos pesos dos modelos que concordam naquele ponto.
     """
-    import tensorflow as tf
-
     votos_stacked = []
     votos_dict = {}
     pesos_usados = []
@@ -55,27 +52,30 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
     for name, voto in votos_models.items():
         try:
             v = tf.convert_to_tensor(voto)
+            log(f"[CONSENSO] DEBUG: {name} - shape inicial: {v.shape}, rank: {v.shape.rank}")
 
             # Remove canais extras com argmax, se for o caso
             if v.shape.rank >= 4 and v.shape[-1] > 1:
                 v = tf.argmax(v, axis=-1)
+                log(f"[CONSENSO] DEBUG: {name} - shape após argmax: {v.shape}")
             if v.shape.rank == 4 and v.shape[-1] == 1:
                 v = tf.squeeze(v, axis=-1)
+                log(f"[CONSENSO] DEBUG: {name} - shape após squeeze[-1]: {v.shape}")
 
-            # Remove dimensão de batch se presente
-            if v.shape.rank == 3 and v.shape[0] == 1:
+            # Remove dim de batch se presente
+            if v.shape.rank == 4 and v.shape[0] == 1:
                 v = tf.squeeze(v, axis=0)
+                log(f"[CONSENSO] DEBUG: {name} - shape após squeeze[0]: {v.shape}")
 
             v = tf.cast(v, tf.int64)
 
             if voto_reverso_ok and name in voto_reverso_ok:
                 v = 9 - v
 
-            if tf.size(v) != 900:
-                log(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy()} elementos. Ignorado.")
+            if tf.size(v) != 9000 and v.shape != (30, 30, 10):
+                log(f"[CONSENSO] ⚠️ Voto {name} tem shape inesperado {v.shape}. Ignorado.")
                 continue
 
-            v = tf.reshape(v, (30, 30))
             votos_stacked.append(v)
             votos_dict[name] = v
             pesos_usados.append(pesos.get(name, 1.0))
@@ -87,7 +87,6 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
         log("[CONSENSO] Nenhum voto válido após filtragem.")
         return 0.0
 
-    # Suprema tem poder de veto simbólico se divergir da maioria
     if "modelo_5" in votos_dict:
         voto_suprema = tf.cast(votos_dict["modelo_5"], tf.int64)
         votos_sem_suprema = [tf.cast(v, tf.int64) for k, v in votos_dict.items() if k != "modelo_5" and k != "modelo_6"]
@@ -98,23 +97,24 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
                 log("[CONSENSO] Suprema diverge da maioria — veto epistêmico aplicado.")
                 return 0.0
 
-    votos_stacked_tensor = tf.stack(votos_stacked)  # (N, 30, 30)
+    votos_stacked_tensor = tf.stack(votos_stacked)  # (N, 30, 30, 10)
     pesos_tensor = tf.constant(pesos_usados, dtype=tf.float32)  # (N,)
 
     consenso_total = 0.0
-    total_pixels = 30 * 30
+    total_pixels = 30 * 30 * 10
 
     for i in range(30):
         for j in range(30):
-            valores_pixel = votos_stacked_tensor[:, i, j]  # (N,)
-            pesos_pixel = tf.zeros_like(pesos_tensor)
-            valor_referencia = valores_pixel[0]
-            for idx, valor in enumerate(valores_pixel):
-                if valor == valor_referencia:
-                    pesos_pixel = tf.tensor_scatter_nd_update(pesos_pixel, [[idx]], [pesos_tensor[idx]])
-            soma_pesos = tf.reduce_sum(pesos_pixel).numpy()
-            if soma_pesos >= required_score:
-                consenso_total += 1
+            for k in range(10):
+                valores_pixel = votos_stacked_tensor[:, i, j, k]  # (N,)
+                pesos_pixel = tf.zeros_like(pesos_tensor)
+                valor_referencia = valores_pixel[0]
+                for idx, valor in enumerate(valores_pixel):
+                    if valor == valor_referencia:
+                        pesos_pixel = tf.tensor_scatter_nd_update(pesos_pixel, [[idx]], [pesos_tensor[idx]])
+                soma_pesos = tf.reduce_sum(pesos_pixel).numpy()
+                if soma_pesos >= required_score:
+                    consenso_total += 1
 
     consenso_final = consenso_total / total_pixels
     log(f"[CONSENSO PONDERADO] {consenso_final*100:.2f}% dos pixels atingiram pontuação mínima de {required_score}")

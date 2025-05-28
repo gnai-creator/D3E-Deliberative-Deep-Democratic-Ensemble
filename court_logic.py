@@ -77,28 +77,12 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
     classes_validas = extrair_classes_validas(X_test, pad_value=pad_value)
 
     y_sup = gerar_padrao_simbolico(X_test)
-    # y_sup = safe_total_squeeze(y_sup)
-    # y_sup = tf.cast(y_sup, tf.int32)
-    # y_sup = tf.expand_dims(y_sup, axis=0)
-    # y_sup = tf.expand_dims(y_sup, axis=-1)
 
-    num_classes_juizas = garantir_output_shape(modelos[4], (1, 30, 30, 10, 40))[-1]
-    num_classes_suprema = garantir_output_shape(modelos[5], (1, 30, 30, 10, 40))[-1]
-    num_classes_promotor = garantir_output_shape(modelos[6], (1, 30, 30, 10, 40))[-1]
-
-    # y_suprema = tf.one_hot(y_sup, depth=num_classes_suprema, axis=-1)
-    # y_suprema = tf.cast(y_suprema, tf.float32)
-
-    # log(f"[DEBUG] Suprema valores únicos: {tf.unique(tf.reshape(tf.argmax(y_suprema, axis=-1), [-1]))[0].numpy()}")
-    # log(f"[DEBUG] y_suprema (simbolico) shape: {y_suprema.shape}")
 
     treinar_modelo_com_y_sparse(modelos[5], x_suprema, y_sup, epochs=epochs * 3)
 
     y_antitese = inverter_classes_respeitando_valores(tf.squeeze(y_sup, axis=0), classes_validas, pad_value=pad_value)
-    y_antitese = tf.expand_dims(y_antitese, axis=0)  # [1, H, W, D]
-    y_antitese = tf.expand_dims(y_antitese, axis=-1) # [1, H, W, D, 1]
-    y_antitese = tf.squeeze(y_antitese, axis=-1)     # [1, H, W, D]  ← isso que a função espera
-
+ 
 
     log("[PROMOTOR] Treinando promotor com antítese da Suprema.")
     treinar_modelo_com_y_sparse(modelos[6], x_promotor, y_antitese, epochs=epochs)
@@ -122,12 +106,7 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
             axis=0
         )
         y_sup = pixelwise_mode(juradas_classes)
-        # y_sup = safe_total_squeeze(y_sup)
-        # y_sup = tf.cast(y_sup, tf.int32)
-        # y_sup = tf.expand_dims(y_sup, axis=0)
-        # y_sup = tf.expand_dims(y_sup, axis=-1)
-        # y_suprema = tf.one_hot(y_sup, depth=num_classes_juizas, axis=-1)
-        # y_suprema = tf.cast(y_suprema, tf.float32)
+     
 
         treinar_modelo_com_y_sparse(modelos[5], x_suprema, y_sup, epochs=epochs)
 
@@ -144,9 +123,7 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
                 log(f"[ALINHADO] Modelo_{i} está em acordo com Suprema ({match:.3f})")
 
         y_antitese = inverter_classes_respeitando_valores(tf.squeeze(y_sup, axis=0), classes_validas, pad_value=pad_value)
-        y_antitese = tf.expand_dims(y_antitese, axis=0)  # [1, H, W, D]
-        y_antitese = tf.expand_dims(y_antitese, axis=-1) # [1, H, W, D, 1]
-        y_antitese = tf.squeeze(y_antitese, axis=-1)     # [1, H, W, D]  ← isso que a função espera
+  
 
 
         log("[PROMOTOR] Propondo antítese ao parecer da Suprema.")

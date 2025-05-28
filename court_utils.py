@@ -297,6 +297,9 @@ def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
     - x_input: (1, 30, 30, 10, 40)
     - y_input: (1, 30, 30, 10) com inteiros
     """
+    log(f"[DEBUG] x_input shape inicial: {x_input.shape}")
+    log(f"[DEBUG] y_input shape inicial: {y_input.shape}")
+
     # ============ x_input ============
     if isinstance(x_input, np.ndarray):
         x_input = tf.convert_to_tensor(x_input)
@@ -307,13 +310,16 @@ def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
     if isinstance(y_input, np.ndarray):
         y_input = tf.convert_to_tensor(y_input)
 
-    # Corrige y_input de (1, 1, 30, 30, 1) para (1, 30, 30, 10)
-    if y_input.shape == (1, 1, 30, 30, 1):
-        y_input = tf.squeeze(y_input, axis=1)   # (1, 30, 30, 1)
-        y_input = tf.squeeze(y_input, axis=-1)  # (1, 30, 30)
-        y_input = tf.expand_dims(y_input, axis=-1)           # (1, 30, 30, 1)
-        y_input = tf.tile(y_input, multiples=[1, 1, 1, 10])   # (1, 30, 30, 10)
-    elif y_input.shape != (1, 30, 30, 10):
+    if y_input.shape[-1] == 1:
+        y_input = tf.squeeze(y_input, axis=-1)
+    # Ajusta y_input caso venha com shape (1, 30, 30)
+    if y_input.shape == (1, 30, 30):
+        y_input = tf.tile(tf.expand_dims(y_input, axis=-1), [1, 1, 1, 10])  # vira (1, 30, 30, 10)
+
+    if y_input.shape[-1] != 10:
+        y_input = tf.squeeze(y_input, axis=-1)
+    
+    if y_input.shape[-1] != 10:
         raise ValueError(f"[ERRO] y_input esperado com shape (1, 30, 30, 10), mas recebeu {y_input.shape}")
 
     # ============ Treinamento ============
@@ -321,6 +327,7 @@ def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
     log(f"[DEBUG] y_input shape final: {y_input.shape}")
 
     modelo.fit(x=x_input, y=y_input, epochs=epochs, verbose=0)
+
 
 
 

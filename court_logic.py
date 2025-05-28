@@ -115,10 +115,24 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
             y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1, output_type=tf.int64)
             y_pred = tf.expand_dims(y_pred, axis=-1)
             y_pred_corrigido = filtrar_classes_respeitando_valores(y_pred, classes_validas, pad_value=pad_value)
-            match = tf.reduce_mean(tf.cast(tf.equal(y_pred_corrigido, tf.argmax(y_suprema, axis=-1)), tf.float32)).numpy()
+            log(f"[DEBUG] Y_PRED {y_pred_corrigido.shape} Y_SUP {tf.shape(tf.argmax(y_sup, axis=-1))}")
+            log(f"[DEBUG] Y_PRED {y_pred_corrigido.dtype} Y_SUP {tf.argmax(y_sup, axis=-1).dtype}")
+            # y_sup: one-hot -> convertendo para rótulos
+            y_sup_argmax = tf.argmax(y_sup, axis=-1)              # (1, 30, 30)
+            y_sup_argmax = tf.expand_dims(y_sup_argmax, axis=-1)  # (1, 30, 30, 1)
+
+            # Agora broadcast entre (1, 30, 30, 10) e (1, 30, 30, 1) só funciona se y_pred_corrigido for one-hot
+
+            # ✅ Se y_pred_corrigido já for rótulo: você precisa reduzir também:
+            y_pred_argmax = tf.argmax(y_pred_corrigido, axis=-1)  # (1, 30, 30)
+
+            # Comparação final
+            match = tf.reduce_mean(
+                tf.cast(tf.equal(y_pred_argmax, tf.squeeze(y_sup_argmax, axis=-1)), tf.float32)
+            ).numpy()
             if match < 0.95:
                 log(f"[REEDUCAÇÃO] Modelo_{i} em desacordo com Suprema ({match:.3f}) - retreinando...")
-                treinar_modelo_com_y_sparse(modelos[i], x_i, y_suprema, epochs=epochs)
+                treinar_modelo_com_y_sparse(modelos[i], x_i, y_sup, epochs=epochs)
             else:
                 log(f"[ALINHADO] Modelo_{i} está em acordo com Suprema ({match:.3f})")
 

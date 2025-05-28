@@ -90,29 +90,45 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
 def ensure_numpy(tensor):
     return tensor.numpy() if hasattr(tensor, "numpy") else tensor
 
-
 def preparar_voto_para_visualizacao(v):
     v = ensure_numpy(v)
+    log(f"[VISUAL] V.SIZE {v.size}")
+    log(f"[VISUAL] V.SHAPE {v.shape}")
 
-    # Se ainda tiver logits (mais de 2 dimensões), transforma em classes
-    if v.ndim > 2:
+    # Aplica no máximo 2 vezes o argmax
+    if v.ndim >= 3 and v.shape[-1] > 1:
         v = np.argmax(v, axis=-1)
+        log(f"[VISUAL] V.SHAPE pós-argmax {v.shape}")
+        if v.ndim >= 3 and v.shape[-1] > 1:
+            v = np.argmax(v, axis=-1)
+            log(f"[VISUAL] V.SHAPE pós-argmax (2ª vez) {v.shape}")
 
-    # Remove eixos extras até ficar 2D
-    while v.ndim > 2:
-        if v.shape[0] == 1:
-            v = np.squeeze(v, axis=0)
-        else:
-            v = v[0]  # assume primeiro exemplo do batch
+    # Remove dimensões de tamanho 1
+    v = np.squeeze(v)
+    log(f"[VISUAL] V.SHAPE pós-squeeze {v.shape}")
 
-    if v.ndim == 3:
+    # Se ainda tiver canal singleton (ex: (30,30,1))
+    if v.ndim == 3 and v.shape[-1] == 1:
         v = v[..., 0]
+        log(f"[VISUAL] V.SHAPE pós-redução canal {v.shape}")
 
-    if v.size != 900:
-        log(f"[VISUAL] ⚠️ Voto inválido com {v.size} elementos. Esperado 900 para shape (30, 30).")
-        return np.zeros((30, 30), dtype=np.int32)
+    # Aceita direto se shape for correto
+    if v.shape == (30, 30):
+        log(f"[VISUAL] V.SHAPE final {v.shape}")
+        return v.astype(np.int32)
 
-    return v.reshape((30, 30)).astype(np.int32)
+    # Se tamanho for 900, faz reshape
+    if v.size == 900:
+        v = v.reshape((30, 30)).astype(np.int32)
+        log(f"[VISUAL] V.SHAPE final (reshape) {v.shape}")
+        return v
+
+    # Caso inválido
+    log(f"[VISUAL] ⚠️ Voto inválido com {v.size} elementos. Esperado 900 para shape (30, 30).")
+    return np.zeros((30, 30), dtype=np.int32)
+
+
+
 
 def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, task_id=None, saida_dir="debug_plots"):
     try:

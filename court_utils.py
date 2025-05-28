@@ -235,32 +235,34 @@ def filtrar_classes_respeitando_valores(y, classes_validas, pad_value=0, preserv
     y = tf.convert_to_tensor(y)
     log(f"[DEBUG] filtrando classes — y.shape={y.shape}, classes_validas={classes_validas.numpy()}")
 
-    # Ajusta para formato comum (H, W)
-    if y.shape.rank == 4:
-        y = tf.squeeze(y, axis=0)  # (H, W, C)
-    if y.shape.rank == 3 and y.shape[-1] == 1:
-        channel = y[..., 0]  # (H, W)
-    elif y.shape.rank == 3:
-        channel = y[0]  # assume (1, H, W)
-    elif y.shape.rank == 2:
-        channel = y
+    # Verifica e ajusta shape
+    if y.shape.rank == 5 and y.shape[0] == 1 and y.shape[-1] == 1:
+        y = tf.squeeze(y, axis=[0, -1])  # (30, 30, 10)
     else:
-        raise ValueError(f"[filtrar_classes_respeitando_valores] Shape inesperado: {y.shape}")
+        raise ValueError(f"[filtrar_classes_respeitando_valores] Shape inesperado: {y.shape}, esperado (1, H, W, D, 1)")
 
-    # Cria máscara das classes válidas
-    mask = tf.reduce_any(tf.equal(channel[..., tf.newaxis], tf.cast(classes_validas, channel.dtype)), axis=-1)
+    y_exp = tf.expand_dims(y, axis=-1)  # (30, 30, 10, 1)
 
-    # Aplica filtro
+    # Corrige dtype para compatibilidade com y
+    classes_validas = tf.convert_to_tensor(classes_validas)
+    classes_validas = tf.cast(classes_validas, dtype=y.dtype)
+
+    classes_exp = tf.reshape(classes_validas, shape=(1, 1, 1, -1))  # (1, 1, 1, N)
+
+    # Broadcasting correto
+    mask = tf.reduce_any(tf.equal(y_exp, classes_exp), axis=-1)  # (30, 30, 10)
+
     if preserve_invalids:
-        filtrado = tf.where(mask, channel, channel)  # mantém valor original se for inválido
+        filtrado = y
     else:
-        filtrado = tf.where(mask, channel, tf.constant(pad_value, dtype=channel.dtype))  # substitui por pad_value
+        filtrado = tf.where(mask, y, tf.constant(pad_value, dtype=y.dtype))  # (30, 30, 10)
 
-    # Reconstrói shape (1, H, W, 1)
-    filtrado = tf.expand_dims(filtrado, axis=-1)  # (H, W, 1)
-    filtrado = tf.expand_dims(filtrado, axis=0)   # (1, H, W, 1)
-    
-    return filtrado
+    return tf.expand_dims(filtrado, axis=0)  # (1, 30, 30, 10)
+
+
+
+
+
 
 
 

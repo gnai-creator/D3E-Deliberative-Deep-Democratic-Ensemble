@@ -3,7 +3,7 @@ import tensorflow as tf
 from runtime_utils import log
 
 JUDGE = 40
-OTHERS = 4
+OTHERS = 40
 CHANNELS = 10
 
 

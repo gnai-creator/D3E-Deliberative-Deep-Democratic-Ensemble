@@ -40,16 +40,18 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
             log(f"[WARN] Grid maior que 30x30: {max_h}x{max_w} — pulando")
             continue
         
-        if model_idx >= 4:
-            X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=10, confidence_value=40))
-            X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=10, confidence_value=40))
-            Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=10, confidence_value=40))
-        else:
-            X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=10, confidence_value=4))
-            X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=10, confidence_value=4))
-            Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=10, confidence_value=4))
+        # if model_idx >= 4:
+        X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=10, confidence_value=40))
+        X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=10, confidence_value=40))
+        Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=10, confidence_value=40))
+        # else:
+        #     X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=10, confidence_value=40))
+        #     X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=10, confidence_value=40))
+        #     Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=10, confidence_value=40))
+        log(f"[DEBUG] SHAPE após add_judge_channel: {X[-1].shape}")
 
         info.append({"task_id": task_id})
+
 
     X, Y = standardize_grid_shapes(X, Y)
     X, Y = pad_to_30x30_top_left(X, Y)
@@ -82,6 +84,7 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
     
     sw_train = np.ones_like(Y_train[..., 0], dtype=np.float32)
     sw_val = np.ones_like(Y_val[..., 0], dtype=np.float32)
+    log(f"[DEBUG] X_TRAIN SHAPE FINAL : {X_train.shape}")
 
     return (
         tf.convert_to_tensor(X_train, dtype=tf.float32),

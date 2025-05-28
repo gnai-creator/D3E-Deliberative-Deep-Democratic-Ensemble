@@ -46,6 +46,8 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
     Avalia consenso ponderado usando pesos hierárquicos definidos para cada modelo.
     Cada pixel é decidido com base na soma dos pesos dos modelos que concordam naquele ponto.
     """
+    import tensorflow as tf
+
     votos_stacked = []
     votos_dict = {}
     pesos_usados = []
@@ -54,16 +56,22 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
         try:
             v = tf.convert_to_tensor(voto)
 
+            # Remove canais extras com argmax, se for o caso
             if v.shape.rank >= 4 and v.shape[-1] > 1:
                 v = tf.argmax(v, axis=-1)
             if v.shape.rank == 4 and v.shape[-1] == 1:
                 v = tf.squeeze(v, axis=-1)
+
+            # Remove dimensão de batch se presente
+            if v.shape.rank == 3 and v.shape[0] == 1:
+                v = tf.squeeze(v, axis=0)
+
             v = tf.cast(v, tf.int64)
 
             if voto_reverso_ok and name in voto_reverso_ok:
                 v = 9 - v
 
-            if tf.size(v) != 9000:
+            if tf.size(v) != 900:
                 log(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy()} elementos. Ignorado.")
                 continue
 
@@ -100,8 +108,9 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
         for j in range(30):
             valores_pixel = votos_stacked_tensor[:, i, j]  # (N,)
             pesos_pixel = tf.zeros_like(pesos_tensor)
+            valor_referencia = valores_pixel[0]
             for idx, valor in enumerate(valores_pixel):
-                if tf.reduce_all(valor == valores_pixel):
+                if valor == valor_referencia:
                     pesos_pixel = tf.tensor_scatter_nd_update(pesos_pixel, [[idx]], [pesos_tensor[idx]])
             soma_pesos = tf.reduce_sum(pesos_pixel).numpy()
             if soma_pesos >= required_score:

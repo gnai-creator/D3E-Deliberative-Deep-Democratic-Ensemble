@@ -68,12 +68,12 @@ def training_process(
 
     _ = model(X_train, training=False)
     # Y_train = tf.argmax(Y_train, axis=-1)
-    if n_model in [0, 1, 2, 3, 4]:
-        if Y_train.shape[-1] == 40:  # se estiver one-hot
-            Y_train = tf.argmax(Y_train, axis=-1)  # -> (batch, 30, 30, 10)
+    # if n_model in [0, 1, 2, 3, 4]:
+    #     if Y_train.shape[-1] == 40:  # se estiver one-hot
+    #         Y_train = tf.argmax(Y_train, axis=-1)  # -> (batch, 30, 30, 10)
 
-        if Y_val.shape[-1] == 40:
-            Y_val = tf.argmax(Y_val, axis=-1)
+    if Y_val.shape[-1] == 40:
+        Y_val = tf.argmax(Y_val, axis=-1)
     for cycle in range(cycles):
         log(f"Cycle {cycle} — Modelo {n_model}")
         model.fit(

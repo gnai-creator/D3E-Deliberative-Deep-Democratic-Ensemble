@@ -1,7 +1,7 @@
 import tensorflow as tf
 from model_compile import compile_model
 from SimuV1 import SimuV1
-
+from runtime_utils import log
 
 # Configurações de cada modelo: classe e hidden_dim
 MODEL_CONFIGS = {
@@ -27,9 +27,10 @@ def load_model(index, learning_rate):
     model = model_class(hidden_dim=hidden_dim)
     model = compile_model(model, lr=learning_rate)
 
-    dummy_shape = (1, 30, 30, 10, 40) if index >= 4 else (1, 30, 30, 10, 4)
+    dummy_shape = (1, 30, 30, 10, 40) #if index >= 4 else (1, 30, 30, 10, 4)
     dummy_input = tf.zeros(dummy_shape, dtype=tf.float32)
     _ = model(dummy_input, training=False)
-
+    log(f"[DEBUG] Criado modelo {index} com input dummy shape: {dummy_shape}")
+    _model_cache.clear()
     _model_cache[index] = model
     return model

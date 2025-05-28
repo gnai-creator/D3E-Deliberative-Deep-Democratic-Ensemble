@@ -97,9 +97,9 @@ def preparar_voto_para_visualizacao(v):
         if v.ndim == 5:
             v = v[0]
         if v.ndim == 4:
-            v = extrair_matriz_simbolica(v, eixo=-1)
+            v = extrair_matriz_simbolica(v)
         elif v.ndim == 3 and v.shape[-1] == 1:
-            v = extrair_matriz_simbolica(v, eixo=-1)
+            v = extrair_matriz_simbolica(v)
         elif v.ndim == 3:
             v = v[:, :, 0]
         return np.squeeze(v)
@@ -108,12 +108,14 @@ def preparar_voto_para_visualizacao(v):
         return np.zeros((30, 30))
 
 
-
 def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, task_id=None, saida_dir="debug_plots"):
     try:
-      
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import os
         os.makedirs(saida_dir, exist_ok=True)
 
+        from metrics_utils import extrair_matriz_simbolica
 
         prefixo = f"{task_id}_" if task_id else ""
         fname = f"{prefixo}{block_idx} - votos_iter_{iteracao:02d}.png"
@@ -122,53 +124,62 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
         votos_classes = []
         for i, v in enumerate(votos):
             if v is None:
+                log(f"[VISUAL] ⚠️ Voto modelo_{i} é None. Ignorado.")
                 continue
             try:
                 if isinstance(v, tf.Tensor):
                     v = v.numpy()
+
                 if v.ndim == 5:
                     v = v[0]
-                if v.ndim == 4 or (v.ndim == 3 and v.shape[-1] == 10):
-                    v_cls = extrair_matriz_simbolica(v)
-                else:
-                    v_cls = np.squeeze(v)
+                if v.ndim == 4:
+                    v = v[:, :, 0, :]
+                elif v.ndim == 3 and v.shape[-1] == 1:
+                    v = np.squeeze(v, axis=-1)
 
-                log(f"[VISUAL DEBUG] modelo_{i}: únicos = {np.unique(v_cls)}")
+                if v.ndim == 3:
+                    v_cls = extrair_matriz_simbolica(v)
+                elif v.ndim == 2:
+                    v_cls = v.astype(np.int32)
+                else:
+                    raise ValueError(f"[VISUAL] Formato de voto não suportado: {v.shape}")
+
+                log(f"[VISUAL DEBUG] modelo_{i}: únicos = {np.unique(v_cls)} shape={v_cls.shape}")
                 votos_classes.append(v_cls)
             except Exception as e:
                 log(f"[VISUAL] Erro ao preparar voto do modelo_{i}: {e}")
 
         if not votos_classes:
-            log("[VISUAL] Nenhuma predição válida para visualização.")
-            # fallback igual ao anterior (entropia ou texto)
+            log("[VISUAL] ❌ Nenhuma predição válida para visualização.")
             return
 
-        # Prepara visualização do input
         try:
             input_vis = input_tensor_outros
             if isinstance(input_vis, tf.Tensor):
                 input_vis = input_vis.numpy()
-            if input_vis.ndim == 5:
-                input_vis = tf.argmax(input_vis[0], axis=-1).numpy()
-            elif input_vis.ndim == 4:
-                if input_vis.shape[-1] == 1:
-                    input_vis = input_vis[0, :, :, 0]
-                else:
-                    input_vis = input_vis[0, :, :, 0]
-            elif input_vis.ndim == 3 and input_vis.shape[-1] > 1:
-                input_vis = input_vis[..., 0]
 
-            input_vis = np.squeeze(input_vis)
+            if input_vis.ndim == 5:
+                input_vis = input_vis[0]
+            if input_vis.ndim == 4:
+                input_vis = input_vis[:, :, 0, :]
+            elif input_vis.ndim == 3 and input_vis.shape[-1] == 1:
+                input_vis = np.squeeze(input_vis, axis=-1)
+
+            if input_vis.ndim == 3:
+                input_vis = extrair_matriz_simbolica(input_vis)
+            elif input_vis.ndim == 2:
+                input_vis = input_vis.astype(np.int32)
+            else:
+                input_vis = np.zeros((30, 30))
+
             if input_vis.size != 900:
                 log(f"[VISUAL] ⚠️ input_vis com {input_vis.size} elementos. Substituindo por zeros.")
                 input_vis = np.zeros((30, 30))
-            else:
-                input_vis = input_vis.reshape((30, 30))
+
         except Exception as e:
             log(f"[VISUAL] Erro ao preparar input_vis: {e}")
             input_vis = np.zeros((30, 30))
 
-        # Mapa de consenso
         votos_stack = np.stack(votos_classes, axis=0)
         consenso_map = np.zeros((30, 30), dtype=np.uint8)
         for i in range(30):
@@ -177,7 +188,6 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
                 if np.max(counts) >= 3:
                     consenso_map[i, j] = 1
 
-        # Plot
         num_modelos = len(votos_classes)
         fig, axes = plt.subplots(1, num_modelos + 2, figsize=(4 * (num_modelos + 2), 4))
 
@@ -204,10 +214,11 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
         plt.tight_layout()
         plt.savefig(filepath)
         plt.close()
-        log(f"[VISUAL] Salvo mapa de votos + consenso em {filepath}")
+        log(f"[VISUAL] ✅ Mapa de votos + consenso salvo em {filepath}")
 
     except Exception as e:
-        log(f"[ERROR] Falha ao gerar visualização de votos: {e}")
+        log(f"[ERROR] ❌ Falha ao gerar visualização de votos: {e}")
+
 
 
 

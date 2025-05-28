@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 from metrics_utils import salvar_voto_visual, preparar_voto_para_visualizacao
 from runtime_utils import log
-from metrics_utils import ensure_numpy
+from metrics_utils import ensure_numpy, garantir_dict_votos_models
 from models_loader import load_model
 import sys
 # Converte logits para rótulos se necessário
@@ -14,14 +14,7 @@ def normalizar_y_para_sparse(y):
         y = tf.expand_dims(y, axis=-1)
     return y
 
-def garantir_dict_votos_models(votos_models):
-    if isinstance(votos_models, dict):
-        return votos_models
-    elif isinstance(votos_models, list):
-        return {f"modelo_{i}": v for i, v in enumerate(votos_models)}
-    else:
-        log(f"[SECURITY] votos_models tinha tipo inesperado: {type(votos_models)}. Substituindo por dict vazio.")
-        return {}
+
 
 @tf.function
 def pixelwise_mode(stack):
@@ -46,7 +39,7 @@ def pixelwise_mode(stack):
             fn_output_signature=tf.TensorSpec(shape=(10,), dtype=tf.int32)
         )
 
-    moda_reshaped = tf.reshape(moda_pixel, [tf.shape(transposed)[0], tf.shape(transposed)[1], 10])
+    moda_reshaped = tf.reshape(moda_pixel, [tf.shape(transposed)[0], tf.shape(transposed)[1], 1])
     return tf.cast(tf.expand_dims(moda_reshaped, axis=0), tf.float32)  # (1, H, W, C)
 
 
@@ -54,7 +47,7 @@ def pixelwise_mode(stack):
 
 
 
-def pad_or_truncate_channels(tensor, target_channels=40):
+def pad_or_truncate_channels(tensor, target_channels=1):
     """
     Ajusta o número de canais no último eixo, preservando as demais dimensões.
     """
@@ -81,9 +74,9 @@ def prepare_input_for_model(model_index, base_input):
     
     # Aplica truncagem/padding
     if model_index in [0, 1, 2, 3]:
-        x = pad_or_truncate_channels(base_input, 40)
+        x = pad_or_truncate_channels(base_input, 1)
     else:
-        x = pad_or_truncate_channels(base_input, 40)
+        x = pad_or_truncate_channels(base_input, 1)
 
     # # Agora adiciona eixo do tempo
     # if len(x.shape) == 4:
@@ -307,8 +300,8 @@ def gerar_padrao_simbolico(x_input, pad_value=0):
 def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
     """
     Treina o modelo com:
-    - x_input: (1, 30, 30, 10, 40)
-    - y_input: (1, 30, 30, 10) com inteiros
+    - x_input: (1, 30, 30, 1, 1)
+    - y_input: (1, 30, 30, 1) com inteiros
     """
     log(f"[DEBUG] x_input shape inicial: {x_input.shape}")
     log(f"[DEBUG] y_input shape inicial: {y_input.shape}")
@@ -316,8 +309,8 @@ def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
     # ============ x_input ============
     if isinstance(x_input, np.ndarray):
         x_input = tf.convert_to_tensor(x_input)
-    if x_input.shape != (1, 30, 30, 10, 40):
-        raise ValueError(f"[ERRO] x_input esperado com shape (1, 30, 30, 10, 40), mas recebeu {x_input.shape}")
+    if x_input.shape != (1, 30, 30, 1, 1):
+        raise ValueError(f"[ERRO] x_input esperado com shape (1, 30, 30, 1, 1), mas recebeu {x_input.shape}")
 
     # ============ y_input ============
     if isinstance(y_input, np.ndarray):
@@ -327,13 +320,13 @@ def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
         y_input = tf.squeeze(y_input, axis=-1)
     # Ajusta y_input caso venha com shape (1, 30, 30)
     if y_input.shape == (1, 30, 30):
-        y_input = tf.tile(tf.expand_dims(y_input, axis=-1), [1, 1, 1, 10])  # vira (1, 30, 30, 10)
+        y_input = tf.tile(tf.expand_dims(y_input, axis=-1), [1, 1, 1, 1])  # vira (1, 30, 30, 10)
 
-    if y_input.shape[-1] != 10:
+    if y_input.shape[-1] != 1:
         y_input = tf.squeeze(y_input, axis=-1)
     
-    if y_input.shape[-1] != 10:
-        raise ValueError(f"[ERRO] y_input esperado com shape (1, 30, 30, 10), mas recebeu {y_input.shape}")
+    if y_input.shape[-1] != 1:
+        raise ValueError(f"[ERRO] y_input esperado com shape (1, 30, 30, 1), mas recebeu {y_input.shape}")
 
     # ============ Treinamento ============
     log(f"[DEBUG] x_input shape final: {x_input.shape}")

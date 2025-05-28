@@ -9,7 +9,7 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 from metrics_utils import plot_prediction_debug
-from runtime_utils import log,  transform_input, to_numpy_safe
+from runtime_utils import log, to_numpy_safe
 from data_loader import load_data
 from models_loader import load_model
 
@@ -62,18 +62,13 @@ def training_process(
     if model is None:
         raise ValueError(f"[FATAL] Modelo {n_model} não foi carregado corretamente.")
 
-    # log(f"[INFO] Treinando modelo {n_model} no exemplo {batch_index}")
-    # log(f"[INFO] SHAPE X TRAIN : {X_train.shape}")
-    # log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")
+    log(f"[INFO] Treinando modelo {n_model} no exemplo {batch_index}")
+    log(f"[INFO] SHAPE X TRAIN : {X_train.shape}")
+    log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")
 
     _ = model(X_train, training=False)
-    # Y_train = tf.argmax(Y_train, axis=-1)
-    # if n_model in [0, 1, 2, 3, 4]:
-    #     if Y_train.shape[-1] == 40:  # se estiver one-hot
-    #         Y_train = tf.argmax(Y_train, axis=-1)  # -> (batch, 30, 30, 10)
 
-    if Y_val.shape[-1] == 40:
-        Y_val = tf.argmax(Y_val, axis=-1)
+   
     for cycle in range(cycles):
         log(f"Cycle {cycle} — Modelo {n_model}")
         model.fit(
@@ -90,26 +85,23 @@ def training_process(
         )
 
         try:
-            x_val_sample = transform_input(X_val[:1])
-            preds = model.predict(x_val_sample)
-            y_val_logits = preds["class_logits"] if isinstance(preds, dict) else preds
-            y_val_pred = tf.argmax(y_val_logits, axis=-1).numpy()[0]
-            y_val_expected = to_numpy_safe(Y_val[:1][0])
+            preds = model.predict(X_val)
 
-            valid_mask = (y_val_expected != pad_value)
-            if valid_mask.shape != y_val_pred.shape:
-                valid_mask = np.squeeze(valid_mask)
-                if valid_mask.shape != y_val_pred.shape:
-                    raise ValueError("Shape incompatível após squeeze.")
 
-            if np.sum(valid_mask) == 0:
-                log(f"[WARN] Nenhum pixel válido para comparação. Task: {task_id}")
-                continue
-                
+            log(f"[DEBUG] preds shape: {preds.shape}")
+            log(f"[DEBUG] y_val shape: {Y_val.shape}")
+            # Se for logits de 10 classes, aplica argmax
+            if preds.shape[-1] == 10:
+                preds = np.argmax(preds, axis=-1)  # shape → (1, 30, 30, 1)
+            # Remove batch e dimensão do canal se necessário
+
+            log(f"[DEBUG] preds shape: {preds.shape}")
+            log(f"[DEBUG] y_val shape: {Y_val.shape}")
+
             pixel_color_perfect, pixel_shape_perfect = plot_prediction_debug(
-                raw_input=raw_input[0],
-                expected_output=y_val_expected,
-                predicted_output=y_val_pred,
+                raw_input=X_train,
+                expected_output=Y_val,
+                predicted_output=preds,
                 model_index=f"block_{batch_index}_task_{task_id}_model_{n_model}",
                 pad_value=pad_value,
                 index=batch_index,

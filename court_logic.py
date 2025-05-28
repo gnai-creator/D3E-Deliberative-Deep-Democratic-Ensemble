@@ -5,7 +5,7 @@ import tensorflow as tf
 from confidence_system import avaliar_consenso_ponderado
 from runtime_utils import log
 from court_utils import extrair_classes_validas, filtrar_classes_respeitando_valores
-from court_utils import prepare_input_for_model, garantir_dict_votos_models
+from metrics_utils import garantir_dict_votos_models
 from court_utils import gerar_padrao_simbolico, gerar_visualizacao_votos
 from court_utils import inverter_classes_respeitando_valores, pixelwise_mode
 from court_utils import treinar_modelo_com_y_sparse
@@ -23,6 +23,28 @@ pesos = {
     "modelo_6": -2.0
 }
 
+def verificar_votos_models(votos_models):
+    # ✅ Correto
+    for nome, voto in votos_models.items():
+        print(f"Modelo: {nome}, Shape: {getattr(voto, 'shape', None)}")
+
+    # ❌ INCORRETO — causaria "too many values to unpack"
+    # for nome, voto in votos_models:
+    #     ...
+
+    # ✅ Também funciona, mas sem nome
+    for voto in votos_models.values():
+        print(f"Shape: {getattr(voto, 'shape', None)}")
+
+def votos_models_para_lista(votos_models):
+    """
+    Converte um dict de votos_models para lista ordenada por nome do modelo.
+    Exemplo: ['modelo_0', 'modelo_1', ..., 'modelo_n']
+    Retorna: List[Tensor]
+    """
+    chaves_ordenadas = sorted(votos_models.keys())
+    return [votos_models[k] for k in chaves_ordenadas if k in votos_models]
+
 def safe_total_squeeze(t):
     shape = t.shape
     if shape.rank is None:
@@ -30,11 +52,11 @@ def safe_total_squeeze(t):
     axes = [i for i in range(shape.rank) if shape[i] == 1]
     return tf.squeeze(t, axis=axes)
 
-def arc_court_supreme(models,X_train,y_train, y_val, X_test,  task_id=None, block_idx=None,
+def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, block_idx=None,
                       max_cycles=10, tol=0.98, epochs=10, confidence_threshold=0.5,
                       confidence_manager=[], idx=0, pad_value=0, Y_val=None):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
-    
+
     modelos = models.copy()
     log(f"MODELOS")
 
@@ -44,9 +66,6 @@ def arc_court_supreme(models,X_train,y_train, y_val, X_test,  task_id=None, bloc
         probs = tf.nn.softmax(tf.cast(y, tf.float32), axis=-1)
         log_probs = tf.math.log(tf.clip_by_value(probs, 1e-9, 1.0))
         return -tf.reduce_mean(tf.reduce_sum(probs * log_probs, axis=-1)).numpy()
-
-    x_suprema = prepare_input_for_model(5, X_test)
-    x_promotor = prepare_input_for_model(6, X_test)
 
     for i, modelo in enumerate(modelos):
         try:
@@ -62,8 +81,7 @@ def arc_court_supreme(models,X_train,y_train, y_val, X_test,  task_id=None, bloc
         votos_iniciais[f"modelo_{i}"] = modelos[i](X_train, training=False)
 
     votos_models = votos_iniciais.copy()
-
-    # gerar_visualizacao_votos(votos_iniciais, X_test, idx, block_idx, task_id)
+    votos_models = garantir_dict_votos_models(votos_models)
 
     for i in range(5):
         pred = tf.argmax(votos_iniciais[f"modelo_{i}"], axis=-1)
@@ -82,12 +100,12 @@ def arc_court_supreme(models,X_train,y_train, y_val, X_test,  task_id=None, bloc
 
     log(f"[DEBUG] Entropia média de y_sup: {calcular_entropia(y_sup):.5f}")
 
-    treinar_modelo_com_y_sparse(modelos[5], x_suprema, y_sup, epochs=epochs * 3)
+    treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup, epochs=epochs * 3)
 
     classes_validas = extrair_classes_validas(X_test, pad_value=pad_value)
     y_antitese = inverter_classes_respeitando_valores(y_sup, classes_validas, pad_value=pad_value)
     log("[PROMOTOR] Treinando promotor com antítese da Suprema.")
-    treinar_modelo_com_y_sparse(modelos[6], x_promotor, y_antitese, epochs=epochs)
+    treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese, epochs=epochs)
 
     iter_count = 0
     consenso = 0.0
@@ -98,20 +116,18 @@ def arc_court_supreme(models,X_train,y_train, y_val, X_test,  task_id=None, bloc
             log("[JURADOS] Modo teimoso ativado — nenhum modelo será retreinado no primeiro ciclo.")
         log(f"[CICLO] Iteração {iter_count}")
 
-        # Atualiza os votos de todos os modelos antes da visualização
+        # Atualiza os votos de todos os modelos
         for i in range(7):
             if i >= 4:
-                x_i = prepare_input_for_model(i, X_test)
-                votos_models[f"modelo_{i}"] = modelos[i](x_i, training=False)
+                votos_models[f"modelo_{i}"] = modelos[i](X_test, training=False)
             else:
-                x_i = prepare_input_for_model(i, X_train)
-                votos_models[f"modelo_{i}"] = modelos[i](x_i, training=False)
+                votos_models[f"modelo_{i}"] = modelos[i](X_train, training=False)
 
-        # Agora sim, visualiza
+        # Visualização
         gerar_visualizacao_votos(
             votos_models=votos_models,
-            input_tensor_outros=X_test,
-            input_tensor_train=X_train,
+            input_tensor_outros=X_train,
+            input_tensor_train=X_test,
             iteracao=iter_count,
             idx=idx,
             block_idx=block_idx,
@@ -120,8 +136,7 @@ def arc_court_supreme(models,X_train,y_train, y_val, X_test,  task_id=None, bloc
 
         if iter_count > 0:
             for i in range(5):
-                x_i = prepare_input_for_model(i, X_test)
-                votos_models[f"modelo_{i}"] = modelos[i](x_i, training=False)
+                votos_models[f"modelo_{i}"] = modelos[i](X_train, training=False)
 
         votos_models = garantir_dict_votos_models(votos_models)
 
@@ -136,27 +151,11 @@ def arc_court_supreme(models,X_train,y_train, y_val, X_test,  task_id=None, bloc
 
         log(f"[DEBUG] Entropia média de y_sup (iter {iter_count}): {calcular_entropia(y_sup):.5f}")
 
-        treinar_modelo_com_y_sparse(modelos[5], x_suprema, y_sup, epochs=epochs)
-
-        # for i in range(5):
-        #     x_i = prepare_input_for_model(i, X_test)
-        #     y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1, output_type=tf.int64)
-        #     y_pred = tf.expand_dims(y_pred, axis=-1)
-        #     y_pred_corrigido = filtrar_classes_respeitando_valores(y_pred, classes_validas, pad_value=pad_value)
-        #     y_sup_argmax = tf.expand_dims(tf.argmax(y_sup, axis=-1), axis=-1)
-        #     y_pred_argmax = tf.argmax(y_pred_corrigido, axis=-1)
-
-        #     papel = f"JURADA_{i}" if i in [0, 1, 2] else "ADVOGADO" if i == 3 else "JUIZ"
-
-        #     match = tf.reduce_mean(
-        #         tf.cast(tf.equal(y_pred_argmax, tf.squeeze(y_sup_argmax, axis=-1)), tf.float32)
-        #     ).numpy()
-        #     log(f"[DEBUG] Match modelo_{i} vs Suprema: {match:.3f}")
-     
+        treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup, epochs=epochs)
 
         y_antitese = inverter_classes_respeitando_valores(y_sup, classes_validas, pad_value=pad_value)
         log("[PROMOTOR] Propondo antítese ao parecer da Suprema.")
-        treinar_modelo_com_y_sparse(modelos[6], x_promotor, y_antitese, epochs=epochs)
+        treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese, epochs=epochs)
 
         votos_models = garantir_dict_votos_models(votos_models)
         consenso = avaliar_consenso_ponderado(

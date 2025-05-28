@@ -7,6 +7,7 @@ import os
 import pickle
 import random
 import json
+import traceback
 from court_logic import arc_court_supreme
 from confidence_system import ConfidenceManager
 from metrics_utils import plot_prediction_test, gerar_video_time_lapse, embutir_trilha_sonora
@@ -59,20 +60,18 @@ class GrampyX:
         log("[GrampyX] Estado salvo")
 
     def preparar_inputs(self, x):
-        if x.shape[-1] != 40:
-            log(f"[WARN] Input com shape errado: {x.shape}, ajustando para (1, 30, 30, 10, 40)")
+        if x.shape[-1] != 1:
+            log(f"[WARN] Input com shape errado: {x.shape}, ajustando para (1, 30, 30, 10, 1)")
             # Preenche o restante com zeros
-            pad = tf.zeros((x.shape[0], x.shape[1], x.shape[2], x.shape[3], 40 - x.shape[-1]), dtype=x.dtype)
+            pad = tf.zeros((x.shape[0], x.shape[1], x.shape[2], x.shape[3], 1), dtype=x.dtype)
             x = tf.concat([x, pad], axis=-1)
         return x, x
 
 
     def julgar(self, x_train, y_train, y_val, x_input, raw_input, block_index, task_id, idx, iteracao, Y_val):
         try:
-            x_input = tf.expand_dims(tf.convert_to_tensor(x_input, dtype=tf.float32), axis=0)
-            x_outros, _ = self.preparar_inputs(x_input)
+            
 
-            log(f"[DEBUG] Shape final input para modelos: {x_outros.shape}")
             log(f"[GrampyX] Julgando bloco {block_index} — Task {task_id}")
 
             resultados = arc_court_supreme(
@@ -80,7 +79,7 @@ class GrampyX:
                 X_train=x_train,
                 y_train=y_train,
                 y_val=y_val,
-                X_test=x_outros,
+                X_test=x_input,
                 task_id=task_id,
                 block_idx=block_index,
                 confidence_manager=self.manager,
@@ -94,7 +93,7 @@ class GrampyX:
             if isinstance(y_pred, tf.Tensor):
                 try:
                     flat = tf.argmax(y_pred, axis=-1).numpy().flatten()
-                    if flat.shape[0] != 9000:
+                    if flat.shape[0] != 900:
                         raise ValueError(f"[ERRO] Shape inesperado após argmax: {flat.shape}")
                     label = 1.0 if consenso >= 0.9 else 0.0
                     self.history_X.append(flat)
@@ -135,6 +134,7 @@ class GrampyX:
 
         except Exception as e:
             log(f"[GrampyX ERRO] Bloco {block_index}: {str(e)}")
+            traceback.print_exc()
             return {"consenso": 0.0}
 
 
@@ -167,23 +167,30 @@ def extrair_classes_validas(y_real, pad_value=0):
 
 
 
-
-
 def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.9, idx=0, grampyx=None):
+    import json
     grampy = grampyx
+    BATCH_SIZE = 10
+
     with open("arc-agi_test_challenges.json") as f:
         test_challenges = json.load(f)
+
     task_ids = list(test_challenges.keys())
-    # clippy.models = []
-    # clippy.models = [load_model(i, 0.0005) for i in range(clippy.num_modelos)]
+    task_batches = [task_ids[i:i + BATCH_SIZE] for i in range(0, len(task_ids), BATCH_SIZE)]
+
+    if idx >= len(task_batches):
+        log(f"[ERRO] Índice idx={idx} excede número de blocos disponíveis ({len(task_batches)}). Abortando.")
+        return False
+
+    task_batch = task_batches[idx]
+
     if idx not in todos_os_batches:
         todos_os_batches[idx] = []
-
         for model_idx in range(grampy.num_modelos):
             batches = load_data_batches(
                 challenges=test_challenges,
                 num_models=grampy.num_modelos,
-                task_ids=task_ids,
+                task_ids=task_batch,
                 model_idx=model_idx,
                 block_idx=idx
             )
@@ -205,9 +212,15 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
                 pad_value=0,
             )
             todos_os_batches[idx].extend(batches)
+
     sucesso_global = False
 
-    for (X_train, X_val, Y_train, Y_val, X_test, raw_input, block_idx, task_id) in todos_os_batches[idx]:
+    for batch in todos_os_batches[idx]:
+        if len(batch) != 8:
+            log(f"[ERRO] Batch com estrutura inválida: {batch}")
+            continue
+
+        X_train, X_val, Y_train, Y_val, X_test, raw_input, block_idx, task_id = batch
         iteracao = 0
         sucesso = False
 
@@ -215,8 +228,18 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             log(f"[GrampyX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
             y_val_test = extrair_classes_validas(X_test, 0)
             log(f"[GRAMPYX] y_val_test: {y_val_test}")
-            resultado = grampy.julgar(x_train=X_train, y_train=Y_train, y_val=Y_val,
-                x_input=X_test, raw_input=raw_input, block_index=block_idx, task_id=task_id, idx=idx, iteracao=iteracao, Y_val=y_val_test )
+            resultado = grampy.julgar(
+                x_train=X_train,
+                y_train=Y_train,
+                y_val=Y_val,
+                x_input=X_test,
+                raw_input=raw_input,
+                block_index=block_idx,
+                task_id=task_id,
+                idx=idx,
+                iteracao=iteracao,
+                Y_val=y_val_test
+            )
 
             consenso = resultado.get("consenso", 0)
             if consenso >= consenso_minimo:
@@ -233,3 +256,4 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
 
     log("[GrampyX] Deliberação encerrada.")
     return sucesso_global
+

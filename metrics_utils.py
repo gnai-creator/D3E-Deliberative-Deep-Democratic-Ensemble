@@ -6,12 +6,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import tensorflow as tf
 from runtime_utils import log
-from scipy.stats import entropy
 import cv2
 import glob
 import sys
 sys.path.append('/home/vscode/.local/lib/python3.10/site-packages')
 import moviepy.editor as mpy
+import scipy.stats  # Importa o pacote completo para uso robusto
+
 
 os.makedirs("images", exist_ok=True)
 sns.set(style="whitegrid", font_scale=1.2)
@@ -22,6 +23,20 @@ def ensure_numpy(x):
 def extrair_matriz_simbolica(grid_3d, pad_value=0):
     return grid_3d[:, :, 0].astype(np.int32)
 
+def extrair_matriz_simbolica_test(grid_3d, pad_value=0):
+    if grid_3d.shape[-1] == 10:
+        return np.argmax(grid_3d, axis=-1).astype(np.int32)
+    return grid_3d[:, :, 0].astype(np.int32)
+
+
+def garantir_dict_votos_models(votos_models):
+    if isinstance(votos_models, dict):
+        return votos_models
+    elif isinstance(votos_models, list):
+        return {f"modelo_{i}": v for i, v in enumerate(votos_models)}
+    else:
+        log(f"[SECURITY] votos_models tinha tipo inesperado: {type(votos_models)}. Substituindo por dict vazio.")
+        return {}
 
 def prepare_display_image(img, pad_value, h, w):
     img = ensure_numpy(img)
@@ -105,11 +120,11 @@ def preparar_voto_para_visualizacao(v):
         
         # Caso padrão: logits ou mapa simbólico → extrai classe dominante
         if v.ndim == 4:
-            v = extrair_matriz_simbolica(v)
+            v = extrair_matriz_simbolica_test(v)
 
         elif v.ndim == 3:
             if v.shape[-1] == 1:
-                v = extrair_matriz_simbolica(v)
+                v = extrair_matriz_simbolica_test(v)
                 log(f"[VISUAL] v extraído (shape=3D com 1 canal): {v.shape}")
             else:
                 v = v[:, :, 0]
@@ -126,86 +141,93 @@ def preparar_voto_para_visualizacao(v):
         log(f"[VISUAL] Erro ao extrair matriz simbólica: {e}")
         return np.zeros((30, 30))
 
-
 def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, task_id=None, saida_dir="debug_plots"):
+
+
     os.makedirs(saida_dir, exist_ok=True)
-    prefixo = f"{task_id}_" if task_id else ""
-    fname = "a.png"
+    fname = f"a.png"
+    # fname = f"voto_visual_task{task_id}_iter{iteracao}_bloco{block_idx}.png"
     filepath = os.path.join(saida_dir, fname)
 
     votos_classes = []
     softmax_maxes = []
-    for i, v in enumerate(votos):
-        if v is None:
-            log(f"[VISUAL DEBUG] ⚠️ Voto modelo_{i} é None. Ignorado.")
+
+    for i, (nome, voto) in enumerate(garantir_dict_votos_models(votos).items()):
+        if voto is None:
             continue
         try:
-            if isinstance(v, tf.Tensor):
-                v = v.numpy()
+            if isinstance(voto, tf.Tensor):
+                voto = voto.numpy()
 
-            if v.ndim == 5:
-                v = v[0]  # remove batch dim
+            if voto.ndim == 5:
+                voto = voto[0]  # remove batch dim
 
-            if v.ndim == 4 and v.shape[-1] == 10:
-                # Trata como logits: aplica softmax corretamente
-                v_soft = tf.nn.softmax(v.astype(np.float32), axis=-1).numpy()
+            if voto.ndim == 4 and voto.shape[-1] == 10:
+                v_soft = tf.nn.softmax(voto.astype(np.float32), axis=-1).numpy()
                 v_cls = np.argmax(v_soft, axis=-1)
                 softmax_maxes.append(np.max(v_soft, axis=-1))
-            elif v.ndim == 3 and v.shape[-1] == 10:
-                v_soft = tf.nn.softmax(v.astype(np.float32), axis=-1).numpy()
-                v_cls = np.argmax(v_soft, axis=-1)
-                softmax_maxes.append(np.max(v_soft, axis=-1))
-            elif v.ndim == 3:
-                # Já é (30, 30, 10): aplica argmax como última chance
-                v_cls = np.argmax(v, axis=-1)
-                softmax_maxes.append(np.zeros_like(v_cls))
-            elif v.ndim == 2:
-                v_cls = v.astype(np.int32)
+
+            elif voto.ndim == 3:
+                if voto.shape == (30, 30, 10):
+                    # imprimir todas as 10 dimensões de ndim=3 dim=-1
+                    for d in range(voto.shape[-1]):
+                        log(f"VOTO {i}: {voto[:,:, d]}")
+                    v_cls = extrair_matriz_simbolica_test(voto).astype(np.int32)
+                    softmax_maxes.append(np.zeros_like(v_cls))
+                elif voto.shape[-1] == 10 and np.any(voto > 1):
+                    v_soft = tf.nn.softmax(voto.astype(np.float32), axis=-1).numpy()
+                    v_cls = np.argmax(v_soft, axis=-1)
+                    softmax_maxes.append(np.max(v_soft, axis=-1))
+                else:
+                    v_cls = np.argmax(voto, axis=-1)
+                    softmax_maxes.append(np.zeros_like(v_cls))
+
+            elif voto.ndim == 2:
+                v_cls = voto.astype(np.int32)
                 softmax_maxes.append(np.zeros_like(v_cls))
             else:
-                raise ValueError(f"[VISUAL DEBUG] Formato de voto não suportado: {v.shape}")
+                raise ValueError(f"[VISUAL DEBUG] Formato de voto não suportado: {voto.shape}")
 
-            if i == 6:  # Promotor
+            if i == 6:
                 v_cls = 9 - v_cls
 
-            log(f"[VISUAL DEBUG] modelo_{i}: únicos = {np.unique(v_cls)} shape={v_cls.shape}")
             votos_classes.append(v_cls)
+
         except Exception as e:
-            log(f"[VISUAL DEBUG] Erro ao preparar voto do modelo_{i}: {e}")
+            print(f"[VISUAL DEBUG] Erro ao preparar voto do modelo_{i}: {e}")
 
     if not votos_classes:
-        log("[VISUAL DEBUG] ❌ Nenhuma predição válida para visualização.")
+        print("[VISUAL DEBUG] ❌ Nenhuma predição válida para visualização.")
         return
 
-    # === Processa input_tensor_outros ===
     input_vis = input_tensor_outros
     if isinstance(input_vis, tf.Tensor):
         input_vis = input_vis.numpy()
     if input_vis.ndim == 5:
         input_vis = input_vis[0]
     if input_vis.ndim == 4 and input_vis.shape[-1] == 10:
-        input_vis = np.argmax(input_vis, axis=-1).astype(np.int32)
+        input_vis = extrair_matriz_simbolica_test(input_vis)
     elif input_vis.ndim == 3:
         if input_vis.shape[-1] == 10:
-            input_vis = np.argmax(input_vis, axis=-1).astype(np.int32)
-        else:
+            input_vis = extrair_matriz_simbolica_test(input_vis)
+        elif input_vis.shape[-1] == 1:
             input_vis = input_vis[:, :, 0]
+        elif input_vis.shape[-1] > 1:
+            input_vis = extrair_matriz_simbolica_test(input_vis)
     elif input_vis.ndim == 2:
         input_vis = input_vis.astype(np.int32)
     else:
         input_vis = np.zeros((30, 30))
 
-    # === Entropia ===
     votos_stack = np.stack(votos_classes, axis=0)
-    h, w = votos_stack.shape[1:]
+    h, w = votos_stack.shape[1:3]
     entropia_map = np.zeros((h, w), dtype=np.float32)
     for i in range(h):
         for j in range(w):
             _, counts = np.unique(votos_stack[:, i, j], return_counts=True)
             probs = counts / counts.sum()
-            entropia_map[i, j] = entropy(probs, base=2)
+            entropia_map[i, j] = scipy.stats.entropy(probs, base=2)
 
-    # === Plot ===
     num_modelos = len(votos_classes)
     fig, axes = plt.subplots(2, num_modelos + 1, figsize=(4 * (num_modelos + 1), 8))
     cargos = {
@@ -217,12 +239,18 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
         nome = cargos.get(i, f"Modelo {i}")
         voto = votos_classes[i]
         smap = softmax_maxes[i]
+
+        if voto.ndim == 3 and voto.shape[-1] == 10:
+            voto = extrair_matriz_simbolica_test(voto)
+        elif voto.ndim == 3:
+            voto = extrair_matriz_simbolica_test(voto)
+
         axes[0, i].imshow(voto, cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
         axes[0, i].set_title(f"{nome}\nClasses: {np.unique(voto)}")
         axes[0, i].axis("off")
 
         axes[1, i].imshow(smap, cmap="Blues", interpolation="nearest", vmin=0, vmax=1)
-        axes[1, i].set_title(f"Confiança Máx.")
+        axes[1, i].set_title("Confiança Máx.")
         axes[1, i].axis("off")
 
     axes[0, -1].imshow(input_vis, cmap="viridis", vmin=0, vmax=9)
@@ -235,12 +263,10 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
 
     plt.suptitle(f"Task {task_id} — Iteração {iteracao} — Bloco {block_idx}", fontsize=14)
     plt.tight_layout()
+    print(f"[VISUAL DEBUG] Salvando figura em {filepath} — modelos plotados: {num_modelos}")
     plt.savefig(filepath)
     plt.close()
-    log(f"[VISUAL DEBUG] ✅ Voto visual detalhado salvo em {filepath}")
-
-
-
+    print(f"[VISUAL DEBUG] ✅ Voto visual detalhado salvo em {filepath}")
 
 
 
@@ -272,8 +298,6 @@ def compute_pixelwise_accuracy(expected, predicted, pad_value=0):
 
 
 
-
-
 def plot_prediction_debug(
     raw_input,
     expected_output,
@@ -282,72 +306,87 @@ def plot_prediction_debug(
     pad_value=0,
     index=0,
     task_id=None,
-    output_dir="debug_plots"
+    saida_dir="debug_plots"
 ):
-    try:
-        import matplotlib.pyplot as plt
-        import os
-        os.makedirs(output_dir, exist_ok=True)
+    
+    os.makedirs(saida_dir, exist_ok=True)
+    fname = f"a.png"
+    # fname = f"voto_visual_task{task_id}_iter{iteracao}_bloco{block_idx}.png"
+    filepath = os.path.join(saida_dir, fname)
 
-        expected_output = expected_output.numpy() if hasattr(expected_output, 'numpy') else expected_output
-        predicted_output = predicted_output.numpy() if hasattr(predicted_output, 'numpy') else predicted_output
+    log(f"[DEBUG] EXPECTED OUTPUT SHAPE: {expected_output.shape}")
+    log(f"[DEBUG] PREDICTED OUTPUT SHAPE: {predicted_output.shape}")
 
-        if expected_output.ndim == 5:
-            expected_output = expected_output[0]
-        if predicted_output.ndim == 5:
-            predicted_output = predicted_output[0]
+    # Normaliza expected_output para (30, 30, 1)
+    if isinstance(expected_output, tf.Tensor):
+        expected_output = expected_output.numpy()
+    expected_output = np.squeeze(expected_output)
+    if expected_output.ndim == 2:
+        expected_output = np.expand_dims(expected_output, axis=-1)
 
-        if expected_output.ndim == 3 and expected_output.shape[-1] == 10:
-            # log("[DEBUG] Grid expected completa:")
-            # log(f"[expected_output[:,:,0]]\n{expected_output[:,:,0]}")
-            expected_output = extrair_matriz_simbolica(expected_output, -1)
+    # Normaliza predicted_output para (30, 30, 1)
+    if isinstance(predicted_output, tf.Tensor):
+        predicted_output = predicted_output.numpy()
+    predicted_output = np.squeeze(predicted_output)
+    if predicted_output.ndim == 2:
+        predicted_output = np.expand_dims(predicted_output, axis=-1)
 
-        if predicted_output.ndim == 3:
-            if predicted_output.shape[-1] == 10:
-                # log("[DEBUG] Grid predicted completa:")
-                # log(f"[predicted_output[:,:,0]]\n{predicted_output[:,:,0]}")
-                predicted_output = predicted_output[:, :, 0]
-            elif predicted_output.shape[-1] == 1:
-                predicted_output = extrair_matriz_simbolica(predicted_output, -1)
+    # Extrai o canal único para visualização
+    expected_2d = expected_output[:, :, 0]
+    predicted_2d = predicted_output[:, :, 0]
 
-        # log(f"[DEBUG] EXPECTED SHAPE FINAL: {expected_output.shape}")
-        # log(f"[DEBUG] PREDICTED SHAPE FINAL: {predicted_output.shape}")
+    if expected_2d.shape != predicted_2d.shape:
+        log(f"[ERROR] Shape incompatível: predicted={predicted_2d.shape}, expected={expected_2d.shape}")
+        return 0, 0
 
-        if expected_output.ndim != 2 or predicted_output.ndim != 2:
-            log(f"[ERROR] Shape incompatível para plot: predicted {predicted_output.shape}, expected {expected_output.shape}")
-            return None
+    # Métricas
+    mask = expected_2d != pad_value
+    total = np.sum(mask)
+    correct = np.sum((expected_2d == predicted_2d) & mask)
+    pixel_color_perfect = correct / total if total > 0 else 0.0
+    pixel_shape_perfect = (expected_2d == predicted_2d).mean()
 
-        # log(f"[DEBUG] Valores únicos esperados (final): {np.unique(expected_output)}")
-        # log(f"[DEBUG] Valores únicos previstos (final): {np.unique(predicted_output)}")
+    # Plots
+    fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+    ax[0].imshow(expected_2d, cmap="viridis", vmin=0, vmax=9)
+    ax[0].set_title("Expected Output")
+    ax[0].axis("off")
 
-        pixel_color_perfect, pixel_shape_perfect = compute_pixelwise_accuracy(
-            expected_output, predicted_output, pad_value=pad_value
-        )
+    ax[1].imshow(predicted_2d, cmap="viridis", vmin=0, vmax=9)
+    ax[1].set_title("Predicted Output")
+    ax[1].axis("off")
 
-        fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+    plt.suptitle(
+        f"Task {task_id} — Model {model_index} — Sample {index}\n"
+        f"Color Perfect: {pixel_color_perfect:.4f} | Shape Perfect: {pixel_shape_perfect:.4f}"
+    )
+    plt.tight_layout()
+    plt.savefig(filepath)
+    plt.close()
+    log("[DEBUG] Plot salvo como a.png")
 
-        ax[0].imshow(expected_output, cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
-        ax[0].set_title("Expected Output")
-        ax[0].axis("off")
+    return pixel_color_perfect, pixel_shape_perfect
 
-        ax[1].imshow(predicted_output, cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
-        ax[1].set_title("Predicted Output")
-        ax[1].axis("off")
 
-        plt.suptitle(f"Task {task_id} — Model {model_index} — Sample {index}\n Color Perfect: {pixel_color_perfect:.4f} | Shape Perfect: {pixel_shape_perfect:.4f}")
-        plt.tight_layout()
 
-        output_path = os.path.join(output_dir, f"a.png")
-        # output_path = os.path.join(output_dir, f"task_{task_id}_model_{model_index}_sample_{index}.png")
-        plt.savefig(output_path)
+def plot_all_channels(output, title_prefix="Canal", save_prefix="debug_output"):
+    """
+    Plota todos os canais de uma matriz 3D no formato (30, 30, canais)
+    """
+    import matplotlib.pyplot as plt
+    canais = output.shape[-1]
+    for i in range(canais):
+        canal = output[:, :, i]
+        plt.figure(figsize=(4, 4))
+        plt.imshow(canal, cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
+        plt.title(f"{title_prefix} {i}")
+        plt.axis("off")
+        filename = f"{save_prefix}_canal_{i}.png"
+        plt.savefig(filename)
         plt.close()
+        log(f"[DEBUG] Canal {i} salvo como {filename}")
 
-        log(f"[DEBUG] Plot de debug salvo em: {output_path}")
-        return pixel_color_perfect, pixel_shape_perfect
 
-    except Exception as e:
-        log(f"[ERROR] Falha ao gerar plot de debug: {e}")
-        return None
 
 
 

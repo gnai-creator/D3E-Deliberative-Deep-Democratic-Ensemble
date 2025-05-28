@@ -2,9 +2,7 @@ import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from runtime_utils import log
-from metrics import standardize_grid_shapes, pad_to_30x30_top_left, pad_to_30x30_top_left_single, add_judge_channel
-
-
+from metrics import expand_grid_to_30x30x1, add_judge_channel
 
 def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_size, block_idx, model_idx):
     start_idx = block_index * block_size
@@ -19,6 +17,9 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
     info = []
 
     for task_id in block_task_ids:
+        if task_id not in challenges:
+            log(f"[ERRO] task_id '{task_id}' não encontrado em challenges. Pulando.")
+            continue
         log(f"Treinando task_id: {task_id}")
         challenge = challenges[task_id]
         try:
@@ -27,9 +28,6 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
             test_input_grid = np.array(challenge["test"][0]["input"], dtype=np.int32)
             raw_inputs.append(input_grid)
             raw_test_inputs.append(test_input_grid)
-
-            # log(f"TRAIN TASK {task_id}  SHAPE: - {input_grid.shape}")
-            # log(f"TEST TASK {task_id}  SHAPE: - {test_input_grid.shape}")
         except Exception as e:
             log(f"[BROKE]: {e}")
             continue
@@ -39,24 +37,26 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
         if max_h > 30 or max_w > 30:
             log(f"[WARN] Grid maior que 30x30: {max_h}x{max_w} — pulando")
             continue
-        
-        # if model_idx >= 4:
-        X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=10, confidence_value=40))
-        X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=10, confidence_value=40))
-        Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=10, confidence_value=40))
-        # else:
-        #     X.append(add_judge_channel(input_grid, juizo_value=0, channel_value=10, confidence_value=40))
-        #     X_test.append(add_judge_channel(test_input_grid, juizo_value=0, channel_value=10, confidence_value=40))
-        #     Y.append(add_judge_channel(output_grid, juizo_value=1, channel_value=10, confidence_value=40))
-        log(f"[DEBUG] SHAPE após add_judge_channel: {X[-1].shape}")
+
+        # Converte para (30, 30, 1)
+        input_grid = expand_grid_to_30x30x1(input_grid, pad_value)
+        output_grid = expand_grid_to_30x30x1(output_grid, pad_value)
+        test_input_grid = expand_grid_to_30x30x1(test_input_grid, pad_value)
+
+        # Adiciona canal de juízo após expansão
+        input_grid = add_judge_channel(input_grid, juizo_value=0, confidence_value=1)
+        output_grid = add_judge_channel(output_grid, juizo_value=1, confidence_value=1)
+        test_input_grid = add_judge_channel(test_input_grid, juizo_value=0, confidence_value=1)
+
+        X.append(input_grid)
+        Y.append(output_grid)
+        X_test.append(test_input_grid)
 
         info.append({"task_id": task_id})
 
-
-    X, Y = standardize_grid_shapes(X, Y)
-    X, Y = pad_to_30x30_top_left(X, Y)
-    X_test, _ = standardize_grid_shapes(X_test, Y)
-    X_test = pad_to_30x30_top_left_single(X=X_test)
+    X = np.array(X)
+    Y = np.array(Y)
+    X_test = np.array(X_test)
 
     X = tf.convert_to_tensor(X, dtype=tf.float32)
     X_test = tf.convert_to_tensor(X_test, dtype=tf.float32)
@@ -72,25 +72,19 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
 
     if len(X_train.shape) == 4:
         X_train = tf.expand_dims(X_train, axis=0)
-    
-   
-    # if len(Y_train.shape) == 4:
-    #     Y_train = tf.expand_dims(Y_train, axis=0)
-    # if len(Y_val.shape) == 4:
-    #     Y_val = tf.expand_dims(Y_val, axis=0)
-    # log(f"[DEBUG] X_TRAIN SHAPE : {X_train.shape}")
-    # log(f"[DEBUG] Y_VAL SHAPE : {Y_val.shape}")
-    # log(f"[DEBUG] X_TEST SHAPE : {X_test.shape}")
-    
+
     sw_train = np.ones_like(Y_train[..., 0], dtype=np.float32)
     sw_val = np.ones_like(Y_val[..., 0], dtype=np.float32)
     log(f"[DEBUG] X_TRAIN SHAPE FINAL : {X_train.shape}")
+    log(f"[DEBUG] X_VAL SHAPE FINAL : {X_val.shape}")
+    log(f"[DEBUG] Y_TRAIN SHAPE FINAL : {Y_train.shape}")
+    log(f"[DEBUG] Y_VAL SHAPE FINAL : {Y_val.shape}")
 
     return (
         tf.convert_to_tensor(X_train, dtype=tf.float32),
         tf.convert_to_tensor(X_val, dtype=tf.float32),
-        tf.cast(Y_train[..., 0], dtype=tf.int32),
-        tf.cast(Y_val[..., 0], dtype=tf.int32),
+        tf.convert_to_tensor(Y_train, dtype=tf.float32),
+        tf.convert_to_tensor(Y_val, dtype=tf.float32),
         tf.convert_to_tensor(sw_train, dtype=tf.float32),
         tf.convert_to_tensor(sw_val, dtype=tf.float32),
         tf.convert_to_tensor(X_test, dtype=tf.float32),
@@ -100,4 +94,3 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
         raw_inputs,
         raw_test_inputs
     )
-

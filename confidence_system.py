@@ -1,5 +1,6 @@
 import tensorflow as tf
 from runtime_utils import log
+from court_utils import garantir_dict_votos_models
 
 class ConfidenceManager:
     def __init__(self, models, initial_confidence=1.0, decay=0.9, recovery_rate=0.05, min_threshold=0.1):
@@ -50,7 +51,7 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
     votos_dict = {}
     pesos_usados = []
 
-    for name, voto in votos_models.items():
+    for name, voto in garantir_dict_votos_models(votos_models).items():
         try:
             v = tf.convert_to_tensor(voto)
             log(f"[CONSENSO] DEBUG: {name} - shape inicial: {v.shape}, rank: {v.shape.rank}")
@@ -70,7 +71,7 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
             if voto_reverso_ok and name in voto_reverso_ok:
                 v = 9 - v
 
-            if tf.size(v) != 9000 and v.shape != (30, 30, 10):
+            if tf.size(v) != 900 and v.shape != (30, 30, 1):
                 log(f"[CONSENSO] ⚠️ Voto {name} tem shape inesperado {v.shape}. Ignorado.")
                 continue
 

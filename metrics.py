@@ -2,22 +2,16 @@ import numpy as np
 import tensorflow as tf
 from runtime_utils import log
 
-JUDGE = 40
-OTHERS = 40
-CHANNELS = 10
+JUDGE = 1
+OTHERS = 1
+CHANNELS = 1
 
-
-def add_judge_channel(input_grid, juizo_value, channel_value, confidence_value):
-    h, w = input_grid.shape
-    
-    grid_with_channel = np.zeros((h, w, channel_value, confidence_value), dtype=np.float32)
-   
-
-    # Coloca input_grid no canal 0 de todos os CHANNELS
-    grid_with_channel[:, :, 0, 0] = input_grid  # valor original
-    grid_with_channel[:, :, 0, 1] = juizo_value  # canal de juízo
-
+def add_judge_channel(input_grid, juizo_value, confidence_value):
+    h, w, c = input_grid.shape
+    grid_with_channel = np.zeros((h, w, c, confidence_value), dtype=np.float32)
+    grid_with_channel[:, :, :, 0] = input_grid  # coloca os valores reais, não uma constante
     return grid_with_channel
+
 
 def standardize_grid_shapes(X, Y):
     """
@@ -111,3 +105,19 @@ def pad_to_30x30_top_left_single(X, pad_value=0):
         padded_X.append(x_pad)
     return np.array(padded_X)
 
+
+def expand_grid_to_30x30x1(grid_2d, pad_value=0):
+    """
+    Recebe um grid 2D (H, W) com valores de cor 0-9 e transforma em (30, 30, 1),
+    preenchendo o restante com pad_value (padrão = 0).
+    """
+    if grid_2d.ndim != 2:
+        raise ValueError(f"Esperado grid 2D, mas recebeu shape {grid_2d.shape}")
+    
+    h, w = grid_2d.shape
+    if h > 30 or w > 30:
+        raise ValueError("Grid maior que 30x30 não suportado")
+
+    padded = np.full((30, 30), pad_value, dtype=np.int32)
+    padded[:h, :w] = grid_2d
+    return np.expand_dims(padded, axis=-1)  # shape (30, 30, 1)

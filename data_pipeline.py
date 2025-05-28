@@ -15,10 +15,6 @@ def load_data_batches(challenges="", task_ids="", num_models=5, model_idx=0, blo
             model_idx=model_idx,
             block_idx=block_idx
         )
-        # Modelo 4 (index 4) precisa dos 40 canais (não quebrado em subcanais)
-        # if block_index == 4:
-        #     x = tf.reshape(X_train[0], (30, 30, 40))  # ou o reshape apropriado
-        # else:
-        #     x = X_train[0]
+        
         batches.append((X_train, X_val, Y_train, Y_val, X_test[0], raw_input, block_index, task_id))
     return batches

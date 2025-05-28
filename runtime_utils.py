@@ -83,8 +83,6 @@ def profile_time(start, label):
 def ensure_batch_dim(tensor):
     return tf.expand_dims(tensor, axis=0) if tensor.shape.rank == 3 else tensor
 
-def transform_input(x):
-    return tf.expand_dims(x, 0) if len(x.shape) == 4 else x
 
 def to_numpy_safe(x):
     return x.numpy() if isinstance(x, tf.Tensor) else np.array(x)

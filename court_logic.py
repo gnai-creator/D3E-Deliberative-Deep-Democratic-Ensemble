@@ -2,7 +2,7 @@
 import os
 import numpy as np
 import tensorflow as tf
-from confidence_system import avaliar_consenso_com_confianca, avaliar_consenso_ponderado
+from confidence_system import avaliar_consenso_ponderado
 from runtime_utils import log
 from court_utils import extrair_classes_validas, filtrar_classes_respeitando_valores
 from court_utils import prepare_input_for_model, garantir_dict_votos_models

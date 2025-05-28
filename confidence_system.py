@@ -39,72 +39,6 @@ class ConfidenceManager:
             log(linha)
 
 
-def avaliar_consenso_com_confianca(votos_models: dict, confidence_manager, required_votes=5, confidence_threshold=0.5, voto_reverso_ok=None):
-    active_names = confidence_manager.get_active_model_names(threshold=confidence_threshold)
-
-    if not active_names:
-        log("[CONSENSO] Nenhum modelo com confiança suficiente.")
-        return 0.0
-
-    votos_stacked = []
-    votos_dict = {}
-    for name in active_names:
-        try:
-            v = votos_models[name]
-            log(f"[DEBUG] Shape do voto {name}: {v.shape}")
-
-            v = tf.convert_to_tensor(v)
-            if v.shape[-1] > 1:
-                v = tf.argmax(v, axis=-1)
-            v = tf.squeeze(v)
-            if voto_reverso_ok and name in voto_reverso_ok:
-                v = 9 - v
-            if tf.size(v) != 900:
-                log(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy()} elementos. Ignorado.")
-                continue
-            v = tf.reshape(v, (30, 30))
-            votos_stacked.append(v)
-            votos_dict[name] = v
-        except Exception as e:
-            log(f"[CONSENSO] Erro ao processar voto de {name}: {e}")
-
-    if not votos_stacked:
-        log("[CONSENSO] Nenhum voto válido após filtragem.")
-        return 0.0
-
-    votos_stacked_tensor = tf.stack(votos_stacked)
-
-    if votos_stacked_tensor.shape.rank != 3:
-        raise ValueError(f"[ERRO] Shape inesperado em votos_stacked: {votos_stacked_tensor.shape}. Esperado (N, H, W)")
-
-    votos_moda = tf.cast(tf.round(tf.reduce_mean(votos_stacked_tensor, axis=0)), tf.int32)
-
-    for name in votos_dict:
-        acertou = tf.reduce_all(tf.equal(tf.cast(votos_dict[name], tf.int64), tf.cast(votos_moda, tf.int64))).numpy()
-        confidence_manager.update_confidence(name, acertou)
-
-    def contar_consenso(votos_pixel):
-        uniques, _, count = tf.unique_with_counts(votos_pixel)
-        return tf.reduce_max(count)
-
-    votos_majoritarios = tf.map_fn(
-        lambda x: tf.map_fn(lambda y: contar_consenso(y), x, dtype=tf.int32),
-        tf.transpose(votos_stacked_tensor, [1, 2, 0]),
-        dtype=tf.int32
-    )
-
-    consenso_bin = votos_majoritarios >= required_votes
-    consenso_final = float(tf.reduce_all(consenso_bin).numpy())
-
-
-
-    log(f"[CONSENSO - COM CONFIANÇA] {len(votos_stacked)} modelos válidos contribuíram (≥{confidence_threshold:.2f})")
-    for name in active_names:
-        conf = confidence_manager.get_confidence(name)
-        log(f" - {name}: {conf:.3f}")
-
-    return consenso_final
-
 # consensus_system_weighted.py — Consenso ponderado por hierarquia de modelos
 
 def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5.0, voto_reverso_ok=None):
@@ -129,7 +63,7 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
             if voto_reverso_ok and name in voto_reverso_ok:
                 v = 9 - v
 
-            if tf.size(v) != 900:
+            if tf.size(v) != 9000:
                 log(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy()} elementos. Ignorado.")
                 continue
 

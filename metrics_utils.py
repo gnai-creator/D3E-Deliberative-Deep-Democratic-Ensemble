@@ -91,51 +91,29 @@ def ensure_numpy(tensor):
     return tensor.numpy() if hasattr(tensor, "numpy") else tensor
 
 def preparar_voto_para_visualizacao(v):
-    v = ensure_numpy(v)
-    log(f"[VISUAL] V.SIZE {v.size}")
-    log(f"[VISUAL] V.SHAPE {v.shape}")
-
-    # Aplica no máximo 2 vezes o argmax
-    if v.ndim >= 3 and v.shape[-1] > 1:
-        v = np.argmax(v, axis=-1)
-        log(f"[VISUAL] V.SHAPE pós-argmax {v.shape}")
-        if v.ndim >= 3 and v.shape[-1] > 1:
-            v = np.argmax(v, axis=-1)
-            log(f"[VISUAL] V.SHAPE pós-argmax (2ª vez) {v.shape}")
-
-    # Remove dimensões de tamanho 1
-    v = np.squeeze(v)
-    log(f"[VISUAL] V.SHAPE pós-squeeze {v.shape}")
-
-    # Se ainda tiver canal singleton (ex: (30,30,1))
-    if v.ndim == 3 and v.shape[-1] == 1:
-        v = v[..., 0]
-        log(f"[VISUAL] V.SHAPE pós-redução canal {v.shape}")
-
-    # Aceita direto se shape for correto
-    if v.shape == (30, 30):
-        log(f"[VISUAL] V.SHAPE final {v.shape}")
-        return v.astype(np.int32)
-
-    # Se tamanho for 900, faz reshape
-    if v.size == 900:
-        v = v.reshape((30, 30)).astype(np.int32)
-        log(f"[VISUAL] V.SHAPE final (reshape) {v.shape}")
-        return v
-
-    # Caso inválido
-    log(f"[VISUAL] ⚠️ Voto inválido com {v.size} elementos. Esperado 900 para shape (30, 30).")
-    return np.zeros((30, 30), dtype=np.int32)
-
+    try:
+        if isinstance(v, tf.Tensor):
+            v = v.numpy()
+        if v.ndim == 5:
+            v = v[0]
+        if v.ndim == 4:
+            v = extrair_matriz_simbolica(v, eixo=-1)
+        elif v.ndim == 3 and v.shape[-1] == 1:
+            v = extrair_matriz_simbolica(v, eixo=-1)
+        elif v.ndim == 3:
+            v = v[:, :, 0]
+        return np.squeeze(v)
+    except Exception as e:
+        log(f"[VISUAL] Erro ao extrair matriz simbólica: {e}")
+        return np.zeros((30, 30))
 
 
 
 def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, task_id=None, saida_dir="debug_plots"):
     try:
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-        import os
+      
         os.makedirs(saida_dir, exist_ok=True)
+
 
         prefixo = f"{task_id}_" if task_id else ""
         fname = f"{prefixo}{block_idx} - votos_iter_{iteracao:02d}.png"
@@ -146,7 +124,15 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
             if v is None:
                 continue
             try:
-                v_cls = preparar_voto_para_visualizacao(v)
+                if isinstance(v, tf.Tensor):
+                    v = v.numpy()
+                if v.ndim == 5:
+                    v = v[0]
+                if v.ndim == 4 or (v.ndim == 3 and v.shape[-1] == 10):
+                    v_cls = extrair_matriz_simbolica(v)
+                else:
+                    v_cls = np.squeeze(v)
+
                 log(f"[VISUAL DEBUG] modelo_{i}: únicos = {np.unique(v_cls)}")
                 votos_classes.append(v_cls)
             except Exception as e:
@@ -154,38 +140,14 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
 
         if not votos_classes:
             log("[VISUAL] Nenhuma predição válida para visualização.")
-            fig, ax = plt.subplots(figsize=(6, 6))
-            try:
-                raw_input = ensure_numpy(input_tensor_outros)
-                if raw_input.ndim == 5:
-                    raw_input = raw_input[0]
-                if raw_input.ndim == 4:
-                    H, W, C, D = raw_input.shape
-                    heatmap = np.zeros((H, W))
-                    for i in range(H):
-                        for j in range(W):
-                            vals, counts = np.unique(raw_input[i, j, :, :], return_counts=True)
-                            probs = counts / np.sum(counts)
-                            entropy = -np.sum(probs * np.log2(probs + 1e-9))
-                            heatmap[i, j] = entropy
-                    sns.heatmap(heatmap, ax=ax, cmap="magma", square=True, cbar=True)
-                    ax.set_title("Entropia dos Pixels (Sem votos válidos)", fontsize=10)
-                else:
-                    ax.text(0.5, 0.5, "Sem votos válidos", ha="center", va="center", fontsize=14)
-                    ax.axis("off")
-            except Exception as e:
-                log(f"[VISUAL] Erro ao preparar fallback input: {e}")
-                ax.text(0.5, 0.5, "Erro de input", ha="center", va="center", fontsize=14)
-                ax.axis("off")
-
-            plt.tight_layout()
-            plt.savefig(filepath)
-            plt.close()
-            log(f"[VISUAL] Salvou fallback visual em {filepath}")
+            # fallback igual ao anterior (entropia ou texto)
             return
 
+        # Prepara visualização do input
         try:
-            input_vis = ensure_numpy(input_tensor_outros)
+            input_vis = input_tensor_outros
+            if isinstance(input_vis, tf.Tensor):
+                input_vis = input_vis.numpy()
             if input_vis.ndim == 5:
                 input_vis = tf.argmax(input_vis[0], axis=-1).numpy()
             elif input_vis.ndim == 4:
@@ -197,17 +159,16 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
                 input_vis = input_vis[..., 0]
 
             input_vis = np.squeeze(input_vis)
-
             if input_vis.size != 900:
                 log(f"[VISUAL] ⚠️ input_vis com {input_vis.size} elementos. Substituindo por zeros.")
                 input_vis = np.zeros((30, 30))
             else:
                 input_vis = input_vis.reshape((30, 30))
-
         except Exception as e:
             log(f"[VISUAL] Erro ao preparar input_vis: {e}")
             input_vis = np.zeros((30, 30))
 
+        # Mapa de consenso
         votos_stack = np.stack(votos_classes, axis=0)
         consenso_map = np.zeros((30, 30), dtype=np.uint8)
         for i in range(30):
@@ -216,6 +177,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
                 if np.max(counts) >= 3:
                     consenso_map[i, j] = 1
 
+        # Plot
         num_modelos = len(votos_classes)
         fig, axes = plt.subplots(1, num_modelos + 2, figsize=(4 * (num_modelos + 2), 4))
 
@@ -248,48 +210,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
         log(f"[ERROR] Falha ao gerar visualização de votos: {e}")
 
 
-def plot_confusion(y_true, y_pred, model_name):
-    y_true_flat = np.array(y_true).reshape(-1)
-    y_pred_flat = np.array(y_pred).reshape(-1)
 
-    if y_true_flat.shape != y_pred_flat.shape:
-        min_len = min(len(y_true_flat), len(y_pred_flat))
-        y_true_flat = y_true_flat[:min_len]
-        y_pred_flat = y_pred_flat[:min_len]
-
-    mask = (y_true_flat != -1) & (y_true_flat != 0)
-    y_true_filtered = y_true_flat[mask]
-    y_pred_filtered = y_pred_flat[mask]
-
-    remaining_classes = sorted(set(y_true_filtered) | set(y_pred_filtered))
-    if len(remaining_classes) == 0:
-        log("[WARN] Nenhuma classe relevante encontrada após filtragem. Nada a plotar.")
-        return
-
-    cm = confusion_matrix(y_true_filtered, y_pred_filtered, labels=remaining_classes)
-
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                xticklabels=remaining_classes, yticklabels=remaining_classes)
-    plt.title("Confusion Matrix (sem classe 0)")
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
-    plt.tight_layout()
-
-    filename = f"images/confusion_matrix_{model_name}.png"
-    plt.savefig(filename)
-    plt.close()
-    log(f"[INFO] Matriz de confusão salva: {filename}")
-
-    report = classification_report(
-        y_true_filtered, y_pred_filtered,
-        labels=remaining_classes, output_dict=True, zero_division=0
-    )
-
-    with open("images/per_class_metrics.json", "w") as f:
-        json.dump(make_serializable(report), f, indent=2)
-
-    log("[INFO] Relatório de métricas por classe salvo (sem classe 0): images/per_class_metrics.json")
 
 def ensure_numpy(x):
     if isinstance(x, tf.Tensor):

@@ -153,26 +153,26 @@ def extrair_classes_validas(y_real, pad_value=0):
 
 
 
-def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.9, idx=0):
-    clippy = GrampyX()
+def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.9, idx=0, grampyx=None):
+    grampy = grampyx
     with open("arc-agi_test_challenges.json") as f:
         test_challenges = json.load(f)
     task_ids = list(test_challenges.keys())
-    clippy.models = []
-    clippy.models = [load_model(i, 0.0005) for i in range(clippy.num_modelos)]
+    # clippy.models = []
+    # clippy.models = [load_model(i, 0.0005) for i in range(clippy.num_modelos)]
     if idx not in todos_os_batches:
         todos_os_batches[idx] = []
 
-        for model_idx in range(clippy.num_modelos):
+        for model_idx in range(grampy.num_modelos):
             batches = load_data_batches(
                 challenges=test_challenges,
-                num_models=clippy.num_modelos,
+                num_models=grampy.num_modelos,
                 task_ids=task_ids,
                 model_idx=model_idx,
                 block_idx=idx
             )
             training_process(
-                models=clippy.models,
+                models=grampy.models,
                 batches=batches,
                 n_model=model_idx,
                 batch_index=idx,
@@ -199,7 +199,7 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             log(f"[GrampyX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
             y_val_test = extrair_classes_validas(X_test, 0)
             log(f"[GRAMPYX] y_val_test: {y_val_test}")
-            resultado = clippy.julgar(
+            resultado = grampy.julgar(
                 x_input=X_test, raw_input=raw_input, block_index=block_idx, task_id=task_id, idx=idx, iteracao=iteracao, Y_val=y_val_test )
 
             consenso = resultado.get("consenso", 0)

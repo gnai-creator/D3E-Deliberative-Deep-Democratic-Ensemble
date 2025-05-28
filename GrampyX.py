@@ -67,20 +67,20 @@ class GrampyX:
         return x, x
 
 
-    def julgar(self, x_input, raw_input, block_index, task_id, idx, iteracao, Y_val):
+    def julgar(self, x_train, y_train, y_val, x_input, raw_input, block_index, task_id, idx, iteracao, Y_val):
         try:
             x_input = tf.expand_dims(tf.convert_to_tensor(x_input, dtype=tf.float32), axis=0)
             x_outros, _ = self.preparar_inputs(x_input)
 
-            # if len(self.models) <= 5:
-            #     self.models.append(load_model(5, 0.0005))  # Suprema Juíza
-            #     self.models.append(load_model(6, 0.0005))  # Promotor
             log(f"[DEBUG] Shape final input para modelos: {x_outros.shape}")
-
             log(f"[GrampyX] Julgando bloco {block_index} — Task {task_id}")
+
             resultados = arc_court_supreme(
-                self.models,
-                x_outros,
+                models=self.models,
+                X_train=x_train,
+                y_train=y_train,
+                y_val=y_val,
+                X_test=x_outros,
                 task_id=task_id,
                 block_idx=block_index,
                 confidence_manager=self.manager,
@@ -89,27 +89,42 @@ class GrampyX:
             )
 
             consenso = resultados.get("consenso", 0.0)
-            y_pred = resultados["class_logits"] if isinstance(resultados, dict) else resultados
-            y_pred_np = y_pred.numpy() if isinstance(y_pred, tf.Tensor) else y_pred
+            y_pred = resultados.get("class_logits") if isinstance(resultados, dict) else resultados
 
-            flat = tf.argmax(y_pred_np, axis=-1).numpy().flatten()
-            label = 1.0 if consenso >= 0.9 else 0.0
-            self.history_X.append(flat)
-            self.history_y.append(label)
+            if isinstance(y_pred, tf.Tensor):
+                try:
+                    flat = tf.argmax(y_pred, axis=-1).numpy().flatten()
+                    if flat.shape[0] != 9000:
+                        raise ValueError(f"[ERRO] Shape inesperado após argmax: {flat.shape}")
+                    label = 1.0 if consenso >= 0.9 else 0.0
+                    self.history_X.append(flat)
+                    self.history_y.append(label)
+                except Exception as e:
+                    log(f"[GrampyX ERRO] Erro ao preparar histórico: {e}")
+            else:
+                log("[GrampyX WARN] y_pred não é tensor. Histórico não será atualizado.")
 
-            self.internal_models.adicionar_voto(y_pred_np, consenso)
+            self.internal_models.adicionar_voto(y_pred.numpy() if isinstance(y_pred, tf.Tensor) else y_pred, consenso)
             self.internal_models.treinar_todos()
 
             if len(self.history_X) >= 10:
-                self.detector.fit(np.array(self.history_X), np.array(self.history_y), epochs=5, verbose=0)
-                log(f"[GrampyX] Detector interno treinado")
+                try:
+                    self.detector.fit(
+                        np.array(self.history_X),
+                        np.array(self.history_y),
+                        epochs=5,
+                        verbose=0
+                    )
+                    log("[GrampyX] Detector interno treinado")
+                except Exception as e:
+                    log(f"[GrampyX ERRO] Falha ao treinar detector: {e}")
 
             self.salvar_estado()
 
             salvar_path = f"images/clippy/JULGAMENTO_{block_index}_{task_id}"
-            plot_prediction_test(raw_input=raw_input, predicted_output=y_pred_np, save_path=salvar_path, pad_value=0)
+            plot_prediction_test(raw_input=raw_input, predicted_output=y_pred, save_path=salvar_path, pad_value=0)
 
-            self.submission_dict.append({"task_id": task_id, "prediction": y_pred_np})
+            self.submission_dict.append({"task_id": task_id, "prediction": y_pred})
             save_debug_result(self.submission_dict, "submission.json")
 
             video_path = gerar_video_time_lapse("votos_visuais", block_index, f"{block_index}_{task_id}.avi")
@@ -121,6 +136,7 @@ class GrampyX:
         except Exception as e:
             log(f"[GrampyX ERRO] Bloco {block_index}: {str(e)}")
             return {"consenso": 0.0}
+
 
 
 # Global cache para manter batches entre chamadas
@@ -199,7 +215,7 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             log(f"[GrampyX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
             y_val_test = extrair_classes_validas(X_test, 0)
             log(f"[GRAMPYX] y_val_test: {y_val_test}")
-            resultado = grampy.julgar(
+            resultado = grampy.julgar(x_train=X_train, y_train=Y_train, y_val=Y_val,
                 x_input=X_test, raw_input=raw_input, block_index=block_idx, task_id=task_id, idx=idx, iteracao=iteracao, Y_val=y_val_test )
 
             consenso = resultado.get("consenso", 0)

@@ -44,6 +44,7 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
     """
     Avalia consenso ponderado usando pesos hierárquicos definidos para cada modelo.
     Cada pixel é decidido com base na soma dos pesos dos modelos que concordam naquele ponto.
+    Aplica veto epistêmico apenas se a Suprema divergir significativamente da maioria (>5% dos pixels).
     """
     votos_stacked = []
     votos_dict = {}
@@ -54,15 +55,12 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
             v = tf.convert_to_tensor(voto)
             log(f"[CONSENSO] DEBUG: {name} - shape inicial: {v.shape}, rank: {v.shape.rank}")
 
-            # Remove canais extras com argmax, se for o caso
             if v.shape.rank >= 4 and v.shape[-1] > 1:
                 v = tf.argmax(v, axis=-1)
                 log(f"[CONSENSO] DEBUG: {name} - shape após argmax: {v.shape}")
             if v.shape.rank == 4 and v.shape[-1] == 1:
                 v = tf.squeeze(v, axis=-1)
                 log(f"[CONSENSO] DEBUG: {name} - shape após squeeze[-1]: {v.shape}")
-
-            # Remove dim de batch se presente
             if v.shape.rank == 4 and v.shape[0] == 1:
                 v = tf.squeeze(v, axis=0)
                 log(f"[CONSENSO] DEBUG: {name} - shape após squeeze[0]: {v.shape}")
@@ -92,9 +90,9 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
         votos_sem_suprema = [tf.cast(v, tf.int64) for k, v in votos_dict.items() if k != "modelo_5" and k != "modelo_6"]
         if votos_sem_suprema:
             votos_moda = tf.cast(tf.round(tf.reduce_mean(tf.stack(votos_sem_suprema), axis=0)), tf.int64)
-            divergencia = tf.reduce_any(tf.not_equal(voto_suprema, votos_moda))
-            if divergencia:
-                log("[CONSENSO] Suprema diverge da maioria — veto epistêmico aplicado.")
+            divergencia_ratio = tf.reduce_mean(tf.cast(tf.not_equal(voto_suprema, votos_moda), tf.float32)).numpy()
+            if divergencia_ratio > 0.05:
+                log(f"[CONSENSO] Suprema diverge da maioria em {divergencia_ratio*100:.2f}% dos pixels — veto epistêmico aplicado.")
                 return 0.0
 
     votos_stacked_tensor = tf.stack(votos_stacked)  # (N, 30, 30, 10)

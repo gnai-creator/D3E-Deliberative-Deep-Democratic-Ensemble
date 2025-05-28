@@ -19,6 +19,10 @@ sns.set(style="whitegrid", font_scale=1.2)
 def ensure_numpy(x):
     return x.numpy() if hasattr(x, "numpy") else x
 
+def extrair_matriz_simbolica(grid_3d, pad_value=0):
+    return grid_3d[:, :, 0].astype(np.int32)
+
+
 def prepare_display_image(img, pad_value, h, w):
     img = ensure_numpy(img)
     # print(f"[DEBUG] prepare_display_image - input shape: {img.shape}")
@@ -91,134 +95,152 @@ def ensure_numpy(tensor):
 
 def preparar_voto_para_visualizacao(v):
     try:
+        # Converte para numpy se necessário
         if isinstance(v, tf.Tensor):
             v = v.numpy()
+
+        # Remove batch dimension
         if v.ndim == 5:
-            v = v[0]
+            v = v[0]  # (30, 30, 10, C) → (30, 30, 10, C)
+        
+        # Caso padrão: logits ou mapa simbólico → extrai classe dominante
         if v.ndim == 4:
             v = extrair_matriz_simbolica(v)
-        elif v.ndim == 3 and v.shape[-1] == 1:
-            v = extrair_matriz_simbolica(v)
+
         elif v.ndim == 3:
-            v = v[:, :, 0]
-        return np.squeeze(v)
+            if v.shape[-1] == 1:
+                v = extrair_matriz_simbolica(v)
+                log(f"[VISUAL] v extraído (shape=3D com 1 canal): {v.shape}")
+            else:
+                v = v[:, :, 0]
+                log(f"[VISUAL] v reduzido manualmente ao canal 0: {v.shape}")
+
+        v = np.squeeze(v)
+
+        if v.shape != (30, 30, 10):
+            log(f"[VISUAL] ⚠️ v final com shape inesperado: {v.shape}")
+
+        return v
+
     except Exception as e:
         log(f"[VISUAL] Erro ao extrair matriz simbólica: {e}")
         return np.zeros((30, 30))
 
 
 def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, task_id=None, saida_dir="debug_plots"):
-    import math
     os.makedirs(saida_dir, exist_ok=True)
-
     prefixo = f"{task_id}_" if task_id else ""
-    fname = f"a.png"
+    fname = "a.png"
     filepath = os.path.join(saida_dir, fname)
 
     votos_classes = []
+    softmax_maxes = []
     for i, v in enumerate(votos):
         if v is None:
-            log(f"[VISUAL] ⚠️ Voto modelo_{i} é None. Ignorado.")
+            log(f"[VISUAL DEBUG] ⚠️ Voto modelo_{i} é None. Ignorado.")
             continue
         try:
             if isinstance(v, tf.Tensor):
                 v = v.numpy()
 
             if v.ndim == 5:
-                v = v[0]  # remove batch
+                v = v[0]  # remove batch dim
 
-            if v.ndim == 3 and v.shape[-1] == 10:
-                v_cls = np.argmax(v, axis=-1).astype(np.int32)
+            if v.ndim == 4 and v.shape[-1] == 10:
+                # Trata como logits: aplica softmax corretamente
+                v_soft = tf.nn.softmax(v.astype(np.float32), axis=-1).numpy()
+                v_cls = np.argmax(v_soft, axis=-1)
+                softmax_maxes.append(np.max(v_soft, axis=-1))
+            elif v.ndim == 3 and v.shape[-1] == 10:
+                v_soft = tf.nn.softmax(v.astype(np.float32), axis=-1).numpy()
+                v_cls = np.argmax(v_soft, axis=-1)
+                softmax_maxes.append(np.max(v_soft, axis=-1))
             elif v.ndim == 3:
-                v_cls = extrair_matriz_simbolica(v)
+                # Já é (30, 30, 10): aplica argmax como última chance
+                v_cls = np.argmax(v, axis=-1)
+                softmax_maxes.append(np.zeros_like(v_cls))
             elif v.ndim == 2:
                 v_cls = v.astype(np.int32)
+                softmax_maxes.append(np.zeros_like(v_cls))
             else:
-                raise ValueError(f"[VISUAL] Formato de voto não suportado: {v.shape}")
+                raise ValueError(f"[VISUAL DEBUG] Formato de voto não suportado: {v.shape}")
 
-            if i == 6:
+            if i == 6:  # Promotor
                 v_cls = 9 - v_cls
 
             log(f"[VISUAL DEBUG] modelo_{i}: únicos = {np.unique(v_cls)} shape={v_cls.shape}")
             votos_classes.append(v_cls)
         except Exception as e:
-            log(f"[VISUAL] Erro ao preparar voto do modelo_{i}: {e}")
+            log(f"[VISUAL DEBUG] Erro ao preparar voto do modelo_{i}: {e}")
 
     if not votos_classes:
-        log("[VISUAL] ❌ Nenhuma predição válida para visualização.")
+        log("[VISUAL DEBUG] ❌ Nenhuma predição válida para visualização.")
         return
 
-    try:
-        input_vis = input_tensor_outros
-        if isinstance(input_vis, tf.Tensor):
-            input_vis = input_vis.numpy()
-
-        if input_vis.ndim == 5:
-            input_vis = input_vis[0]
-
-        if input_vis.ndim == 3 and input_vis.shape[-1] == 10:
+    # === Processa input_tensor_outros ===
+    input_vis = input_tensor_outros
+    if isinstance(input_vis, tf.Tensor):
+        input_vis = input_vis.numpy()
+    if input_vis.ndim == 5:
+        input_vis = input_vis[0]
+    if input_vis.ndim == 4 and input_vis.shape[-1] == 10:
+        input_vis = np.argmax(input_vis, axis=-1).astype(np.int32)
+    elif input_vis.ndim == 3:
+        if input_vis.shape[-1] == 10:
             input_vis = np.argmax(input_vis, axis=-1).astype(np.int32)
-        elif input_vis.ndim == 3:
-            input_vis = extrair_matriz_simbolica(input_vis)
-        elif input_vis.ndim == 2:
-            input_vis = input_vis.astype(np.int32)
         else:
-            input_vis = np.zeros((30, 30))
-
-        if input_vis.size != 900:
-            log(f"[VISUAL] ⚠️ input_vis com {input_vis.size} elementos. Substituindo por zeros.")
-            input_vis = np.zeros((30, 30))
-
-    except Exception as e:
-        log(f"[VISUAL] Erro ao preparar input_vis: {e}")
+            input_vis = input_vis[:, :, 0]
+    elif input_vis.ndim == 2:
+        input_vis = input_vis.astype(np.int32)
+    else:
         input_vis = np.zeros((30, 30))
 
+    # === Entropia ===
     votos_stack = np.stack(votos_classes, axis=0)
     h, w = votos_stack.shape[1:]
     entropia_map = np.zeros((h, w), dtype=np.float32)
-
     for i in range(h):
         for j in range(w):
             _, counts = np.unique(votos_stack[:, i, j], return_counts=True)
             probs = counts / counts.sum()
             entropia_map[i, j] = entropy(probs, base=2)
 
+    # === Plot ===
     num_modelos = len(votos_classes)
-    total_plots = num_modelos + 2
-    cols = 4
-    rows = math.ceil(total_plots / cols)
-
-    fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 4 * rows))
-    axes = axes.flatten()
-
+    fig, axes = plt.subplots(2, num_modelos + 1, figsize=(4 * (num_modelos + 1), 8))
     cargos = {
         0: "Jurada 1", 1: "Jurada 2", 2: "Jurada 3",
         3: "Advogada", 4: "Juíza", 5: "Suprema Juíza", 6: "Promotor"
     }
-    nomes = [cargos.get(i, f"Modelo {i}") for i in range(num_modelos)]
 
-    for ax, voto, nome in zip(axes[:num_modelos], votos_classes, nomes):
-        ax.imshow(voto, cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
-        ax.set_title(f"{nome}", fontsize=10)
-        ax.axis("off")
+    for i in range(num_modelos):
+        nome = cargos.get(i, f"Modelo {i}")
+        voto = votos_classes[i]
+        smap = softmax_maxes[i]
+        axes[0, i].imshow(voto, cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
+        axes[0, i].set_title(f"{nome}\nClasses: {np.unique(voto)}")
+        axes[0, i].axis("off")
 
-    axes[num_modelos].imshow(input_vis, cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
-    axes[num_modelos].set_title("Input", fontsize=10)
-    axes[num_modelos].axis("off")
+        axes[1, i].imshow(smap, cmap="Blues", interpolation="nearest", vmin=0, vmax=1)
+        axes[1, i].set_title(f"Confiança Máx.")
+        axes[1, i].axis("off")
 
-    im = axes[num_modelos + 1].imshow(entropia_map, cmap="inferno", interpolation="nearest", vmin=0, vmax=np.log2(num_modelos))
-    axes[num_modelos + 1].set_title("Entropia por Pixel", fontsize=10)
-    axes[num_modelos + 1].axis("off")
-    fig.colorbar(im, ax=axes[num_modelos + 1], fraction=0.046, pad=0.04)
+    axes[0, -1].imshow(input_vis, cmap="viridis", vmin=0, vmax=9)
+    axes[0, -1].set_title("Input")
+    axes[0, -1].axis("off")
 
-    for i in range(num_modelos + 2, len(axes)):
-        axes[i].axis("off")
+    axes[1, -1].imshow(entropia_map, cmap="inferno", vmin=0, vmax=np.log2(num_modelos))
+    axes[1, -1].set_title("Entropia")
+    axes[1, -1].axis("off")
 
-    plt.suptitle(f"Task {task_id} — Modelos — Iteração {iteracao} — Bloco {block_idx}", fontsize=12)
+    plt.suptitle(f"Task {task_id} — Iteração {iteracao} — Bloco {block_idx}", fontsize=14)
     plt.tight_layout()
     plt.savefig(filepath)
     plt.close()
-    log(f"[VISUAL] ✅ Mapa de votos + entropia salvo em {filepath}")
+    log(f"[VISUAL DEBUG] ✅ Voto visual detalhado salvo em {filepath}")
+
+
+
 
 
 
@@ -248,8 +270,6 @@ def compute_pixelwise_accuracy(expected, predicted, pad_value=0):
     return pixel_accuracy, shape_accuracy
 
 
-def extrair_matriz_simbolica(grid_3d, pad_value=0):
-    return grid_3d[:, :, 0].astype(np.int32)
 
 
 

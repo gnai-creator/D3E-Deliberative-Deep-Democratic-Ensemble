@@ -30,7 +30,7 @@ def safe_total_squeeze(t):
     axes = [i for i in range(shape.rank) if shape[i] == 1]
     return tf.squeeze(t, axis=axes)
 
-def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
+def arc_court_supreme(models,X_train,y_train, y_val, X_test,  task_id=None, block_idx=None,
                       max_cycles=10, tol=0.98, epochs=10, confidence_threshold=0.5,
                       confidence_manager=[], idx=0, pad_value=0, Y_val=None):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
@@ -58,12 +58,8 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
 
     votos_iniciais = {}
     for i in range(5):
-        x_i = prepare_input_for_model(i, X_test)
-        if i in [0, 3]:
-            x_i += tf.random.normal(shape=x_i.shape, mean=0.0, stddev=0.05)
-            log(f"[DEBUG] Ruído adicionado ao modelo_{i} ({'JURADA 1' if i == 0 else 'ADVOGADA'})")
-        log(f"[DEBUG] modelo_{i} input — shape: {x_i.shape}, min: {tf.reduce_min(x_i).numpy()}, max: {tf.reduce_max(x_i).numpy()}")
-        votos_iniciais[f"modelo_{i}"] = modelos[i](x_i, training=False)
+        log(f"[DEBUG] modelo_{i} input — shape: {X_train.shape}, min: {tf.reduce_min(X_train).numpy()}, max: {tf.reduce_max(X_train).numpy()}")
+        votos_iniciais[f"modelo_{i}"] = modelos[i](X_train, training=False)
 
     votos_models = votos_iniciais.copy()
 
@@ -102,14 +98,26 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
             log("[JURADOS] Modo teimoso ativado — nenhum modelo será retreinado no primeiro ciclo.")
         log(f"[CICLO] Iteração {iter_count}")
 
-        for i in range(5, 7):
-            x_i = prepare_input_for_model(i, X_test)
-            votos_models[f"modelo_{i}"] = modelos[i](x_i, training=False)
+        # Atualiza os votos de todos os modelos antes da visualização
+        for i in range(7):
+            if i >= 4:
+                x_i = prepare_input_for_model(i, X_test)
+                votos_models[f"modelo_{i}"] = modelos[i](x_i, training=False)
+            else:
+                x_i = prepare_input_for_model(i, X_train)
+                votos_models[f"modelo_{i}"] = modelos[i](x_i, training=False)
 
-        # if iter_count == 0:
-        #     gerar_visualizacao_votos(votos_iniciais, X_test, idx, block_idx, task_id)
-        # else:
-        gerar_visualizacao_votos(votos_models=votos_models, input_tensor_outros=X_test, iteracao=iter_count,idx=idx , block_idx=block_idx, task_id=task_id)
+        # Agora sim, visualiza
+        gerar_visualizacao_votos(
+            votos_models=votos_models,
+            input_tensor_outros=X_test,
+            input_tensor_train=X_train,
+            iteracao=iter_count,
+            idx=idx,
+            block_idx=block_idx,
+            task_id=task_id
+        )
+
         if iter_count > 0:
             for i in range(5):
                 x_i = prepare_input_for_model(i, X_test)
@@ -130,26 +138,21 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
 
         treinar_modelo_com_y_sparse(modelos[5], x_suprema, y_sup, epochs=epochs)
 
-        for i in range(5):
-            x_i = prepare_input_for_model(i, X_test)
-            y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1, output_type=tf.int64)
-            y_pred = tf.expand_dims(y_pred, axis=-1)
-            y_pred_corrigido = filtrar_classes_respeitando_valores(y_pred, classes_validas, pad_value=pad_value)
-            y_sup_argmax = tf.expand_dims(tf.argmax(y_sup, axis=-1), axis=-1)
-            y_pred_argmax = tf.argmax(y_pred_corrigido, axis=-1)
+        # for i in range(5):
+        #     x_i = prepare_input_for_model(i, X_test)
+        #     y_pred = tf.argmax(modelos[i](x_i, training=False), axis=-1, output_type=tf.int64)
+        #     y_pred = tf.expand_dims(y_pred, axis=-1)
+        #     y_pred_corrigido = filtrar_classes_respeitando_valores(y_pred, classes_validas, pad_value=pad_value)
+        #     y_sup_argmax = tf.expand_dims(tf.argmax(y_sup, axis=-1), axis=-1)
+        #     y_pred_argmax = tf.argmax(y_pred_corrigido, axis=-1)
 
-            papel = f"JURADA_{i}" if i in [0, 1, 2] else "ADVOGADO" if i == 3 else "JUIZ"
+        #     papel = f"JURADA_{i}" if i in [0, 1, 2] else "ADVOGADO" if i == 3 else "JUIZ"
 
-            match = tf.reduce_mean(
-                tf.cast(tf.equal(y_pred_argmax, tf.squeeze(y_sup_argmax, axis=-1)), tf.float32)
-            ).numpy()
-            log(f"[DEBUG] Match modelo_{i} vs Suprema: {match:.3f}")
-            if not skip_reeducacao and match < 0.99:
-                log(f"[REEDUCAÇÃO] Retreinando modelo_{i} ({papel}) — match: {match:.3f}, max class: {tf.reduce_max(y_pred_argmax).numpy()}")
-                log(f"[DEBUG] y_sup valores únicos antes do treino modelo_{i}: {np.unique(tf.argmax(y_sup, axis=-1).numpy())}")
-                treinar_modelo_com_y_sparse(modelos[i], x_i, y_sup, epochs=epochs)
-            else:
-                log(f"[ALINHADO] {papel} (modelo_{i}) está em acordo com Suprema ({match:.3f})")
+        #     match = tf.reduce_mean(
+        #         tf.cast(tf.equal(y_pred_argmax, tf.squeeze(y_sup_argmax, axis=-1)), tf.float32)
+        #     ).numpy()
+        #     log(f"[DEBUG] Match modelo_{i} vs Suprema: {match:.3f}")
+     
 
         y_antitese = inverter_classes_respeitando_valores(y_sup, classes_validas, pad_value=pad_value)
         log("[PROMOTOR] Propondo antítese ao parecer da Suprema.")

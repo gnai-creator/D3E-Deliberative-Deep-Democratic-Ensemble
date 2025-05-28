@@ -95,36 +95,48 @@ def prepare_input_for_model(model_index, base_input):
     return x
 
 
-
-
-
-def gerar_visualizacao_votos(votos_models, input_tensor_outros, iteracao, idx, block_idx, task_id):
+def gerar_visualizacao_votos(votos_models, input_tensor_outros, input_tensor_train, iteracao, idx, block_idx, task_id):
     votos_models = garantir_dict_votos_models(votos_models)
     votos_visuais = []
+
     try:
-        for v in votos_models.values():
-            # log(f"[DEBUG] preparando voto: type={type(v)}, shape={getattr(v, 'shape', 'indefinido')}")
+        for i, (k, v) in enumerate(votos_models.items()):
             resultado = preparar_voto_para_visualizacao(v)
             if resultado is not None:
                 votos_visuais.append(resultado)
     except Exception as e:
         log(f"[VISUAL] Erro ao processar votos_models: {e}")
-    try:
-        input_tensor_outros = ensure_numpy(input_tensor_outros)
-        if input_tensor_outros.ndim == 5:
-            input_visual = input_tensor_outros[0, :, :, 0, 0]
-        elif input_tensor_outros.ndim == 4:
-            input_visual = input_tensor_outros[0, :, :, 0]
-        elif input_tensor_outros.ndim == 3:
-            input_visual = input_tensor_outros[0, :, :]
-        else:
-            raise ValueError("Shape inesperado")
-        if input_visual.ndim != 2:
-            raise ValueError("input_visual nao e 2D")
-    except Exception as e:
-        log(f"[VISUAL] input_visual com shape inesperado ({getattr(input_tensor_outros, 'shape', 'N/A')}): {e}")
-        input_visual = tf.zeros((30, 30), dtype=tf.int32)
-    salvar_voto_visual(votos=votos_visuais, iteracao=iteracao, idx=idx, block_idx=block_idx, input_tensor_outros=input_visual, task_id=task_id)
+
+    def extrair_input_visual(tensor, nome=""):
+        try:
+            tensor = ensure_numpy(tensor)
+            if tensor.ndim == 5:
+                return tensor[0, :, :, 0, 0]
+            elif tensor.ndim == 4:
+                return tensor[0, :, :, 0]
+            elif tensor.ndim == 3:
+                return tensor[0, :, :]
+            else:
+                raise ValueError(f"{nome} com shape inesperado: {tensor.shape}")
+        except Exception as e:
+            log(f"[VISUAL] erro ao extrair {nome}: {e}")
+            return tf.zeros((30, 30), dtype=tf.int32)
+
+    input_visual_train = extrair_input_visual(input_tensor_train, "input_tensor_train")
+    input_visual_test = extrair_input_visual(input_tensor_outros, "input_tensor_outros")
+
+    # Junta as duas imagens na vertical
+    input_visual = np.vstack([input_visual_train, input_visual_test])
+
+    salvar_voto_visual(
+        votos=votos_visuais,
+        iteracao=iteracao,
+        idx=idx,
+        block_idx=block_idx,
+        input_tensor_outros=input_visual,
+        task_id=task_id
+    )
+
 
 def treinar_promotor_inicial(models, input_tensor_outros, votos_models, epochs):
     votos_models = garantir_dict_votos_models(votos_models)

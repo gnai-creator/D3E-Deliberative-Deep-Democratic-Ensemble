@@ -14,7 +14,12 @@ MODEL_CONFIGS = {
     6: (SimuV1, 256)    # promotor
 }
 
+_model_cache = {}
+
 def load_model(index, learning_rate):
+    if index in _model_cache:
+        return _model_cache[index]
+
     if index not in MODEL_CONFIGS:
         raise ValueError(f"[FATAL] Índice de modelo inválido: {index}")
 
@@ -22,9 +27,9 @@ def load_model(index, learning_rate):
     model = model_class(hidden_dim=hidden_dim)
     model = compile_model(model, lr=learning_rate)
 
-    # Chamada inicial com dummy_input para forçar construção
     dummy_shape = (1, 30, 30, 10, 40) if index >= 4 else (1, 30, 30, 10, 4)
     dummy_input = tf.zeros(dummy_shape, dtype=tf.float32)
     _ = model(dummy_input, training=False)
 
+    _model_cache[index] = model
     return model

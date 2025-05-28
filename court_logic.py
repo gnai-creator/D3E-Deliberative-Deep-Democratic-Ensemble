@@ -30,6 +30,22 @@ def safe_total_squeeze(t):
     axes = [i for i in range(shape.rank) if shape[i] == 1]
     return tf.squeeze(t, axis=axes)
 
+def garantir_output_shape(model, dummy_shape):
+    if not hasattr(model, "_output_shape_cached"):
+        try:
+            dummy = tf.zeros(dummy_shape, dtype=tf.float32)
+            output = model(dummy, training=False)
+            model._output_shape_cached = output.shape
+            # log(f"[DEBUG] {model.name} ativado com dummy_input -> shape: {output.shape}")
+        except Exception as e:
+            log(f"[ERRO] garantir_output_shape: {e}")
+            raise
+    return model._output_shape_cached
+
+
+
+
+
 def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
                       max_cycles=10, tol=0.98, epochs=10, confidence_threshold=0.5,
                       confidence_manager=[], idx=0, pad_value=0, Y_val=None):
@@ -42,15 +58,15 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
     x_suprema = prepare_input_for_model(5, X_test)
     x_promotor = prepare_input_for_model(6, X_test)
 
-    for i, x_input in zip([4, 5, 6], [x_juiza, x_suprema, x_promotor]):
+    # Força chamada com dummy_input para todos os modelos
+    for i, modelo in enumerate(modelos):
+        input_channels = 40 if i >= 4 else 4
+        dummy_input = tf.zeros((1, 30, 30, 10, input_channels), dtype=tf.float32)
         try:
-            output_dim = 40 if x_input.shape[-1] == 40 else 4
-            dummy_input = tf.random.uniform((1, 30, 30, 10, output_dim), dtype=tf.float32)
-            log(f"[DEBUG] shape dummy_input modelo_{i}: {dummy_input.shape}")
-            output_sample = modelos[i](dummy_input, training=False)
-            log(f"[DEBUG] modelo_{i} ativado com output shape: {output_sample.shape}")
+            _ = modelo(dummy_input, training=False)
+            log(f"[DEBUG] Modelo_{i} inicializado com dummy_input.")
         except Exception as e:
-            log(f"[ERRO] Falha ao ativar modelo_{i} com dummy_input: {e}")
+            log(f"[ERRO] Modelo_{i} falhou na inicialização: {e}")
 
     for i in range(7):
         x_i = prepare_input_for_model(i, X_test)
@@ -61,28 +77,28 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
     classes_validas = extrair_classes_validas(X_test, pad_value=pad_value)
 
     y_sup = gerar_padrao_simbolico(X_test)
-    y_sup = safe_total_squeeze(y_sup)
-    y_sup = tf.cast(y_sup, tf.int32)
-    y_sup = tf.expand_dims(y_sup, axis=0)
-    y_sup = tf.expand_dims(y_sup, axis=-1)
+    # y_sup = safe_total_squeeze(y_sup)
+    # y_sup = tf.cast(y_sup, tf.int32)
+    # y_sup = tf.expand_dims(y_sup, axis=0)
+    # y_sup = tf.expand_dims(y_sup, axis=-1)
 
-    num_classes_juizas = modelos[4].output_shape[-1]
-    num_classes_suprema = modelos[5].output_shape[-1]
-    num_classes_promotor = modelos[6].output_shape[-1]
+    num_classes_juizas = garantir_output_shape(modelos[4], (1, 30, 30, 10, 40))[-1]
+    num_classes_suprema = garantir_output_shape(modelos[5], (1, 30, 30, 10, 40))[-1]
+    num_classes_promotor = garantir_output_shape(modelos[6], (1, 30, 30, 10, 40))[-1]
 
-    y_suprema = tf.one_hot(y_sup, depth=num_classes_suprema, axis=-1)
-    y_suprema = tf.cast(y_suprema, tf.float32)
+    # y_suprema = tf.one_hot(y_sup, depth=num_classes_suprema, axis=-1)
+    # y_suprema = tf.cast(y_suprema, tf.float32)
 
-    log(f"[DEBUG] Suprema valores únicos: {tf.unique(tf.reshape(tf.argmax(y_suprema, axis=-1), [-1]))[0].numpy()}")
-    log(f"[DEBUG] y_suprema (simbolico) shape: {y_suprema.shape}")
+    # log(f"[DEBUG] Suprema valores únicos: {tf.unique(tf.reshape(tf.argmax(y_suprema, axis=-1), [-1]))[0].numpy()}")
+    # log(f"[DEBUG] y_suprema (simbolico) shape: {y_suprema.shape}")
 
-    treinar_modelo_com_y_sparse(modelos[5], x_suprema, y_suprema, epochs=epochs * 3)
+    treinar_modelo_com_y_sparse(modelos[5], x_suprema, y_sup, epochs=epochs * 3)
 
     y_antitese = inverter_classes_respeitando_valores(tf.squeeze(y_sup, axis=0), classes_validas, pad_value=pad_value)
-    y_antitese = tf.expand_dims(y_antitese, axis=0)
-    y_antitese = tf.expand_dims(y_antitese, axis=-1)
-    y_antitese = tf.one_hot(y_antitese, depth=num_classes_promotor, axis=-1)
-    y_antitese = tf.cast(y_antitese, tf.float32)
+    y_antitese = tf.expand_dims(y_antitese, axis=0)  # [1, H, W, D]
+    y_antitese = tf.expand_dims(y_antitese, axis=-1) # [1, H, W, D, 1]
+    y_antitese = tf.squeeze(y_antitese, axis=-1)     # [1, H, W, D]  ← isso que a função espera
+
 
     log("[PROMOTOR] Treinando promotor com antítese da Suprema.")
     treinar_modelo_com_y_sparse(modelos[6], x_promotor, y_antitese, epochs=epochs)
@@ -101,16 +117,19 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
         gerar_visualizacao_votos(votos_models, X_test, idx, block_idx, task_id)
 
         juradas_preds = [votos_models[f"modelo_{i}"] for i in range(3)]
-        juradas_classes = tf.stack([tf.argmax(p, axis=-1, output_type=tf.int64) for p in juradas_preds], axis=0)
+        juradas_classes = tf.stack(
+            [tf.squeeze(tf.argmax(p, axis=-1, output_type=tf.int64), axis=0) for p in juradas_preds],
+            axis=0
+        )
         y_sup = pixelwise_mode(juradas_classes)
-        y_sup = safe_total_squeeze(y_sup)
-        y_sup = tf.cast(y_sup, tf.int32)
-        y_sup = tf.expand_dims(y_sup, axis=0)
-        y_sup = tf.expand_dims(y_sup, axis=-1)
-        y_suprema = tf.one_hot(y_sup, depth=num_classes_juizas, axis=-1)
-        y_suprema = tf.cast(y_suprema, tf.float32)
+        # y_sup = safe_total_squeeze(y_sup)
+        # y_sup = tf.cast(y_sup, tf.int32)
+        # y_sup = tf.expand_dims(y_sup, axis=0)
+        # y_sup = tf.expand_dims(y_sup, axis=-1)
+        # y_suprema = tf.one_hot(y_sup, depth=num_classes_juizas, axis=-1)
+        # y_suprema = tf.cast(y_suprema, tf.float32)
 
-        treinar_modelo_com_y_sparse(modelos[5], x_suprema, y_suprema, epochs=epochs)
+        treinar_modelo_com_y_sparse(modelos[5], x_suprema, y_sup, epochs=epochs)
 
         for i in range(5):
             x_i = prepare_input_for_model(i, X_test)
@@ -125,10 +144,10 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
                 log(f"[ALINHADO] Modelo_{i} está em acordo com Suprema ({match:.3f})")
 
         y_antitese = inverter_classes_respeitando_valores(tf.squeeze(y_sup, axis=0), classes_validas, pad_value=pad_value)
-        y_antitese = tf.expand_dims(y_antitese, axis=0)
-        y_antitese = tf.expand_dims(y_antitese, axis=-1)
-        y_antitese = tf.one_hot(y_antitese, depth=num_classes_promotor, axis=-1)
-        y_antitese = tf.cast(y_antitese, tf.float32)
+        y_antitese = tf.expand_dims(y_antitese, axis=0)  # [1, H, W, D]
+        y_antitese = tf.expand_dims(y_antitese, axis=-1) # [1, H, W, D, 1]
+        y_antitese = tf.squeeze(y_antitese, axis=-1)     # [1, H, W, D]  ← isso que a função espera
+
 
         log("[PROMOTOR] Propondo antítese ao parecer da Suprema.")
         treinar_modelo_com_y_sparse(modelos[6], x_promotor, y_antitese, epochs=epochs)

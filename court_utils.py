@@ -5,7 +5,7 @@ from metrics_utils import salvar_voto_visual, preparar_voto_para_visualizacao
 from runtime_utils import log
 from metrics_utils import ensure_numpy
 from models_loader import load_model
-
+import sys
 # Converte logits para rótulos se necessário
 def normalizar_y_para_sparse(y):
     log(f"[DEBUG] Y SHAPE: {y.shape}")
@@ -24,14 +24,35 @@ def garantir_dict_votos_models(votos_models):
         return {}
 
 def pixelwise_mode(stack):
-    stack = tf.transpose(stack, [1, 2, 3, 0])
-    flat = tf.reshape(stack, (-1, stack.shape[-1]))
+    """
+    Calcula a moda (valor mais frequente) por pixel ao longo do eixo 0.
+    Espera entrada com shape (N, 30, 30, 10)
+    Retorna tensor com shape (1, 30, 30, 10)
+    """
+    log(f"[DEBUG] pixelwise_mode - shape de entrada original: {stack.shape}")
+
+    if tf.rank(stack) != 4:
+        raise ValueError(f"[pixelwise_mode] Tensor esperado com rank=4, mas recebeu shape={stack.shape}")
+
+    # Transpõe de (N, H, W, D) → (H, W, D, N)
+    stack = tf.transpose(stack, [1, 2, 3, 0])  # (30, 30, 10, N)
+
+    # Achata para (H * W * D, N)
+    flat = tf.reshape(stack, (-1, stack.shape[-1]))  # (9000, N)
+
+    # Moda por voxel
     def pixel_mode(x):
         with tf.device("/CPU:0"):
             bincount = tf.math.bincount(tf.cast(x, tf.int32), minlength=10)
         return tf.argmax(bincount)
+
     moda_flat = tf.map_fn(pixel_mode, flat, fn_output_signature=tf.int64)
-    return tf.reshape(moda_flat, (1, 30, 30))
+
+    # Reshape correto: (1, 30, 30, 10)
+    return tf.reshape(moda_flat, (1, 30, 30, 10))
+
+
+
 
 def pad_or_truncate_channels(tensor, target_channels=40):
     """
@@ -53,10 +74,10 @@ def pad_or_truncate_channels(tensor, target_channels=40):
 
 def prepare_input_for_model(model_index, base_input):
     # Garante que input seja 4D antes de truncar canais
-    log(f"[DEBUG] PREPARE_INPUT_FOR_MODEL BASEINPUT SHAPE : {base_input.shape}")
-    log(f"[DEBUG] PREPARE_INPUT_FOR_MODEL MODEL INDEX : {model_index}")
-    if len(base_input.shape) == 5:
-        base_input = safe_total_squeeze(base_input)  # remove eixo de tempo (ex: 1)
+    # log(f"[DEBUG] PREPARE_INPUT_FOR_MODEL BASEINPUT SHAPE : {base_input.shape}")
+    # log(f"[DEBUG] PREPARE_INPUT_FOR_MODEL MODEL INDEX : {model_index}")
+    # if len(base_input.shape) == 5:
+    #     base_input = safe_total_squeeze(base_input)  # remove eixo de tempo (ex: 1)
     
     # Aplica truncagem/padding
     if model_index in [0, 1, 2, 3]:
@@ -64,11 +85,11 @@ def prepare_input_for_model(model_index, base_input):
     else:
         x = pad_or_truncate_channels(base_input, 40)
 
-    # Agora adiciona eixo do tempo
-    if len(x.shape) == 4:
-        x = tf.expand_dims(x, axis=-2)
-    elif len(x.shape) != 5:
-        raise ValueError(f"[SECURITY] Entrada inválida para modelo_{model_index}: {x.shape}")
+    # # Agora adiciona eixo do tempo
+    # if len(x.shape) == 4:
+    #     x = tf.expand_dims(x, axis=-2)
+    # elif len(x.shape) != 5:
+    #     raise ValueError(f"[SECURITY] Entrada inválida para modelo_{model_index}: {x.shape}")
 
     log(f"[DEBUG] Modelo_{model_index} - shape final antes de entrar no modelo: {x.shape}")
     return x
@@ -271,21 +292,41 @@ def gerar_padrao_simbolico(x_input):
 
 
 def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
-    """Treina modelo garantindo que y_input esteja no formato correto."""
-    if y_input.shape.rank == 5:
-        y_sparse = tf.argmax(y_input, axis=-1)  # (B, H, W, C)
-    elif y_input.shape.rank == 4 and y_input.shape[-1] > 1:
-        y_sparse = tf.argmax(y_input, axis=-1)
-    else:
-        y_sparse = tf.squeeze(y_input)
+    """
+    Treina o modelo com:
+    - x_input: (1, 30, 30, 10, 40)
+    - y_input: (1, 30, 30, 10) com inteiros
+    """
+    # ============ x_input ============
+    if isinstance(x_input, np.ndarray):
+        x_input = tf.convert_to_tensor(x_input)
+    if x_input.shape != (1, 30, 30, 10, 40):
+        raise ValueError(f"[ERRO] x_input esperado com shape (1, 30, 30, 10, 40), mas recebeu {x_input.shape}")
 
-    # Garante que a forma esteja compatível
-    tf.debugging.assert_shapes([
-        (x_input, ('N', 30, 30, 10, None)),
-        (y_sparse, ('N', 30, 30, 10)),
-    ], message="Shape incompatível entre X e Y")
+    # ============ y_input ============
+    if isinstance(y_input, np.ndarray):
+        y_input = tf.convert_to_tensor(y_input)
 
-    log(f"[DEBUG] x_input shape: {x_input.shape}")
-    log(f"[DEBUG] y_sparse shape: {y_sparse.shape}")
+    # Corrige y_input de (1, 1, 30, 30, 1) para (1, 30, 30, 10)
+    if y_input.shape == (1, 1, 30, 30, 1):
+        y_input = tf.squeeze(y_input, axis=1)   # (1, 30, 30, 1)
+        y_input = tf.squeeze(y_input, axis=-1)  # (1, 30, 30)
+        y_input = tf.expand_dims(y_input, axis=-1)           # (1, 30, 30, 1)
+        y_input = tf.tile(y_input, multiples=[1, 1, 1, 10])   # (1, 30, 30, 10)
+    elif y_input.shape != (1, 30, 30, 10):
+        raise ValueError(f"[ERRO] y_input esperado com shape (1, 30, 30, 10), mas recebeu {y_input.shape}")
 
-    modelo.fit(x=x_input, y=y_sparse, epochs=epochs, verbose=0)
+    # ============ Treinamento ============
+    log(f"[DEBUG] x_input shape final: {x_input.shape}")
+    log(f"[DEBUG] y_input shape final: {y_input.shape}")
+
+    modelo.fit(x=x_input, y=y_input, epochs=epochs, verbose=0)
+
+
+
+
+
+
+
+
+

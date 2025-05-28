@@ -59,13 +59,13 @@ class GrampyX:
         log("[GrampyX] Estado salvo")
 
     def preparar_inputs(self, x):
-        if x.shape[-1] == 40:
-            x_juiz = x
-            x_outros = x
-        else:
-            x_outros = x
-            x_juiz = tf.zeros((1, 30, 30, 10, 40), dtype=tf.float32)
-        return x_outros, x_juiz
+        if x.shape[-1] != 40:
+            log(f"[WARN] Input com shape errado: {x.shape}, ajustando para (1, 30, 30, 10, 40)")
+            # Preenche o restante com zeros
+            pad = tf.zeros((x.shape[0], x.shape[1], x.shape[2], x.shape[3], 40 - x.shape[-1]), dtype=x.dtype)
+            x = tf.concat([x, pad], axis=-1)
+        return x, x
+
 
     def julgar(self, x_input, raw_input, block_index, task_id, idx, iteracao, Y_val):
         try:
@@ -74,6 +74,7 @@ class GrampyX:
 
             if len(self.models) <= 5:
                 self.models.append(load_model(5, 0.0005))  # Suprema Juíza
+            log(f"[DEBUG] Shape final input para modelos: {x_outros.shape}")
 
             log(f"[GrampyX] Julgando bloco {block_index} — Task {task_id}")
             resultados = arc_court_supreme(

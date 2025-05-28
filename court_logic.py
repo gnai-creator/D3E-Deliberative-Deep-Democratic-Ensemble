@@ -30,21 +30,6 @@ def safe_total_squeeze(t):
     axes = [i for i in range(shape.rank) if shape[i] == 1]
     return tf.squeeze(t, axis=axes)
 
-def garantir_output_shape(model, dummy_shape):
-    if not hasattr(model, "_output_shape_cached"):
-        try:
-            dummy = tf.zeros(dummy_shape, dtype=tf.float32)
-            output = model(dummy, training=False)
-            model._output_shape_cached = output.shape
-            # log(f"[DEBUG] {model.name} ativado com dummy_input -> shape: {output.shape}")
-        except Exception as e:
-            log(f"[ERRO] garantir_output_shape: {e}")
-            raise
-    return model._output_shape_cached
-
-
-
-
 
 def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
                       max_cycles=10, tol=0.98, epochs=10, confidence_threshold=0.5,
@@ -58,10 +43,8 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
     x_suprema = prepare_input_for_model(5, X_test)
     x_promotor = prepare_input_for_model(6, X_test)
 
-    # Força chamada com dummy_input para todos os modelos
     for i, modelo in enumerate(modelos):
-        input_channels = 40 if i >= 4 else 4
-        dummy_input = tf.zeros((1, 30, 30, 10, input_channels), dtype=tf.float32)
+        dummy_input = tf.zeros((1, 30, 30, 10, 40), dtype=tf.float32)
         try:
             _ = modelo(dummy_input, training=False)
             log(f"[DEBUG] Modelo_{i} inicializado com dummy_input.")

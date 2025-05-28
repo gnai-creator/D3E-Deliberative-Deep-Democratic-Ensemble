@@ -81,7 +81,7 @@ def prepare_input_for_model(model_index, base_input):
     
     # Aplica truncagem/padding
     if model_index in [0, 1, 2, 3]:
-        x = pad_or_truncate_channels(base_input, 4)
+        x = pad_or_truncate_channels(base_input, 40)
     else:
         x = pad_or_truncate_channels(base_input, 40)
 

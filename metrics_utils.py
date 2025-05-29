@@ -333,7 +333,13 @@ def plot_prediction_debug(
 
     # Extrai o canal único para visualização
     expected_2d = expected_output[:, :, 0]
-    predicted_2d = predicted_output[:, :, 0]
+    if predicted_output.ndim == 3:
+        predicted_2d = predicted_output[:, :, 0]
+    elif predicted_output.ndim == 2:
+        predicted_2d = predicted_output
+    else:
+        raise ValueError(f"[ERRO] predicted_output com shape inesperado: {predicted_output.shape}")
+
 
     if expected_2d.shape != predicted_2d.shape:
         log(f"[ERROR] Shape incompatível: predicted={predicted_2d.shape}, expected={expected_2d.shape}")

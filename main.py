@@ -8,15 +8,21 @@ from GrampyX import rodar_deliberacao_com_condicoes, GrampyX
 from models_loader import load_model
 from runtime_utils import log
 
-mixed_precision.set_global_policy("mixed_float16")
+# tf.config.run_functions_eagerly(True)
+# mixed_precision.set_global_policy("mixed_float16")
+# tf.debugging.set_log_device_placement(True)
+# tf.debugging.enable_check_numerics()
 
 if __name__ == "__main__":
+    import os
+    import sys
     tf.random.set_seed(42)
     np.random.seed(42)
     random.seed(42)
     os.environ["TF_DETERMINISTIC_OPS"] = "1"
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
+    # sys.stdout = open(os.devnull, 'w')
+    # sys.stderr = open(os.devnull, 'w')
     idx = 0
     grampyx_instance = GrampyX()
 

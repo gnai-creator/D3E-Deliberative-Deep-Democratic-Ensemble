@@ -121,18 +121,22 @@ def training_process(
 
     for cycle in range(cycles):
         log(f"Cycle {cycle} — Modelo {n_model}")
-        model.fit(
-            x=X_train,
-            y=Y_train,
-            validation_data=(X_val_masked, Y_val_masked),
-            batch_size=batch_size,
-            epochs=epochs,
-            callbacks=[
-                ReduceLROnPlateau(monitor="val_loss", factor=factor, patience=2, min_lr=rl_lr),
-                # EarlyStopping(monitor="val_loss", patience=patience, restore_best_weights=True)
-            ],
-            verbose=1,
-        )
+        try:
+            model.fit(
+                x=X_train,
+                y=Y_train,
+                validation_data=(X_val_masked, Y_val_masked),
+                batch_size=batch_size,
+                epochs=epochs,
+                callbacks=[
+                    ReduceLROnPlateau(monitor="val_loss", factor=factor, patience=2, min_lr=rl_lr),
+                    # EarlyStopping(monitor="val_loss", patience=patience, restore_best_weights=True)
+                ],
+                verbose=0,
+            )
+        except Exception as e:
+            log(f"[ERROR DETECTADO] {e}")
+            traceback.print_exc()
 
         try:
             preds = model.predict(X_val)

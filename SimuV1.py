@@ -1,71 +1,67 @@
 import tensorflow as tf
+from tensorflow.keras import layers, Model
 
-class SimuV1(tf.keras.Model):
-    def __init__(self, hidden_dim=32):
-        super().__init__()
+class SimuV1(Model):
+    def __init__(self, hidden_dim=16, output_channels=1):
+        super(SimuV1, self).__init__()
 
-        self.conv1 = tf.keras.layers.Conv3D(hidden_dim, kernel_size=3, padding="same", activation="relu")
-        self.bn1 = tf.keras.layers.BatchNormalization()
-        self.drop1 = tf.keras.layers.Dropout(0.1)
-        self.pool1 = tf.keras.layers.MaxPool3D(pool_size=(2, 2, 2), padding="same")
+        self.conv1 = layers.Conv3D(hidden_dim, (3, 3, 3), padding='same', activation='relu')
+        self.bn1 = layers.BatchNormalization()
+        self.drop1 = layers.Dropout(0.2)
+        self.pool1 = layers.MaxPooling3D(pool_size=(1, 2, 2), padding='same')
 
-        self.conv2 = tf.keras.layers.Conv3D(hidden_dim * 2, kernel_size=3, padding="same", activation="relu")
-        self.bn2 = tf.keras.layers.BatchNormalization()
-        self.drop2 = tf.keras.layers.Dropout(0.1)
-        self.pool2 = tf.keras.layers.MaxPool3D(pool_size=(2, 2, 1), padding="same")
+        self.conv2 = layers.Conv3D(hidden_dim * 2, (3, 3, 3), padding='same', activation='relu')
+        self.bn2 = layers.BatchNormalization()
+        self.drop2 = layers.Dropout(0.3)
+        self.pool2 = layers.MaxPooling3D(pool_size=(1, 2, 2), padding='same')
 
-        self.conv3 = tf.keras.layers.Conv3D(hidden_dim * 4, kernel_size=3, padding="same", activation="relu")
-        self.bn3 = tf.keras.layers.BatchNormalization()
-        self.drop3 = tf.keras.layers.Dropout(0.1)
+        self.conv3 = layers.Conv3D(hidden_dim * 4, (3, 3, 3), padding='same', activation='relu')
+        self.bn3 = layers.BatchNormalization()
+        self.drop3 = layers.Dropout(0.4)
 
-        self.up1 = tf.keras.layers.UpSampling3D(size=(2, 2, 1))
-        self.conv4 = tf.keras.layers.Conv3D(hidden_dim * 2, kernel_size=3, padding="same", activation="relu")
-        self.bn4 = tf.keras.layers.BatchNormalization()
-        self.drop4 = tf.keras.layers.Dropout(0.1)
+        self.up1 = layers.UpSampling3D(size=(1, 2, 2))
+        self.conv4 = layers.Conv3D(hidden_dim * 2, (3, 3, 3), padding='same', activation='relu')
+        self.bn4 = layers.BatchNormalization()
+        self.drop4 = layers.Dropout(0.3)
 
-        self.up2 = tf.keras.layers.UpSampling3D(size=(2, 2, 1))
-        self.conv5 = tf.keras.layers.Conv3D(hidden_dim, kernel_size=3, padding="same", activation="relu")
-        self.bn5 = tf.keras.layers.BatchNormalization()
-        self.drop5 = tf.keras.layers.Dropout(0.1)
+        self.up2 = layers.UpSampling3D(size=(1, 2, 2))
+        self.conv5 = layers.Conv3D(hidden_dim, (3, 3, 3), padding='same', activation='relu')
+        self.bn5 = layers.BatchNormalization()
+        self.drop5 = layers.Dropout(0.2)
 
-        self.crop = tf.keras.layers.Cropping3D(((1, 1), (1, 1), (0, 0)))  # Para garantir 30x30 após upsampling
-
+        self.crop = layers.Cropping3D(cropping=((0, 0), (2, 2), (2, 2)))
         self.conv_reduce_depth = tf.keras.layers.Conv3D(hidden_dim, kernel_size=(1, 1, 1), padding="same", activation="relu")
+        self.output_layer = layers.Conv3D(output_channels, (1, 1, 1), activation='linear')
 
-        self.output_layer = tf.keras.layers.Conv3D(1, kernel_size=1, activation=None, dtype='float32')
-
-    def call(self, x):
+    def call(self, x, training=False):
         x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.drop1(x)
+        x = self.bn1(x, training=training)
+        x = self.drop1(x, training=training)
         x = self.pool1(x)
 
         x = self.conv2(x)
-        x = self.bn2(x)
-        x = self.drop2(x)
+        x = self.bn2(x, training=training)
+        x = self.drop2(x, training=training)
         x = self.pool2(x)
 
         x = self.conv3(x)
-        x = self.bn3(x)
-        x = self.drop3(x)
+        x = self.bn3(x, training=training)
+        x = self.drop3(x, training=training)
 
         x = self.up1(x)
         x = self.conv4(x)
-        x = self.bn4(x)
-        x = self.drop4(x)
+        x = self.bn4(x, training=training)
+        x = self.drop4(x, training=training)
 
         x = self.up2(x)
         x = self.conv5(x)
-        x = self.bn5(x)
-        x = self.drop5(x)
+        x = self.bn5(x, training=training)
+        x = self.drop5(x, training=training)
 
-        x = self.crop(x)  # Corrige para shape final 30x30
-
+        # x = self.crop(x)
         x = self.conv_reduce_depth(x)
-        x = self.output_layer(x)  # Saída: (1, 30, 30, 1, 1)
-
-        # Converte valores contínuos para inteiros próximos
-        x = tf.cast(x, tf.float32)  # Garante dtype compatível
-        x = tf.round(x)             # Arredonda para valores inteiros
-        x = tf.clip_by_value(x, 0, 9)    # Garante que não saia do intervalo
+        x = self.output_layer(x)
+        # Ajuste de shape para (30, 30)
+        x = x[:, :30, :30, :1, :1]
+        # tf.debugging.check_numerics(x, "NaN ou Inf detectado após output_layer")
         return x

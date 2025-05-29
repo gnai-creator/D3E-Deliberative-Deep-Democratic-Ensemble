@@ -40,17 +40,11 @@ class ConfidenceManager:
             log(linha)
 
 
-# consensus_system_weighted.py — Consenso ponderado por hierarquia de modelos
 def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5.0, voto_reverso_ok=None):
     """
     Avalia consenso ponderado usando pesos hierárquicos definidos para cada modelo.
     Cada pixel é decidido com base na soma dos pesos dos modelos que concordam naquele ponto.
     """
-    import tensorflow as tf
-    from runtime_utils import log
-    from metrics_utils import garantir_dict_votos_models
-
-    votos_models = garantir_dict_votos_models(votos_models)
     votos_stacked = []
     votos_dict = {}
 
@@ -69,8 +63,9 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
             if voto_reverso_ok and name in voto_reverso_ok:
                 v = 9 - v
 
-            if tf.size(v) != 900:
-                log(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy()} elementos. Ignorado.")
+            expected_size = tf.reduce_prod(tf.shape(v)[-2:]).numpy().item()
+            if tf.size(v).numpy().item() != expected_size:
+                log(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy().item()} elementos. Ignorado.")
                 continue
 
             votos_stacked.append(v)
@@ -82,32 +77,52 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
     if not votos_stacked:
         raise ValueError("Nenhum voto válido recebido para consenso.")
 
-    votos_stacked_tensor = tf.stack(votos_stacked)  # Shape esperado: (N, 30, 30)
+    votos_stacked_tensor = tf.stack(votos_stacked)  # Shape: (N, H, W)
     altura, largura = votos_stacked_tensor.shape[1], votos_stacked_tensor.shape[2]
     resultado = tf.zeros((altura, largura), dtype=tf.int64)
+    score_medio_total = 0.0
+    total_pix = 0
 
     for i in range(altura):
         for j in range(largura):
-            valores_pixel = tf.reshape(votos_stacked_tensor[:, i, j], [-1])  # Garante 1D
+            valores_pixel = tf.reshape(votos_stacked_tensor[:, i, j], [-1])
             valores, _, counts = tf.unique_with_counts(valores_pixel)
             scores = []
 
-            for idx, val in enumerate(valores):
-                classe = val.numpy()
+            for idx in range(tf.shape(valores)[0]):
+                classe_tensor = valores[idx]
+                try:
+                    classe_numpy = int(classe_tensor.numpy())
+                except Exception as e:
+                    log(f"[CONSENSO] Erro ao converter classe para int: {e}")
+                    continue
+
                 peso_total = 0.0
                 for model_name, voto_tensor in votos_dict.items():
-                    if voto_tensor[i, j].numpy().item() == classe:
-                        peso_total += pesos.get(model_name, 1.0)
+                    try:
+                        v_val = voto_tensor[i, j, 0]
+                        v_numpy = int(v_val.numpy())
+                        if v_numpy == classe_numpy:
+                            peso = pesos.get(model_name, 1.0)
+                            try:
+                                peso_total += float(peso)
+                            except:
+                                peso_total += float(peso.numpy())
+                    except Exception as e:
+                        log(f"[CONSENSO] Erro ao comparar voto do modelo {model_name}: {e}")
 
-                scores.append((classe, peso_total))
+                scores.append((classe_numpy, peso_total))
 
             if scores:
                 melhor_classe, melhor_score = max(scores, key=lambda x: x[1])
+                score_medio_total += melhor_score
+                total_pix += 1
                 if melhor_score >= required_score:
                     resultado = tf.tensor_scatter_nd_update(
                         resultado,
                         indices=[[i, j]],
-                        updates=[melhor_classe]
+                        updates=[tf.cast(int(melhor_classe), tf.int64)]
                     )
 
-    return tf.expand_dims(tf.expand_dims(resultado, axis=0), axis=-1)  # (1, 30, 30, 1)
+    consenso_final = float(score_medio_total / total_pix) if total_pix > 0 else 0.0
+    return tf.expand_dims(tf.expand_dims(resultado, axis=0), axis=-1), consenso_final  # (1, H, W, 1), float

@@ -245,31 +245,46 @@ def inverter_classes_respeitando_valores(y, classes_validas, pad_value=0):
 
 def filtrar_classes_respeitando_valores(y, classes_validas, pad_value=0, preserve_invalids=False):
     y = tf.convert_to_tensor(y)
-    log(f"[DEBUG] filtrando classes — y.shape={y.shape}, classes_validas={classes_validas.numpy()}")
+    log(f"[DEBUG] filtrando classes — y.shape={y.shape}")
 
-    # Verifica e ajusta shape
-    if y.shape.rank == 5 and y.shape[0] != 1 and y.shape[-1] != 1:
-        y = tf.squeeze(y, axis=[0, -1])  # (30, 30, 1)
-    else:
-        raise ValueError(f"[filtrar_classes_respeitando_valores] Shape inesperado: {y.shape}, esperado (1, H, W, C, 1)")
+    # Serializa classes_validas para log de forma segura
+    try:
+        log(f"[DEBUG] classes_validas={[int(c) for c in classes_validas.numpy()]}")
+    except Exception as e:
+        log(f"[DEBUG] classes_validas={classes_validas} (não serializável diretamente: {e})")
 
-    y_exp = tf.expand_dims(y, axis=-1)  # (30, 30, 1, 1)
+    # Se o último canal for maior que 1, aplica argmax para obter rótulo
+    if y.shape.rank == 5 and y.shape[-1] != 1:
+        log("[DEBUG] Aplicando argmax em y para reduzir canal de classe")
+        y = tf.argmax(y, axis=-1)  # (1, H, W, C)
+        y = tf.expand_dims(y, axis=-1)  # (1, H, W, C, 1)
 
-    # Corrige dtype para compatibilidade com y
+    if y.shape.rank != 5 or y.shape[0] != 1 or y.shape[-1] != 1:
+        raise ValueError(f"[filtrar_classes_respeitando_valores] Shape inesperado após ajuste: {y.shape}, esperado (1, H, W, C, 1)")
+
+    # Remove batch e canal final → (H, W, C)
+    y_squeezed = tf.squeeze(y, axis=[0, -1])  # (H, W, C)
+
+    # Expande para comparar com classes válidas → (H, W, C, 1)
+    y_exp = tf.expand_dims(y_squeezed, axis=-1)
+
+    # Prepara classes válidas para broadcasting
     classes_validas = tf.convert_to_tensor(classes_validas)
     classes_validas = tf.cast(classes_validas, dtype=y.dtype)
-
     classes_exp = tf.reshape(classes_validas, shape=(1, 1, 1, -1))  # (1, 1, 1, N)
 
-    # Broadcasting correto
-    mask = tf.reduce_any(tf.equal(y_exp, classes_exp), axis=-1)  # (30, 30, 10)
+    # Máscara booleana para manter apenas valores válidos
+    mask = tf.reduce_any(tf.equal(y_exp, classes_exp), axis=-1)  # (H, W, C)
 
+    # Aplicação da máscara
     if preserve_invalids:
-        filtrado = y
+        filtrado = y_squeezed  # Mantém valores originais
     else:
-        filtrado = tf.where(mask, y, tf.constant(pad_value, dtype=y.dtype))  # (30, 30, 10)
+        filtrado = tf.where(mask, y_squeezed, tf.constant(pad_value, dtype=y.dtype))  # Substitui inválidos
 
-    return tf.expand_dims(filtrado, axis=0)  # (1, 30, 30, 10)
+    # Restaura shape original: (1, H, W, C, 1)
+    return tf.expand_dims(filtrado, axis=0)[..., tf.newaxis]
+
 
 
 

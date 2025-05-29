@@ -24,6 +24,15 @@ PERSIST_DIR = "grampy_data"
 DETECTOR_WEIGHTS = os.path.join(PERSIST_DIR, "detector.h5")
 HISTORY_PATH = os.path.join(PERSIST_DIR, "history.pkl")
 
+def to_serializable(val):
+    if isinstance(val, tf.Tensor):
+        return val.numpy().tolist()
+    if isinstance(val, (np.ndarray,)):
+        return val.tolist()
+    if isinstance(val, (np.int64, np.int32, np.float32, np.float64)):
+        return val.item()
+    return str(val)
+
 class GrampyX:
     def __init__(self, num_modelos=7):
         os.makedirs(PERSIST_DIR, exist_ok=True)
@@ -67,12 +76,8 @@ class GrampyX:
             x = tf.concat([x, pad], axis=-1)
         return x, x
 
-
-
     def julgar(self, x_train, y_train, y_val, x_input, raw_input, block_index, task_id, idx, iteracao, Y_val):
         try:
-            
-
             log(f"[GrampyX] Julgando bloco {block_index} — Task {task_id}")
             log(f"[GrampyX] X_TRAIN SHAPE FINAL : {x_train.shape}")
             log(f"[GrampyX] Y_TRAIN SHAPE FINAL : {y_train.shape}")
@@ -80,7 +85,6 @@ class GrampyX:
             log(f"[GrampyX] X_TESTE SHAPE FINAL : {x_input.shape}")
             if x_input.shape.rank != 5 or x_input.shape != (1, 30, 30, 1, 1):
                 x_input, _ = self.preparar_inputs(x_input)
-
 
             resultados = arc_court_supreme(
                 models=self.models,
@@ -102,10 +106,11 @@ class GrampyX:
                 try:
                     flat = tf.argmax(y_pred, axis=-1).numpy().flatten()
                     if flat.shape[0] != 900:
-                        raise ValueError(f"[ERRO] Shape inesperado após argmax: {flat.shape}")
-                    label = 1.0 if consenso >= 0.9 else 0.0
-                    self.history_X.append(flat)
-                    self.history_y.append(label)
+                        log(f"[GrampyX ERRO] Previsão descartada: shape inesperado após argmax: {flat.shape}")
+                    else:
+                        label = 1.0 if consenso >= 0.9 else 0.0
+                        self.history_X.append(flat)
+                        self.history_y.append(label)
                 except Exception as e:
                     log(f"[GrampyX ERRO] Erro ao preparar histórico: {e}")
             else:
@@ -116,27 +121,24 @@ class GrampyX:
 
             if len(self.history_X) >= 10:
                 try:
-                    self.detector.fit(
-                        np.array(self.history_X),
-                        np.array(self.history_y),
-                        epochs=5,
-                        verbose=0
-                    )
-                    log("[GrampyX] Detector interno treinado")
+                    tamanhos = set(map(len, self.history_X))
+                    if len(tamanhos) == 1:
+                        self.detector.fit(
+                            np.array(self.history_X),
+                            np.array(self.history_y),
+                            epochs=5,
+                            verbose=0
+                        )
+                        log("[GrampyX] Detector interno treinado")
+                    else:
+                        log("[GrampyX ERRO] history_X contém vetores com tamanhos diferentes: " + str(tamanhos))
                 except Exception as e:
                     log(f"[GrampyX ERRO] Falha ao treinar detector: {e}")
 
             self.salvar_estado()
 
-            salvar_path = f"images/clippy/JULGAMENTO_{block_index}_{task_id}"
-            plot_prediction_test(raw_input=raw_input, predicted_output=y_pred, save_path=salvar_path, pad_value=0)
-
-            self.submission_dict.append({"task_id": task_id, "prediction": y_pred})
+            self.submission_dict.append({"task_id": task_id, "prediction": to_serializable(y_pred)})
             save_debug_result(self.submission_dict, "submission.json")
-
-            video_path = gerar_video_time_lapse("votos_visuais", block_index, f"{block_index}_{task_id}.avi")
-            if video_path:
-                embutir_trilha_sonora(video_path, block_index)
 
             return {"consenso": consenso}
 
@@ -144,7 +146,6 @@ class GrampyX:
             log(f"[GrampyX ERRO] Bloco {block_index}: {str(e)}")
             traceback.print_exc()
             return {"consenso": 0.0}
-
 
 
 # Global cache para manter batches entre chamadas
@@ -156,7 +157,7 @@ def extrair_classes_validas(y_real, pad_value=0):
     # Se a forma for (H, W, 1, 1) ou (30, 30, 1, 1), extrai canal de cor
     if y_real.shape.rank == 4 and y_real.shape[-1] == 1:
         y_real = y_real[..., 0]  # Pega apenas o canal da classe
-    
+
     if y_real.shape.rank >= 4 and y_real.shape[-1] != 1:
         log(f"[WARN] Tentativa de squeeze em shape incompatível: {y_real.shape}")
 
@@ -167,9 +168,6 @@ def extrair_classes_validas(y_real, pad_value=0):
     log(f"[DEBUG] Valores únicos: {valores.numpy().tolist()}")
     log(f"[DEBUG] Classes extraídas: {valores_validos.numpy().tolist()}")
     return valores_validos
-
-
-
 
 
 def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.9, idx=0, grampyx=None):
@@ -261,4 +259,3 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
 
     log("[GrampyX] Deliberação encerrada.")
     return sucesso_global
-

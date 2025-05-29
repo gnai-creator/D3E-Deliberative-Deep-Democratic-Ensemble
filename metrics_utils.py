@@ -40,7 +40,7 @@ def garantir_dict_votos_models(votos_models):
 
 def prepare_display_image(img, pad_value, h, w):
     img = ensure_numpy(img)
-    # print(f"[DEBUG] prepare_display_image - input shape: {img.shape}")
+    # log(f"[DEBUG] prepare_display_image - input shape: {img.shape}")
     if img.ndim == 5:
         img = img[0, :, :, 0, :]  # [B, H, W, C, J] → [H, W, J]
         return img
@@ -62,19 +62,19 @@ def prepare_display_image(img, pad_value, h, w):
         side = int(np.sqrt(img.shape[0]))
         return img.reshape((side, side))
     else:
-        print(f"[DEBUG] prepare_display_image - unhandled shape: {img.shape}")
+        log(f"[DEBUG] prepare_display_image - unhandled shape: {img.shape}")
         return np.full((h, w, 3), pad_value)
 
 def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
     try:
-        print(f"[DEBUG] plot_prediction_test - predicted_output original shape: {getattr(predicted_output, 'shape', 'N/A')}")
+        log(f"[DEBUG] plot_prediction_test - predicted_output original shape: {getattr(predicted_output, 'shape', 'N/A')}")
         predicted_output = prepare_display_image(predicted_output, pad_value, 30, 30)
-        print(f"[DEBUG] plot_prediction_test - predicted_output processed shape: {predicted_output.shape}")
+        log(f"[DEBUG] plot_prediction_test - predicted_output processed shape: {predicted_output.shape}")
 
         if raw_input is not None:
-            print(f"[DEBUG] plot_prediction_test - raw_input original shape: {getattr(raw_input, 'shape', 'N/A')}")
+            log(f"[DEBUG] plot_prediction_test - raw_input original shape: {getattr(raw_input, 'shape', 'N/A')}")
             raw_input = prepare_display_image(raw_input, pad_value, 30, 30)
-            print(f"[DEBUG] plot_prediction_test - raw_input processed shape: {raw_input.shape}")
+            log(f"[DEBUG] plot_prediction_test - raw_input processed shape: {raw_input.shape}")
         else:
             raw_input = np.zeros_like(predicted_output)
 
@@ -97,11 +97,11 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
         os.makedirs(save_dir, exist_ok=True)
         plt.tight_layout()
         plt.savefig(save_path)
-        print(f"[INFO] Resultado do teste salvo em: {save_path}")
+        log(f"[INFO] Resultado do teste salvo em: {save_path}")
         plt.close()
 
     except Exception as e:
-        print("[ERROR] Falha ao gerar plot de teste:", str(e))
+        log("[ERROR] Falha ao gerar plot de teste:", str(e))
 
 
 
@@ -135,15 +135,7 @@ def preparar_voto_para_visualizacao(voto):
 
 
 
-
 def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, task_id=None, saida_dir="debug_plots"):
-    import os
-    import numpy as np
-    import tensorflow as tf
-    import matplotlib.pyplot as plt
-    import scipy.stats
-    from metrics_utils import extrair_matriz_simbolica_test, garantir_dict_votos_models, log
-
     os.makedirs(saida_dir, exist_ok=True)
     fname = f"a.png"
     filepath = os.path.join(saida_dir, fname)
@@ -161,6 +153,9 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
             if voto.ndim == 5:
                 voto = voto[0]  # remove batch dim
 
+            if voto.ndim == 4 and voto.shape == (1, 30, 30, 1):
+                voto = voto[0]  # remove batch dim
+
             if voto.ndim == 4 and voto.shape[-1] == 10:
                 v_soft = tf.nn.softmax(voto.astype(np.float32), axis=-1).numpy()
                 v_cls = np.argmax(v_soft, axis=-1)
@@ -168,7 +163,6 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
 
             elif voto.ndim == 3:
                 if voto.shape[-1] == 1:
-                    # Caso simbólico já pronto com canal único
                     v_cls = np.squeeze(voto, axis=-1).astype(np.int32)
                     softmax_maxes.append(np.zeros_like(v_cls))
                     log(f"[VISUAL DEBUG] Voto {i} interpretado como simbólico com shape (30,30,1).")
@@ -267,6 +261,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
     plt.savefig(filepath)
     plt.close()
     print(f"[VISUAL DEBUG] ✅ Voto visual detalhado salvo em {filepath}")
+
 
 def ensure_numpy(x):
     if isinstance(x, tf.Tensor):

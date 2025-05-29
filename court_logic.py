@@ -133,7 +133,7 @@ def safe_total_squeeze(t):
     return tf.squeeze(t, axis=axes)
 
 def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, block_idx=None,
-                      max_cycles=10, tol=0.98, epochs=10, confidence_threshold=0.5,
+                      max_cycles=10, tol=0.999, epochs=10, confidence_threshold=0.5,
                       confidence_manager=[], idx=0, pad_value=0, Y_val=None):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
 
@@ -203,7 +203,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
             y_pred = tf.argmax(modelos[i](X_test, training=False), axis=-1)
             y_target = tf.argmax(y_sup, axis=-1)
             match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_target), tf.float32)).numpy()
-            if match < 0.95:
+            if match < 0.999:
                 treinar_modelo_com_y_sparse(modelos[i], X_test, y_sup, epochs=epochs)
 
         votos_models = garantir_dict_votos_models(votos_models)

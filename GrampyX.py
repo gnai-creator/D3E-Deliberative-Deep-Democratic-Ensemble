@@ -170,7 +170,7 @@ def extrair_classes_validas(y_real, pad_value=0):
     return valores_validos
 
 
-def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.9, idx=0, grampyx=None):
+def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.999, idx=0, grampyx=None):
     import json
     import tensorflow as tf
     from data_pipeline import load_data_batches

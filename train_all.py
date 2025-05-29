@@ -5,7 +5,7 @@ import random
 import traceback
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 import matplotlib.pyplot as plt
 from metrics_utils import plot_prediction_debug
 from runtime_utils import log, to_numpy_safe
@@ -122,6 +122,15 @@ def training_process(
     for cycle in range(cycles):
         log(f"Cycle {cycle} — Modelo {n_model}")
         try:
+
+            checkpoint_callback = ModelCheckpoint(
+                filepath=f"checkpoint_model_{n_model}_block_{batch_index}.h5",
+                monitor="val_loss",
+                save_best_only=True,
+                save_weights_only=True,
+                verbose=1
+            )
+            
             model.fit(
                 x=X_train,
                 y=Y_train,
@@ -131,6 +140,7 @@ def training_process(
                 callbacks=[
                     ReduceLROnPlateau(monitor="val_loss", factor=factor, patience=2, min_lr=rl_lr),
                     # EarlyStopping(monitor="val_loss", patience=patience, restore_best_weights=True)
+                    checkpoint_callback,
                 ],
                 verbose=1,
             )
@@ -143,8 +153,16 @@ def training_process(
 
             log(f"[DEBUG] preds shape: {preds.shape}")
             log(f"[DEBUG] y_val shape: {Y_val.shape}")
+
             if preds.shape[-1] == 10:
                 preds = np.argmax(preds, axis=-1)
+
+            # Arredonda para baixo a grade 30x30x1 e limita entre 0 e 9
+            float_block = preds[0, :, :, :, 0]                     # (30, 30, 1)
+            rounded = tf.floor(float_block + 0.5)                  # Arredonda corretamente
+            clipped = tf.clip_by_value(rounded, 0, 9)              # Limita entre 0 e 9
+            preds[0, :, :, :, 0] = tf.cast(clipped, tf.int32)
+
 
             pixel_color_perfect, pixel_shape_perfect = plot_prediction_debug(
                 raw_input=X_train,
@@ -156,9 +174,7 @@ def training_process(
                 task_id=task_id,
             )
 
-            log(
-                f"🎯 Pixel Color Perfect: {pixel_color_perfect:.5f} | Shape Perfect: {pixel_shape_perfect:.5f}"
-            )
+            log(f"🎯 Pixel Color Perfect: {pixel_color_perfect:.5f} | Shape Perfect: {pixel_shape_perfect:.5f}")
 
             if pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999:
                 log(f"[✓] Modelo {n_model} treinado com sucesso no exemplo {batch_index}.")

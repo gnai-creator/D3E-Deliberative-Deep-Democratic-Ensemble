@@ -27,11 +27,12 @@ class SimuV1(Model):
         self.up2 = layers.UpSampling3D(size=(1, 2, 2))
         self.conv5 = layers.Conv3D(hidden_dim, (3, 3, 3), padding='same', activation='relu')
         self.bn5 = layers.BatchNormalization()
-        self.drop5 = layers.Dropout(0.2)
+        self.drop5 = layers.Dropout(0.1)  # Dropout reduzido para melhor definição
 
-        self.crop = layers.Cropping3D(cropping=((0, 0), (2, 2), (2, 2)))
-        self.conv_reduce_depth = tf.keras.layers.Conv3D(hidden_dim, kernel_size=(1, 1, 1), padding="same", activation="relu")
+        self.conv_reduce_depth = layers.Conv3D(1, (1, 1, 1), activation='relu')
+        self.refine = layers.Conv3D(hidden_dim, (1, 1, 1), activation='relu')  # Camada de refino
         self.output_layer = layers.Conv3D(output_channels, (1, 1, 1), activation='linear')
+        self.output_residual = layers.Add()
 
     def call(self, x, training=False):
         x = self.conv1(x)
@@ -58,9 +59,13 @@ class SimuV1(Model):
         x = self.bn5(x, training=training)
         x = self.drop5(x, training=training)
 
-        # x = self.crop(x)
         x = self.conv_reduce_depth(x)
-        x = self.output_layer(x)
+        refine = self.refine(x)  # nova camada de refino
+        out = self.output_layer(x)
+        x = self.output_residual([refine, out])
+
+
+
         # Ajuste de shape para (30, 30)
         x = x[:, :30, :30, :1, :1]
         # tf.debugging.check_numerics(x, "NaN ou Inf detectado após output_layer")

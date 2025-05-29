@@ -5,13 +5,13 @@ from runtime_utils import log
 
 # Configurações de cada modelo: classe e hidden_dim
 MODEL_CONFIGS = {
-    0: (SimuV1, 32),   # jurada
-    1: (SimuV1, 48),   # jurada
-    2: (SimuV1, 64),   # jurada
-    3: (SimuV1, 32),   # advogada
-    4: (SimuV1, 32),   # juiza
-    5: (SimuV1, 64),   # suprema
-    6: (SimuV1, 32)    # promotor
+    0: (SimuV1, 64),   # jurada
+    1: (SimuV1, 128),   # jurada
+    2: (SimuV1, 128),   # jurada
+    3: (SimuV1, 64),   # advogada
+    4: (SimuV1, 64),   # juiza
+    5: (SimuV1, 256),   # suprema
+    6: (SimuV1, 128)    # promotor
 }
 
 _model_cache = {}

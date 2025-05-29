@@ -45,76 +45,69 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
     """
     Avalia consenso ponderado usando pesos hierárquicos definidos para cada modelo.
     Cada pixel é decidido com base na soma dos pesos dos modelos que concordam naquele ponto.
-    Aplica veto epistêmico apenas se a Suprema divergir significativamente da maioria (>5% dos pixels).
     """
+    import tensorflow as tf
+    from runtime_utils import log
+    from metrics_utils import garantir_dict_votos_models
+
+    votos_models = garantir_dict_votos_models(votos_models)
     votos_stacked = []
     votos_dict = {}
-    pesos_usados = []
 
-    for name, voto in garantir_dict_votos_models(votos_models).items():
+    for name, voto in votos_models.items():
         try:
             v = tf.convert_to_tensor(voto)
-            log(f"[CONSENSO] DEBUG: {name} - shape inicial: {v.shape}, rank: {v.shape.rank}")
 
             if v.shape.rank >= 4 and v.shape[-1] > 1:
                 v = tf.argmax(v, axis=-1)
-                log(f"[CONSENSO] DEBUG: {name} - shape após argmax: {v.shape}")
+
             if v.shape.rank == 4 and v.shape[-1] == 1:
                 v = tf.squeeze(v, axis=-1)
-                log(f"[CONSENSO] DEBUG: {name} - shape após squeeze[-1]: {v.shape}")
-            if v.shape.rank == 4 and v.shape[0] == 1:
-                v = tf.squeeze(v, axis=0)
-                log(f"[CONSENSO] DEBUG: {name} - shape após squeeze[0]: {v.shape}")
 
             v = tf.cast(v, tf.int64)
 
             if voto_reverso_ok and name in voto_reverso_ok:
                 v = 9 - v
 
-            if tf.size(v) != 900 and v.shape != (30, 30, 1):
-                log(f"[CONSENSO] ⚠️ Voto {name} tem shape inesperado {v.shape}. Ignorado.")
+            if tf.size(v) != 900:
+                log(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy()} elementos. Ignorado.")
                 continue
 
             votos_stacked.append(v)
             votos_dict[name] = v
-            pesos_usados.append(pesos.get(name, 1.0))
 
         except Exception as e:
             log(f"[CONSENSO] Erro ao processar voto de {name}: {e}")
 
     if not votos_stacked:
-        log("[CONSENSO] Nenhum voto válido após filtragem.")
-        return 0.0
+        raise ValueError("Nenhum voto válido recebido para consenso.")
 
-    if "modelo_5" in votos_dict:
-        voto_suprema = tf.cast(votos_dict["modelo_5"], tf.int64)
-        votos_sem_suprema = [tf.cast(v, tf.int64) for k, v in votos_dict.items() if k != "modelo_5" and k != "modelo_6"]
-        if votos_sem_suprema:
-            votos_moda = tf.cast(tf.round(tf.reduce_mean(tf.stack(votos_sem_suprema), axis=0)), tf.int64)
-            divergencia_ratio = tf.reduce_mean(tf.cast(tf.not_equal(voto_suprema, votos_moda), tf.float32)).numpy()
-            if divergencia_ratio > 0.05:
-                log(f"[CONSENSO] Suprema diverge da maioria em {divergencia_ratio*100:.2f}% dos pixels — veto epistêmico aplicado.")
-                return 0.0
+    votos_stacked_tensor = tf.stack(votos_stacked)  # Shape esperado: (N, 30, 30)
+    altura, largura = votos_stacked_tensor.shape[1], votos_stacked_tensor.shape[2]
+    resultado = tf.zeros((altura, largura), dtype=tf.int64)
 
-    votos_stacked_tensor = tf.stack(votos_stacked)  # (N, 30, 30, 10)
-    pesos_tensor = tf.constant(pesos_usados, dtype=tf.float32)  # (N,)
+    for i in range(altura):
+        for j in range(largura):
+            valores_pixel = tf.reshape(votos_stacked_tensor[:, i, j], [-1])  # Garante 1D
+            valores, _, counts = tf.unique_with_counts(valores_pixel)
+            scores = []
 
-    consenso_total = 0.0
-    total_pixels = 30 * 30 * 10
+            for idx, val in enumerate(valores):
+                classe = val.numpy()
+                peso_total = 0.0
+                for model_name, voto_tensor in votos_dict.items():
+                    if voto_tensor[i, j].numpy().item() == classe:
+                        peso_total += pesos.get(model_name, 1.0)
 
-    for i in range(30):
-        for j in range(30):
-            for k in range(10):
-                valores_pixel = votos_stacked_tensor[:, i, j, k]  # (N,)
-                pesos_pixel = tf.zeros_like(pesos_tensor)
-                valor_referencia = valores_pixel[0]
-                for idx, valor in enumerate(valores_pixel):
-                    if valor == valor_referencia:
-                        pesos_pixel = tf.tensor_scatter_nd_update(pesos_pixel, [[idx]], [pesos_tensor[idx]])
-                soma_pesos = tf.reduce_sum(pesos_pixel).numpy()
-                if soma_pesos >= required_score:
-                    consenso_total += 1
+                scores.append((classe, peso_total))
 
-    consenso_final = consenso_total / total_pixels
-    log(f"[CONSENSO PONDERADO] {consenso_final*100:.2f}% dos pixels atingiram pontuação mínima de {required_score}")
-    return consenso_final
+            if scores:
+                melhor_classe, melhor_score = max(scores, key=lambda x: x[1])
+                if melhor_score >= required_score:
+                    resultado = tf.tensor_scatter_nd_update(
+                        resultado,
+                        indices=[[i, j]],
+                        updates=[melhor_classe]
+                    )
+
+    return tf.expand_dims(tf.expand_dims(resultado, axis=0), axis=-1)  # (1, 30, 30, 1)

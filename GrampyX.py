@@ -60,12 +60,13 @@ class GrampyX:
         log("[GrampyX] Estado salvo")
 
     def preparar_inputs(self, x):
+        if x.shape.rank == 4:
+            x = tf.expand_dims(x, axis=0)  # Garante (1, H, W, C, Conf)
         if x.shape[-1] != 1:
-            log(f"[WARN] Input com shape errado: {x.shape}, ajustando para (1, 30, 30, 10, 1)")
-            # Preenche o restante com zeros
-            pad = tf.zeros((x.shape[0], x.shape[1], x.shape[2], x.shape[3], 1), dtype=x.dtype)
+            pad = tf.zeros_like(x[..., :1])
             x = tf.concat([x, pad], axis=-1)
         return x, x
+
 
 
     def julgar(self, x_train, y_train, y_val, x_input, raw_input, block_index, task_id, idx, iteracao, Y_val):
@@ -73,6 +74,13 @@ class GrampyX:
             
 
             log(f"[GrampyX] Julgando bloco {block_index} — Task {task_id}")
+            log(f"[GrampyX] X_TRAIN SHAPE FINAL : {x_train.shape}")
+            log(f"[GrampyX] Y_TRAIN SHAPE FINAL : {y_train.shape}")
+            log(f"[GrampyX] Y_VAL SHAPE FINAL : {y_val.shape}")
+            log(f"[GrampyX] X_TESTE SHAPE FINAL : {x_input.shape}")
+            if x_input.shape.rank != 5 or x_input.shape != (1, 30, 30, 1, 1):
+                x_input, _ = self.preparar_inputs(x_input)
+
 
             resultados = arc_court_supreme(
                 models=self.models,
@@ -145,14 +153,11 @@ def extrair_classes_validas(y_real, pad_value=0):
     y_real = tf.convert_to_tensor(y_real)
     log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
 
-    # Se a forma for (H, W, 1, 4) ou (30, 30, 1, 4), extrai canal de cor
-    if y_real.shape.rank == 4 and y_real.shape[-1] == 4:
+    # Se a forma for (H, W, 1, 1) ou (30, 30, 1, 1), extrai canal de cor
+    if y_real.shape.rank == 4 and y_real.shape[-1] == 1:
         y_real = y_real[..., 0]  # Pega apenas o canal da classe
-
-    # Remover dimensão -1 apenas se ela for 1
-    if y_real.shape.rank >= 4 and y_real.shape[-1] == 1:
-        y_real = tf.squeeze(y_real, axis=-1)
-    elif y_real.shape.rank >= 4 and y_real.shape[-1] != 1:
+    
+    if y_real.shape.rank >= 4 and y_real.shape[-1] != 1:
         log(f"[WARN] Tentativa de squeeze em shape incompatível: {y_real.shape}")
 
     valores = tf.unique(tf.reshape(y_real, [-1]))[0]

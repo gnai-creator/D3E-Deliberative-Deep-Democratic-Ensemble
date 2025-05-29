@@ -93,16 +93,22 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         [tf.squeeze(tf.argmax(p, axis=-1, output_type=tf.int64), axis=0) for p in votos_iniciais.values()],
         axis=0
     )
+
+    log(f"[DEBUG] PRED_STACK SHAPE {preds_stack.shape}")
     y_sup = pixelwise_mode(preds_stack)
-    if len(np.unique(tf.argmax(y_sup, axis=-1).numpy())) == 1:
-        log("[WARN] y_sup colapsado. Inicializando simbolicamente.")
-        y_sup = gerar_padrao_simbolico(X_test, pad_value=pad_value)
+    log(f"[DEBUG] Y_SUP SHAPE DEPOIS DE PIXELWISE {y_sup.shape}")
+
+    # if len(np.unique(tf.argmax(y_sup, axis=-1).numpy())) == 1:
+    #     log("[WARN] y_sup colapsado. Inicializando simbolicamente.")
+    #     y_sup = gerar_padrao_simbolico(X_test, pad_value=pad_value)
+    # log(f"[DEBUG] Y_SUP SHAPE DEPOIS DE GERAR PADRÃO SIMBOLICO {y_sup.shape}")
 
     log(f"[DEBUG] Entropia média de y_sup: {calcular_entropia(y_sup):.5f}")
-
+    log(f"[DEBUG] X_TEST ANTES DE TREINAR")
     treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup, epochs=epochs * 3)
 
     classes_validas = extrair_classes_validas(X_test, pad_value=pad_value)
+    log(f"[DEBUG] Y_SUP SHAPE ANTES DE INVERTER {y_sup.shape}")
     y_antitese = inverter_classes_respeitando_valores(y_sup, classes_validas, pad_value=pad_value)
     log("[PROMOTOR] Treinando promotor com antítese da Suprema.")
     treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese, epochs=epochs)
@@ -155,6 +161,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
 
         y_antitese = inverter_classes_respeitando_valores(y_sup, classes_validas, pad_value=pad_value)
         log("[PROMOTOR] Propondo antítese ao parecer da Suprema.")
+        log(f"[DEBUG] Y_ANTITESE SHAPE: {y_antitese.shape}")
         treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese, epochs=epochs)
 
         votos_models = garantir_dict_votos_models(votos_models)

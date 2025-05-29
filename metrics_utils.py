@@ -24,7 +24,7 @@ def extrair_matriz_simbolica(grid_3d, pad_value=0):
     return grid_3d[:, :, 0].astype(np.int32)
 
 def extrair_matriz_simbolica_test(grid_3d, pad_value=0):
-    if grid_3d.shape[-1] == 10:
+    if grid_3d.shape[-1] == 1:
         return np.argmax(grid_3d, axis=-1).astype(np.int32)
     return grid_3d[:, :, 0].astype(np.int32)
 
@@ -107,46 +107,45 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
 
 def ensure_numpy(tensor):
     return tensor.numpy() if hasattr(tensor, "numpy") else tensor
-
-def preparar_voto_para_visualizacao(v):
+def preparar_voto_para_visualizacao(voto):
     try:
-        # Converte para numpy se necessário
-        if isinstance(v, tf.Tensor):
-            v = v.numpy()
+        voto = tf.convert_to_tensor(voto)
 
-        # Remove batch dimension
-        if v.ndim == 5:
-            v = v[0]  # (30, 30, 10, C) → (30, 30, 10, C)
-        
-        # Caso padrão: logits ou mapa simbólico → extrai classe dominante
-        if v.ndim == 4:
-            v = extrair_matriz_simbolica_test(v)
+        # Caso o voto venha com shape (1, 30, 30, 1, 10), extrai a classe
+        if voto.shape.rank == 5 and voto.shape[-1] == 10:
+            voto = tf.argmax(voto, axis=-1)  # (1, 30, 30, 1)
+        elif voto.shape.rank == 4 and voto.shape[-1] == 10:
+            voto = tf.argmax(voto, axis=-1)  # (1, 30, 30)
+            voto = tf.expand_dims(voto, axis=-1)  # (1, 30, 30, 1)
 
-        elif v.ndim == 3:
-            if v.shape[-1] == 1:
-                v = extrair_matriz_simbolica_test(v)
-                log(f"[VISUAL] v extraído (shape=3D com 1 canal): {v.shape}")
-            else:
-                v = v[:, :, 0]
-                log(f"[VISUAL] v reduzido manualmente ao canal 0: {v.shape}")
+        # Garante shape (1, 30, 30, 1)
+        if voto.shape.rank == 3:
+            voto = tf.expand_dims(voto, axis=-1)  # (1, 30, 30, 1)
+        elif voto.shape.rank == 2:
+            voto = tf.reshape(voto, (1, 30, 30, 1))  # (1, 30, 30, 1)
 
-        v = np.squeeze(v)
+        if voto.shape != (1, 30, 30, 1):
+            log(f"[VISUAL] ⚠️ Voto visual com shape inesperado: {voto.shape}")
+            return None
 
-        if v.shape != (30, 30, 10):
-            log(f"[VISUAL] ⚠️ v final com shape inesperado: {v.shape}")
-
-        return v
-
+        return voto
     except Exception as e:
-        log(f"[VISUAL] Erro ao extrair matriz simbólica: {e}")
-        return np.zeros((30, 30))
+        log(f"[VISUAL] Erro ao preparar voto: {e}")
+        return None
+
+
+
 
 def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, task_id=None, saida_dir="debug_plots"):
-
+    import os
+    import numpy as np
+    import tensorflow as tf
+    import matplotlib.pyplot as plt
+    import scipy.stats
+    from metrics_utils import extrair_matriz_simbolica_test, garantir_dict_votos_models, log
 
     os.makedirs(saida_dir, exist_ok=True)
     fname = f"a.png"
-    # fname = f"voto_visual_task{task_id}_iter{iteracao}_bloco{block_idx}.png"
     filepath = os.path.join(saida_dir, fname)
 
     votos_classes = []
@@ -168,12 +167,11 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
                 softmax_maxes.append(np.max(v_soft, axis=-1))
 
             elif voto.ndim == 3:
-                if voto.shape == (30, 30, 10):
-                    # imprimir todas as 10 dimensões de ndim=3 dim=-1
-                    for d in range(voto.shape[-1]):
-                        log(f"VOTO {i}: {voto[:,:, d]}")
-                    v_cls = extrair_matriz_simbolica_test(voto).astype(np.int32)
+                if voto.shape[-1] == 1:
+                    # Caso simbólico já pronto com canal único
+                    v_cls = np.squeeze(voto, axis=-1).astype(np.int32)
                     softmax_maxes.append(np.zeros_like(v_cls))
+                    log(f"[VISUAL DEBUG] Voto {i} interpretado como simbólico com shape (30,30,1).")
                 elif voto.shape[-1] == 10 and np.any(voto > 1):
                     v_soft = tf.nn.softmax(voto.astype(np.float32), axis=-1).numpy()
                     v_cls = np.argmax(v_soft, axis=-1)
@@ -242,6 +240,8 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
 
         if voto.ndim == 3 and voto.shape[-1] == 10:
             voto = extrair_matriz_simbolica_test(voto)
+        elif voto.ndim == 3 and voto.shape[-1] == 1:
+            voto = np.squeeze(voto, axis=-1)
         elif voto.ndim == 3:
             voto = extrair_matriz_simbolica_test(voto)
 
@@ -267,8 +267,6 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0, t
     plt.savefig(filepath)
     plt.close()
     print(f"[VISUAL DEBUG] ✅ Voto visual detalhado salvo em {filepath}")
-
-
 
 def ensure_numpy(x):
     if isinstance(x, tf.Tensor):

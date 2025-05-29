@@ -20,27 +20,33 @@ def normalizar_y_para_sparse(y):
 def pixelwise_mode(stack):
     """
     Calcula a moda (valor mais frequente) por pixel ao longo do eixo 0.
-    Espera entrada com shape (N, H, W, C), onde C = número de classes.
-    Retorna tensor com shape (1, H, W, C)
+    Espera entrada com shape (N, H, W, C).
+    Retorna tensor com shape (1, H, W, C, 1)
     """
     log(f"[DEBUG] pixelwise_mode - shape de entrada original: {stack.shape}")
 
     if tf.rank(stack) != 4:
         raise ValueError(f"[pixelwise_mode] Tensor esperado com rank=4, mas recebeu shape={stack.shape}")
 
-    pred_classes = tf.argmax(stack, axis=-1, output_type=tf.int32)  # (N, H, W)
-    transposed = tf.transpose(pred_classes, [1, 2, 0])  # (H, W, N)
-    flat = tf.reshape(transposed, [-1, tf.shape(transposed)[-1]])  # (H*W, N)
+    # Transpõe para (H, W, C, N)
+    transposed = tf.transpose(stack, [1, 2, 3, 0])  # (H, W, C, N)
+    flat = tf.reshape(transposed, [-1, tf.shape(transposed)[-1]])  # (H * W * C, N)
 
-    with tf.device('/CPU:0'):
-        moda_pixel = tf.map_fn(
-            lambda x: tf.math.bincount(x, minlength=10, maxlength=10),
-            flat,
-            fn_output_signature=tf.TensorSpec(shape=(10,), dtype=tf.int32)
-        )
+    # Força a operação de bincount e argmax na CPU
+    @tf.function
+    def bincount_mode(x):
+        with tf.device('/CPU:0'):
+            return tf.math.argmax(tf.math.bincount(tf.cast(x, tf.int32), minlength=10))
 
-    moda_reshaped = tf.reshape(moda_pixel, [tf.shape(transposed)[0], tf.shape(transposed)[1], 1])
-    return tf.cast(tf.expand_dims(moda_reshaped, axis=0), tf.float32)  # (1, H, W, C)
+    moda_pixel = tf.map_fn(
+        bincount_mode,
+        flat,
+        fn_output_signature=tf.int64
+    )
+
+    # Restaura shape: (1, H, W, C, 1)
+    moda_reshaped = tf.reshape(moda_pixel, [1, tf.shape(stack)[1], tf.shape(stack)[2], tf.shape(stack)[3], 1])
+    return tf.cast(moda_reshaped, tf.float32)
 
 
 
@@ -194,45 +200,46 @@ def extrair_classes_validas(y_real, pad_value=0):
     log(f"[DEBUG] Classes extraídas: {valores_validos.numpy().tolist()}")
     return valores_validos
 
-
 def inverter_classes_respeitando_valores(y, classes_validas, pad_value=0):
+    """
+    Recebe y com shape (1, 30, 30, 1, 1)
+    Retorna o mesmo shape (1, 30, 30, 1, 1), invertendo os dois valores mais comuns presentes em `classes_validas`.
+    """
     y = tf.convert_to_tensor(y)
-    y_shape = tf.shape(y)
+    original_shape = tf.shape(y)
     original_rank = y.shape.rank
 
-    # Squeeze apenas se a dimensão for 1
-    if original_rank == 4 and y.shape[0] == 1:
-        y = tf.squeeze(y, axis=0)
-    if y.shape.rank == 3 and y.shape[-1] == 1:
-        y = tf.squeeze(y, axis=-1)
-    elif y.shape.rank == 3 and y.shape[0] == 1:
-        y = y[0]
+    log(f"[INVERTER] original rank {original_rank}")
+    log(f"[INVERTER] y_shape {original_shape}")
 
+    # Flatten para operação
     y_flat = tf.reshape(y, [-1])
-    classes_validas = tf.cast(classes_validas, tf.int32)
     y_flat = tf.cast(y_flat, tf.int32)
+    classes_validas = tf.cast(classes_validas, tf.int32)
 
+    # Ordena classes por frequência
     valores, _, counts = tf.unique_with_counts(tf.reshape(classes_validas, [-1]))
     idx_sorted = tf.argsort(counts, direction="DESCENDING")
     valores_sorted = tf.gather(valores, idx_sorted)
 
+    # Fallback se não houver pelo menos duas classes
     def fallback():
         return tf.fill(tf.shape(y_flat), pad_value)
 
+    # Alterna entre as duas mais frequentes
     def alternar():
         a = valores_sorted[0]
         b = valores_sorted[1]
         cond_a = tf.equal(y_flat, a)
         cond_b = tf.equal(y_flat, b)
-        resultado = tf.where(cond_a, b, tf.where(cond_b, a, pad_value))
-        return resultado
+        return tf.where(cond_a, b, tf.where(cond_b, a, pad_value))
 
     resultado_flat = tf.cond(tf.size(valores_sorted) < 2, fallback, alternar)
-    resultado = tf.reshape(resultado_flat, tf.shape(y))  # (H, W)
 
-    resultado = tf.expand_dims(resultado, axis=-1)  # (H, W, 1)
-    resultado = tf.expand_dims(resultado, axis=0)   # (1, H, W, 1)
-    return resultado
+    # Retorna ao shape original (1, 30, 30, 1, 1)
+    resultado = tf.reshape(resultado_flat, original_shape)
+    return tf.cast(resultado, tf.float32)
+
 
 
 
@@ -241,12 +248,12 @@ def filtrar_classes_respeitando_valores(y, classes_validas, pad_value=0, preserv
     log(f"[DEBUG] filtrando classes — y.shape={y.shape}, classes_validas={classes_validas.numpy()}")
 
     # Verifica e ajusta shape
-    if y.shape.rank == 5 and y.shape[0] == 1 and y.shape[-1] == 1:
-        y = tf.squeeze(y, axis=[0, -1])  # (30, 30, 10)
+    if y.shape.rank == 5 and y.shape[0] != 1 and y.shape[-1] != 1:
+        y = tf.squeeze(y, axis=[0, -1])  # (30, 30, 1)
     else:
-        raise ValueError(f"[filtrar_classes_respeitando_valores] Shape inesperado: {y.shape}, esperado (1, H, W, D, 1)")
+        raise ValueError(f"[filtrar_classes_respeitando_valores] Shape inesperado: {y.shape}, esperado (1, H, W, C, 1)")
 
-    y_exp = tf.expand_dims(y, axis=-1)  # (30, 30, 10, 1)
+    y_exp = tf.expand_dims(y, axis=-1)  # (30, 30, 1, 1)
 
     # Corrige dtype para compatibilidade com y
     classes_validas = tf.convert_to_tensor(classes_validas)
@@ -320,7 +327,7 @@ def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
         y_input = tf.squeeze(y_input, axis=-1)
     # Ajusta y_input caso venha com shape (1, 30, 30)
     if y_input.shape == (1, 30, 30):
-        y_input = tf.tile(tf.expand_dims(y_input, axis=-1), [1, 1, 1, 1])  # vira (1, 30, 30, 10)
+        y_input = tf.tile(tf.expand_dims(y_input, axis=-1), [1, 1, 1, 1])  # vira (1, 30, 30, 1)
 
     if y_input.shape[-1] != 1:
         y_input = tf.squeeze(y_input, axis=-1)

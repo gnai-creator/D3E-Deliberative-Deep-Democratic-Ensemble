@@ -79,6 +79,7 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
     log(f"[DEBUG] X_VAL SHAPE FINAL : {X_val.shape}")
     log(f"[DEBUG] Y_TRAIN SHAPE FINAL : {Y_train.shape}")
     log(f"[DEBUG] Y_VAL SHAPE FINAL : {Y_val.shape}")
+    log(f"[DEBUG] X_TESTE SHAPE FINAL : {X_test.shape}")
 
     return (
         tf.convert_to_tensor(X_train, dtype=tf.float32),

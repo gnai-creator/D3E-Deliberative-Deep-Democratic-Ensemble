@@ -44,7 +44,7 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
     x_promotor = prepare_input_for_model(6, X_test)
 
     for i, modelo in enumerate(modelos):
-        dummy_input = tf.zeros((1, 30, 30, 10, 40), dtype=tf.float32)
+        dummy_input = tf.zeros((1, 30, 30, 1, 1), dtype=tf.float32)
         try:
             _ = modelo(dummy_input, training=False)
             log(f"[DEBUG] Modelo_{i} inicializado com dummy_input.")
@@ -104,7 +104,7 @@ def arc_court_supreme(models, X_test, task_id=None, block_idx=None,
             y_sup_argmax = tf.argmax(y_sup, axis=-1)              # (1, 30, 30)
             y_sup_argmax = tf.expand_dims(y_sup_argmax, axis=-1)  # (1, 30, 30, 1)
 
-            # Agora broadcast entre (1, 30, 30, 10) e (1, 30, 30, 1) só funciona se y_pred_corrigido for one-hot
+            # Agora broadcast entre (1, 30, 30, 1) e (1, 30, 30, 1) só funciona se y_pred_corrigido for one-hot
 
             # ✅ Se y_pred_corrigido já for rótulo: você precisa reduzir também:
             y_pred_argmax = tf.argmax(y_pred_corrigido, axis=-1)  # (1, 30, 30)

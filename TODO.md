@@ -1,19 +1,31 @@
 
 
-📌 Próximos passos (Fine Tuning):
-Avaliar com mais dados de teste para garantir generalização.
+🔧 Possíveis próximos passos:
 
-Ajustar thresholds de confiança (tipo confidence_threshold=0.5) para ver como isso impacta o consenso.
+    Salvar embeddings no histórico para análise posterior.
 
-Dar “redireito ao voto” para modelos com confiança que sobe — já tem estrutura pra isso.
+    Visualizar os embeddings com PCA ou t-SNE.
 
-Melhorar a robustez do input para casos ambíguos.
+    Criar jurados com estilos diferentes (ex: mais críticos, mais filosóficos).
 
-Aplicar regularização no treinamento da Juíza Suprema se quiser evitar overfitting em poucas amostras.
+    Treinar um modelo com dados do seu domínio (ex: julgamentos de simetria).
 
-Talvez revisar o loss function de alguns dos modelos simples (se quiser que todos votem mais parecido).
+    Integrar os embeddings com decisões simbólicas ou argumentos.
 
-Benchmarkar tempo de julgamento caso use isso em larga escala.
+Implementar feedback iterativo, onde os membros ajustam suas falas com base no alinhamento.
 
-Antes de submition retomar o tamanho do pad do array
+Salvar logs ou gerar visualizações das similaridades.
 
+Adicionar um veredito automático com base no alinhamento.
+
+Se você quiser aprimorar ainda mais, posso sugerir:
+
+    Salvar as falas em um arquivo .log com timestamps.
+
+    Adicionar separadores visuais por rodada.
+
+    Colorir os logs no terminal para facilitar leitura (com colorama, por exemplo).
+
+Quer aplicar alguma dessas melhorias?
+
+model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, trust_remote_code=True).to(device)

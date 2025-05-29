@@ -21,7 +21,7 @@ pesos = {
     "modelo_3": 1.5,
     "modelo_4": 2.0,
     "modelo_5": 3.0,
-    "modelo_6": -4.0
+    "modelo_6": -2.0
 }
 
 def verificar_votos_models(votos_models):

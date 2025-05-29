@@ -47,13 +47,16 @@ class GrumpyInternalModels:
 
         # RNN precisa de sequência
         X_rnn = np.expand_dims(X, axis=0)  # (1, timesteps, features)
-        self.rnn.fit(X_rnn, np.mean(y), epochs=3, verbose=0)
+        y_rnn = np.array(y).reshape(1, -1)  # Garantir shape compatível com o batch
+
+        self.rnn.fit(X_rnn, y_rnn, epochs=3, verbose=0)
 
         # AutoEncoder
         self.autoencoder.fit(X, X, epochs=5, verbose=0)
 
         # "BNN" fake (simulando variância como incerteza)
         self.fake_bnn_weights = [np.var(x) for x in X]
+
 
     def avaliar_confiança(self, voto):
         flat = voto.flatten()[None, :]

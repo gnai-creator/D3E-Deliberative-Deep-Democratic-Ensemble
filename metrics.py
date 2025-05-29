@@ -121,3 +121,27 @@ def expand_grid_to_30x30x1(grid_2d, pad_value=-1):
     padded = np.full((30, 30), pad_value, dtype=np.int32)
     padded[:h, :w] = grid_2d
     return np.expand_dims(padded, axis=-1)  # shape (30, 30, 1)
+
+
+def expand_grid_to_30x30x1(grid_2d, pad_value=-1):
+    """
+    Recebe um grid 2D (H, W) com valores de cor 0-9 e transforma em (30, 30, 3),
+    com os canais: [cor, pos_x, pos_y].
+    """
+    if grid_2d.ndim != 2:
+        raise ValueError(f"Esperado grid 2D, mas recebeu shape {grid_2d.shape}")
+
+    h, w = grid_2d.shape
+    if h > 30 or w > 30:
+        raise ValueError("Grid maior que 30x30 não suportado")
+
+    # Cria canal de cor
+    cor = np.full((30, 30), pad_value, dtype=np.float32)
+    cor[:h, :w] = grid_2d
+
+    # Cria canais de posição
+    pos_y, pos_x = np.meshgrid(np.linspace(0, 1, 30), np.linspace(0, 1, 30))
+
+    # Empilha em canais: (30, 30, 3)
+    stacked = np.stack([cor, pos_x, pos_y], axis=-1)
+    return stacked  # shape (30, 30, 3)

@@ -84,9 +84,9 @@ def compile_model(model, lr=0.001):
     model.compile(
         optimizer=optimizer,
         loss=masked_loss(
-            blur_penalty_weight=0.23,
+            blur_penalty_weight=0.05,
             pad_value=-1,
-            color_penalty_weight=0.33,
+            color_penalty_weight=0.03,
             ssim_weight=0.1
         ),
         metrics=[tf.keras.metrics.MeanSquaredError()]

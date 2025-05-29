@@ -2,7 +2,7 @@ import tensorflow as tf
 from tensorflow.keras import layers, Model
 
 class SimuV1(Model):
-    def __init__(self, hidden_dim=16, output_channels=1):
+    def __init__(self, hidden_dim=16, output_channels=3):
         super(SimuV1, self).__init__()
 
         self.conv1 = layers.Conv3D(hidden_dim, (3, 3, 3), padding='same', activation='relu')
@@ -27,10 +27,11 @@ class SimuV1(Model):
         self.up2 = layers.UpSampling3D(size=(1, 2, 2))
         self.conv5 = layers.Conv3D(hidden_dim, (3, 3, 3), padding='same', activation='relu')
         self.bn5 = layers.BatchNormalization()
-        self.drop5 = layers.Dropout(0.1)  # Dropout reduzido para melhor definição
+        self.drop5 = layers.Dropout(0.1)
 
         self.conv_reduce_depth = layers.Conv3D(1, (1, 1, 1), activation='relu')
-        self.refine = layers.Conv3D(hidden_dim, (1, 1, 1), activation='relu')  # Camada de refino
+        self.refine = layers.Conv3D(output_channels, (1, 1, 1), activation='relu')
+
         self.output_layer = layers.Conv3D(output_channels, (1, 1, 1), activation='linear')
         self.output_residual = layers.Add()
 
@@ -60,13 +61,10 @@ class SimuV1(Model):
         x = self.drop5(x, training=training)
 
         x = self.conv_reduce_depth(x)
-        refine = self.refine(x)  # nova camada de refino
+        refine = self.refine(x)
         out = self.output_layer(x)
         x = self.output_residual([refine, out])
 
-
-
-        # Ajuste de shape para (30, 30)
-        x = x[:, :30, :30, :1, :1]
-        # tf.debugging.check_numerics(x, "NaN ou Inf detectado após output_layer")
+        # Ajuste de shape para (1, 30, 30, 3, 1) — canais de saída 3
+        x = x[:, :30, :30, :3, :1]
         return x

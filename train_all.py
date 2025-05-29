@@ -139,7 +139,7 @@ def training_process(
                 epochs=epochs,
                 callbacks=[
                     ReduceLROnPlateau(monitor="val_loss", factor=factor, patience=2, min_lr=rl_lr),
-                    # EarlyStopping(monitor="val_loss", patience=patience, restore_best_weights=True)
+                    EarlyStopping(monitor="val_loss", patience=patience, restore_best_weights=True),
                     checkpoint_callback,
                 ],
                 verbose=1,

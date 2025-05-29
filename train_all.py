@@ -132,7 +132,7 @@ def training_process(
                     ReduceLROnPlateau(monitor="val_loss", factor=factor, patience=2, min_lr=rl_lr),
                     # EarlyStopping(monitor="val_loss", patience=patience, restore_best_weights=True)
                 ],
-                verbose=0,
+                verbose=1,
             )
         except Exception as e:
             log(f"[ERROR DETECTADO] {e}")

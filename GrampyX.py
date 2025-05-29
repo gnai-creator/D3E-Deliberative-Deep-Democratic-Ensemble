@@ -227,7 +227,7 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             epochs=150,
             batch_size=8,
             patience=20,
-            rl_lr=3e-3,
+            rl_lr=4e-3,
             factor=0.65,
             len_trainig=1,
             pad_value=-1,

@@ -94,7 +94,7 @@ def prepare_input_for_model(model_index, base_input):
     return x
 
 
-def gerar_visualizacao_votos(votos_models, input_tensor_outros, input_tensor_train, iteracao, idx, block_idx, task_id):
+def gerar_visualizacao_votos(votos_models, input_tensor_outros, input_tensor_train, iteracao, idx, block_idx, task_id, classes_validas, classes_objetivo):
     votos_models = garantir_dict_votos_models(votos_models)
     votos_visuais = []
 
@@ -134,7 +134,9 @@ def gerar_visualizacao_votos(votos_models, input_tensor_outros, input_tensor_tra
         block_idx=block_idx,
         input_tensor_outros=input_visual,
         task_id=task_id,
-        filename=f"a.png"
+        filename=f"a.png",
+        classes_validas=classes_validas,
+        classes_objetivo=classes_objetivo
         # filename=f"voto_visual_idx{idx}_iter{iteracao}_bloco{block_idx}.png"
 
     )
@@ -202,6 +204,35 @@ def extrair_classes_validas(y_real, pad_value=0):
     log(f"[DEBUG] Valores únicos: {valores.numpy().tolist()}")
     log(f"[DEBUG] Classes extraídas: {valores_validos.numpy().tolist()}")
     return valores_validos
+
+def extrair_todas_classes_validas(X_train, X_test, pad_value=0):
+    """
+    Extrai as classes válidas presentes tanto no X_train quanto no X_test,
+    considerando apenas o canal de cor (canal 0).
+    """
+    def extrair_classes(x):
+        x = safe_total_squeeze(x)
+        x = tf.convert_to_tensor(x)
+
+        # Extrai canal de cor se for RGB ou RGBA
+        if x.shape.rank == 4 and x.shape[-1] >= 1:
+            x = x[..., 0]  # Canal 0 é a classe (cor)
+
+        x = tf.squeeze(x)
+        valores = tf.unique(tf.reshape(x, [-1]))[0]
+        valores = tf.cast(valores, tf.int32)
+        return tf.boolean_mask(valores, valores != pad_value)
+
+    classes_train = extrair_classes(X_train)
+    classes_test = extrair_classes(X_test)
+
+    # Concatena e remove duplicatas
+    classes_concatenadas = tf.concat([classes_train, classes_test], axis=0)
+    classes_unicas = tf.unique(classes_concatenadas)[0]
+
+    log(f"[DEBUG] Classes extraídas combinadas: {classes_unicas.numpy().tolist()}")
+    return classes_unicas
+
 
 def inverter_classes_respeitando_valores(y, classes_validas, pad_value=0):
     """

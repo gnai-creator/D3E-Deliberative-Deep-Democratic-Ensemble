@@ -135,7 +135,7 @@ def preparar_voto_para_visualizacao(voto):
 
 
 
-def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0,task_id=None, saida_dir="debug_plots", filename="a"):
+def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros,classes_validas, classes_objetivo, idx=0,task_id=None, saida_dir="debug_plots", filename="a"):
     os.makedirs(saida_dir, exist_ok=True)
     # fname = f"a.png"
     fname = filename
@@ -256,7 +256,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0,ta
     axes[1, -1].set_title("Entropia")
     axes[1, -1].axis("off")
 
-    plt.suptitle(f"Task {task_id} — Iteração {iteracao} — Bloco {block_idx}", fontsize=14)
+    plt.suptitle(f"Task {task_id} — Iteração {iteracao} — Bloco {block_idx}\n Classes Válidas — {classes_validas} — Classes Objetivo — {classes_objetivo} ", fontsize=14)
     plt.tight_layout()
     print(f"[VISUAL DEBUG] Salvando figura em {filepath} — modelos plotados: {num_modelos}")
     plt.savefig(filepath)

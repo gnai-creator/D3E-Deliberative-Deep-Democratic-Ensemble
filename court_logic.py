@@ -10,6 +10,7 @@ from metrics_utils import garantir_dict_votos_models
 from court_utils import gerar_padrao_simbolico, gerar_visualizacao_votos
 from court_utils import inverter_classes_respeitando_valores, pixelwise_mode
 from court_utils import treinar_modelo_com_y_sparse, mapear_cores_para_x_test
+from court_utils import extrair_todas_classes_validas
 
 # Ativa modo eager para debug detalhado de train_function
 tf.config.run_functions_eagerly(True)
@@ -48,10 +49,12 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
 
 
     votos_iniciais = {}
-    for i in range(5):
+    for i in range(4):
         votos_iniciais[f"modelo_{i}"] = modelos[i](X_train, training=False)
 
-    classes_validas = extrair_classes_validas(X_test, pad_value=pad_value)
+    votos_iniciais[f"modelo_{4}"] = modelos[i](X_train, training=False)
+    classes_validas = extrair_todas_classes_validas(X_test, X_train, pad_value=pad_value)
+    classes_objetivo = extrair_classes_validas(X_test, pad_value=pad_value)
 
     for i in range(5):
         votos_iniciais[f"modelo_{i}"] = filtrar_classes_respeitando_valores(
@@ -87,7 +90,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
 
         # Após 7 iterações, os jurados atualizam seu voto com base no X_train (por exemplo)
         if iter_count >= max_cycles/2:
-            for i in range(5):
+            for i in range(4):
                 votos_models[f"modelo_{i}"] = modelos[i](X_train, training=False)
 
 
@@ -99,7 +102,9 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
             iteracao=iter_count,
             idx=idx,
             block_idx=block_idx,
-            task_id=task_id
+            task_id=task_id,
+            classes_validas=classes_validas,
+            classes_objetivo=classes_objetivo
         )
         preds_stack = tf.stack(
             [tf.squeeze(tf.argmax(p, axis=-1, output_type=tf.int64), axis=0) for p in votos_models.values()],
@@ -113,12 +118,12 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup, epochs=epochs)
         treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese, epochs=epochs)
 
-        for i in range(5):
+        for i in range(4):
             if iter_count >= max_cycles / 2:
                 y_pred = tf.argmax(modelos[i](X_test, training=False), axis=-1)
                 y_target = tf.argmax(y_sup, axis=-1)
                 match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_target), tf.float32)).numpy()
-                if match < 0.96:
+                if match < 0.999:
                     treinar_modelo_com_y_sparse(modelos[i], X_test, y_sup, epochs=epochs)
 
         votos_models = garantir_dict_votos_models(votos_models)

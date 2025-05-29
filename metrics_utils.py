@@ -135,7 +135,7 @@ def preparar_voto_para_visualizacao(voto):
 
 
 
-def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, task_id=None, saida_dir="debug_plots", filename="a"):
+def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, idx=0,task_id=None, saida_dir="debug_plots", filename="a"):
     os.makedirs(saida_dir, exist_ok=True)
     # fname = f"a.png"
     fname = filename

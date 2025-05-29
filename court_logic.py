@@ -21,7 +21,7 @@ pesos = {
     "modelo_3": 1.5,
     "modelo_4": 2.0,
     "modelo_5": 3.0,
-    "modelo_6": -2.0
+    "modelo_6": -4.0
 }
 
 def verificar_votos_models(votos_models):
@@ -40,16 +40,12 @@ def safe_total_squeeze(t):
     return tf.squeeze(t, axis=axes)
 
 def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, block_idx=None,
-                      max_cycles=10, tol=0.999, epochs=10, confidence_threshold=0.5,
+                      max_cycles=10, tol=9.0, epochs=10, confidence_threshold=0.5,
                       confidence_manager=[], idx=0, pad_value=0, Y_val=None):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
 
     modelos = models.copy()
 
-    def calcular_entropia(y):
-        probs = tf.nn.softmax(tf.cast(y, tf.float32), axis=-1)
-        log_probs = tf.math.log(tf.clip_by_value(probs, 1e-9, 1.0))
-        return -tf.reduce_mean(tf.reduce_sum(probs * log_probs, axis=-1)).numpy()
 
     votos_iniciais = {}
     for i in range(5):
@@ -85,9 +81,15 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
 
     while iter_count < max_cycles:
         log(f"[DEBUG] iter_count={iter_count}, block_idx={block_idx}, idx={idx}, task_id={task_id}")
-
+        # Todos votam sempre
         for i in range(7):
             votos_models[f"modelo_{i}"] = modelos[i](X_test, training=False)
+
+        # Após 7 iterações, os jurados atualizam seu voto com base no X_train (por exemplo)
+        if iter_count >= max_cycles/2:
+            for i in range(5):
+                votos_models[f"modelo_{i}"] = modelos[i](X_train, training=False)
+
 
         votos_models = garantir_dict_votos_models(votos_models)
         gerar_visualizacao_votos(
@@ -112,11 +114,12 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese, epochs=epochs)
 
         for i in range(5):
-            y_pred = tf.argmax(modelos[i](X_test, training=False), axis=-1)
-            y_target = tf.argmax(y_sup, axis=-1)
-            match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_target), tf.float32)).numpy()
-            if match < 0.999:
-                treinar_modelo_com_y_sparse(modelos[i], X_test, y_sup, epochs=epochs)
+            if iter_count >= max_cycles / 2:
+                y_pred = tf.argmax(modelos[i](X_test, training=False), axis=-1)
+                y_target = tf.argmax(y_sup, axis=-1)
+                match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_target), tf.float32)).numpy()
+                if match < 0.96:
+                    treinar_modelo_com_y_sparse(modelos[i], X_test, y_sup, epochs=epochs)
 
         votos_models = garantir_dict_votos_models(votos_models)
         resultado, consenso = avaliar_consenso_ponderado(
@@ -125,7 +128,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
             required_score=5.0,
             voto_reverso_ok=["modelo_6"]
         )
-
+        log(f"[CONSENSO] : CONSENSO {consenso}")
         if consenso >= tol:
             return {
                 "class_logits": votos_models["modelo_5"],

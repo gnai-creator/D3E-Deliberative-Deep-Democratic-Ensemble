@@ -74,8 +74,8 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
     if len(X_train.shape) == 4:
         X_train = tf.expand_dims(X_train, axis=0)
 
-    sw_train = np.ones_like(Y_train[..., 0], dtype=np.float32)
-    sw_val = np.ones_like(Y_val[..., 0], dtype=np.float32)
+    # sw_train = np.ones_like(Y_train[..., 0], dtype=np.float32)
+    # sw_val = np.ones_like(Y_val[..., 0], dtype=np.float32)
     log(f"[DEBUG] X_TRAIN SHAPE FINAL : {X_train.shape}")
     log(f"[DEBUG] X_VAL SHAPE FINAL : {X_val.shape}")
     log(f"[DEBUG] Y_TRAIN SHAPE FINAL : {Y_train.shape}")
@@ -87,8 +87,8 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
         tf.convert_to_tensor(X_val, dtype=tf.float32),
         tf.convert_to_tensor(Y_train, dtype=tf.float32),
         tf.convert_to_tensor(Y_val, dtype=tf.float32),
-        tf.convert_to_tensor(sw_train, dtype=tf.float32),
-        tf.convert_to_tensor(sw_val, dtype=tf.float32),
+        # tf.convert_to_tensor(sw_train, dtype=tf.float32),
+        # tf.convert_to_tensor(sw_val, dtype=tf.float32),
         tf.convert_to_tensor(X_test, dtype=tf.float32),
         info_train,
         info_val,

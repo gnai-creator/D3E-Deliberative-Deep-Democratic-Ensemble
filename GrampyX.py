@@ -107,8 +107,9 @@ class GrampyX:
             )
             log(f"[DEBUG] Salvando arquivo com idx={idx}, iteracao={iteracao}, block_index={block_index}")
 
-            consenso = resultados.get("consenso", 0.0)
-            y_pred = resultados.get("class_logits") if isinstance(resultados, dict) else resultados
+            consenso = float(resultados.get("consenso", 0.0))
+            y_pred = resultados.get("class_logits")
+            y_pred_simbolico = resultados.get("y_pred_simbolico")
 
             if isinstance(y_pred, tf.Tensor):
                 try:
@@ -123,6 +124,27 @@ class GrampyX:
                     log(f"[GrampyX ERRO] Erro ao preparar histórico: {e}")
             else:
                 log("[GrampyX WARN] y_pred não é tensor. Histórico não será atualizado.")
+
+            # Valida classes previstas
+            if y_pred_simbolico is not None:
+                try:
+                    y_pred_tensor = tf.convert_to_tensor(y_pred_simbolico)
+                    classes_validas = extrair_classes_validas(x_input, pad_value=0)
+
+                    valores_preditos = tf.unique(tf.reshape(y_pred_tensor, [-1])).y
+                    set_preditos = set(valores_preditos.numpy().tolist())
+                    set_validas = set([int(c) for c in classes_validas])
+
+                    if set_preditos != set_validas:
+                        extras = set_preditos - set_validas
+                        faltando = set_validas - set_preditos
+                        log(f"[AVALIAÇÃO] Classes previstas não batem.\n  → Extras: {extras}\n  → Faltando: {faltando}")
+                        consenso = 0.0
+                    else:
+                        log("[AVALIAÇÃO] Classes previstas batem exatamente com as válidas.")
+
+                except Exception as e:
+                    log(f"[AVALIAÇÃO] Erro ao validar classes previstas: {e}")
 
             self.internal_models.adicionar_voto(y_pred.numpy() if isinstance(y_pred, tf.Tensor) else y_pred, consenso)
             self.internal_models.treinar_todos()
@@ -148,12 +170,14 @@ class GrampyX:
             self.submission_dict.append({"task_id": task_id, "prediction": to_serializable(y_pred)})
             save_debug_result(self.submission_dict, "submission.json")
 
-            return {"consenso": consenso}
+            return {"consenso": consenso, "y_pred_simbolico": y_pred_simbolico}
 
         except Exception as e:
             log(f"[GrampyX ERRO] Bloco {block_index}: {str(e)}")
             traceback.print_exc()
-            return {"consenso": 0.0}
+            return {"consenso": 0.0, "y_pred_simbolico": None}
+
+
 
 
 # Global cache para manter batches entre chamadas
@@ -177,7 +201,7 @@ def extrair_classes_validas(y_real, pad_value=0):
     log(f"[DEBUG] Classes extraídas: {valores_validos.numpy().tolist()}")
     return valores_validos
 
-def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.999, idx=0, grampyx=None):
+def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=9.5, idx=0, grampyx=None):
     grampy = grampyx
     BATCH_SIZE = 1
     block_idx = idx % grampy.num_blocos
@@ -193,91 +217,100 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
 
     task_batch = [task_ids[idx]]
 
-    if idx not in todos_os_batches:
-        todos_os_batches[idx] = []
-        for model_idx in range(grampy.num_modelos):
-            batches = load_data_batches(
-                challenges=test_challenges,
-                num_models=grampy.num_modelos,
-                task_ids=task_batch,
-                model_idx=model_idx,
-                block_idx=0  # Corrigido: load_data_batches espera block_idx referente ao batch, não ao idx global
-            )
-            if not batches:
-                log(f"[ERRO] Nenhum batch retornado para model_idx={model_idx}, task={task_batch}")
-                continue
+    # if idx not in todos_os_batches:
+    todos_os_batches[idx] = []
+    batches = []
+    for model_idx in range(grampy.num_modelos):
+        batches = load_data_batches(
+            challenges=test_challenges,
+            num_models=grampy.num_modelos,
+            task_ids=task_batch,
+            block_idx=0 if len(task_batch) == 1 else (idx % grampy.num_blocos)
+        )
+        if not batches:
+            log(f"[ERRO] Nenhum batch retornado para task={task_batch}")
+            return False
 
-            training_process(
-                models=grampy.models,
-                batches=batches,
-                n_model=model_idx,
-                batch_index=0,
-                max_blocks=1,
-                block_size=1,
-                max_training_time=14400,
-                cycles=150,
-                epochs=60,
-                batch_size=8,
-                patience=20,
-                rl_lr=2e-3,
-                factor=0.65,
-                len_trainig=1,
-                pad_value=0,
-            )
-            todos_os_batches[idx].extend(batches)
+        training_process(
+            models=grampy.models,
+            batches=batches,
+            n_model=model_idx,
+            batch_index=0,
+            max_blocks=1,
+            block_size=1,
+            max_training_time=14400,
+            cycles=150,
+            epochs=60,
+            batch_size=8,
+            patience=20,
+            rl_lr=2e-3,
+            factor=0.65,
+            len_trainig=1,
+            pad_value=0,
+        )
+        todos_os_batches[idx].extend(batches)
 
     sucesso_global = False
 
-    for batch in todos_os_batches[idx]:
-        if len(batch) != 8:
-            log(f"[ERRO] Batch com estrutura inválida: {batch}")
-            continue
+    X_train, X_val, Y_train, Y_val, X_test, raw_input, block_idx, task_id = batches[0]
+    iteracao = 0
+    sucesso = False
 
-        X_train, X_val, Y_train, Y_val, X_test, raw_input, block_idx, task_id = batch
-        iteracao = 0
-        sucesso = False
+    while not sucesso and iteracao < max_iteracoes:
+        log(f"[GrampyX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
+        y_val_test = extrair_classes_validas(X_test, 0)
+        log(f"[GRAMPYX] y_val_test: {y_val_test}")
+        print(f"[DEBUG] iteracao={iteracao}, block_idx={block_idx}, idx={idx}, task_id={task_id}")
 
-        while not sucesso and iteracao < max_iteracoes:
-            log(f"[GrampyX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
-            y_val_test = extrair_classes_validas(X_test, 0)
-            log(f"[GRAMPYX] y_val_test: {y_val_test}")
-            print(f"[DEBUG] iteracao={iteracao}, block_idx={block_idx}, idx={idx}, task_id={task_id}")
+        resultado = grampy.julgar(
+            x_train=X_train,
+            y_train=Y_train,
+            y_val=Y_val,
+            x_input=X_test,
+            raw_input=raw_input,
+            block_index=block_idx,
+            task_id=task_id,
+            idx=iteracao,
+            iteracao=iteracao,
+            Y_val=y_val_test
+        )
 
-            resultado = grampy.julgar(
-                x_train=X_train,
-                y_train=Y_train,
-                y_val=Y_val,
-                x_input=X_test,
-                raw_input=raw_input,
-                block_index=block_idx,
-                task_id=task_id,
-                idx=idx,
-                iteracao=iteracao,
-                Y_val=y_val_test
-            )
+        consenso = float(resultado.get("consenso", 0))
+        
+        y_pred = resultado.get("y_pred_simbolico")
+        if y_pred is not None:
+            try:
+                y_pred_tensor = tf.convert_to_tensor(y_pred)
+                classes_validas = extrair_classes_validas(X_test, pad_value=0)
 
-            consenso = resultado.get("consenso", 0)
+                # Extrai valores únicos previstos
+                valores_preditos = tf.unique(tf.reshape(y_pred_tensor, [-1])).y
 
-            y_pred = resultado.get("y_pred_simbolico")
-            if y_pred is not None:
-                try:
-                    y_val_tensor = tf.convert_to_tensor(y_val_test)
-                    y_pred_tensor = tf.convert_to_tensor(y_pred)
-                    acuracia_objetiva = tf.reduce_mean(tf.cast(tf.equal(y_pred_tensor, y_val_tensor), tf.float32)).numpy()
-                    log(f"[AVALIAÇÃO] Acurácia objetiva contra gabarito: {acuracia_objetiva:.2f}")
-                    if acuracia_objetiva < 0.95:
-                        log("[ALERTA] Consenso alcançado, mas com baixa precisão em relação ao gabarito.")
-                except Exception as e:
-                    log(f"[AVALIAÇÃO] Erro ao comparar com gabarito: {e}")
+                # Corrige aqui: converte para lista antes de transformar em set
+                set_preditos = set(valores_preditos.numpy().tolist())
+                set_validas = set(classes_validas)
 
-            if consenso >= consenso_minimo:
-                log(f"[GrampyX] Consenso alcançado ({consenso:.2f}), encerrando iteração.")
-                sucesso = True
-                sucesso_global = True
-                break
-            else:
-                log(f"[GrampyX] Consenso insuficiente ({consenso:.2f}), nova rodada.")
-                iteracao += 1
+                if set_preditos != set_validas:
+                    extras = set_preditos - set_validas
+                    faltando = set_validas - set_preditos
+                    log(f"[AVALIAÇÃO] Classes previstas não batem.\n  → Extras: {extras}\n  → Faltando: {faltando}")
+                    consenso = 0.0
+                else:
+                    log("[AVALIAÇÃO] Classes previstas batem exatamente com as válidas.")
+
+            except Exception as e:
+                log(f"[AVALIAÇÃO] Erro ao validar classes previstas: {e}")
+
+
+
+        if consenso >= consenso_minimo:
+            log(f"[GrampyX] Consenso alcançado ({consenso:.2f}), encerrando iteração.")
+            sucesso = True
+            sucesso_global = True
+            
+        else:
+            log(f"[GrampyX] Consenso insuficiente ({consenso:.2f}), nova rodada.")
+            iteracao += 1
 
         if not sucesso and parar_se_sucesso:
             log(f"[GrampyX] Máximo de iterações atingido para bloco {block_idx}. Partindo pro próximo.")

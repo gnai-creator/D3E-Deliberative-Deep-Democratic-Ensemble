@@ -134,7 +134,8 @@ def gerar_visualizacao_votos(votos_models, input_tensor_outros, input_tensor_tra
         block_idx=block_idx,
         input_tensor_outros=input_visual,
         task_id=task_id,
-        filename=f"voto_visual_modelo{modelo}_idx{idx}_iter{iteracao}_bloco{block_index}.png"
+        filename=f"a.png"
+        # filename=f"voto_visual_idx{idx}_iter{iteracao}_bloco{block_idx}.png"
 
     )
 

@@ -33,10 +33,17 @@ def to_serializable(val):
         return val.item()
     return str(val)
 
-class GrampyX:
-    def __init__(self, num_modelos=7):
-        os.makedirs(PERSIST_DIR, exist_ok=True)
+def contar_blocos(challenges_path):
+    import json
+    with open(challenges_path) as f:
+        challenges = json.load(f)
+    return len(challenges)
 
+
+class GrampyX:
+    def __init__(self, num_modelos=7, challenges_path="arc-agi_test_challenges.json"):
+        os.makedirs(PERSIST_DIR, exist_ok=True)
+        self.num_blocos = contar_blocos(challenges_path)  # nova função
         self.num_modelos = num_modelos
         self.models = [load_model(i, 0.0005) for i in range(num_modelos)]
         self.manager = ConfidenceManager(self.models)
@@ -96,8 +103,9 @@ class GrampyX:
                 block_idx=block_index,
                 confidence_manager=self.manager,
                 idx=idx,
-                Y_val=None
+                Y_val=Y_val
             )
+            log(f"[DEBUG] Salvando arquivo com idx={idx}, iteracao={iteracao}, block_index={block_index}")
 
             consenso = resultados.get("consenso", 0.0)
             y_pred = resultados.get("class_logits") if isinstance(resultados, dict) else resultados
@@ -169,17 +177,10 @@ def extrair_classes_validas(y_real, pad_value=0):
     log(f"[DEBUG] Classes extraídas: {valores_validos.numpy().tolist()}")
     return valores_validos
 
-
 def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.999, idx=0, grampyx=None):
-    import json
-    import tensorflow as tf
-    from data_pipeline import load_data_batches
-    from train_all import training_process
-    from court_utils import extrair_classes_validas
-    from runtime_utils import log
-
     grampy = grampyx
     BATCH_SIZE = 1
+    block_idx = idx % grampy.num_blocos
 
     with open("arc-agi_test_challenges.json") as f:
         test_challenges = json.load(f)
@@ -240,6 +241,7 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             log(f"[GrampyX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
             y_val_test = extrair_classes_validas(X_test, 0)
             log(f"[GRAMPYX] y_val_test: {y_val_test}")
+            print(f"[DEBUG] iteracao={iteracao}, block_idx={block_idx}, idx={idx}, task_id={task_id}")
 
             resultado = grampy.julgar(
                 x_train=X_train,
@@ -282,4 +284,3 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
 
     log("[GrampyX] Deliberação encerrada.")
     return sucesso_global
-

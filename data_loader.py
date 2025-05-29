@@ -8,6 +8,7 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
     start_idx = block_index * block_size
     end_idx = start_idx + block_size
     block_task_ids = task_ids[start_idx:end_idx]
+    log(f"[CHECK] block_index={block_index}, task_ids[{start_idx}:{end_idx}] = {block_task_ids}")
 
     raw_inputs = []
     raw_test_inputs = []

@@ -133,7 +133,9 @@ def gerar_visualizacao_votos(votos_models, input_tensor_outros, input_tensor_tra
         idx=idx,
         block_idx=block_idx,
         input_tensor_outros=input_visual,
-        task_id=task_id
+        task_id=task_id,
+        filename=f"voto_visual_modelo{modelo}_idx{idx}_iter{iteracao}_bloco{block_index}.png"
+
     )
 
 
@@ -361,6 +363,21 @@ def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
 
 
 
+# 2. Substituir valores em y_sup por essas classes
+def mapear_cores_para_x_test(y_sup, cores_validas):
+    """
+    Reduz os valores de y_sup para as cores mais próximas das válidas (recolorização simbólica).
+    """
+    y = tf.convert_to_tensor(y_sup)
+    y = tf.squeeze(y)
+
+    # Mapear cada valor em y para a cor válida mais próxima
+    def encontrar_mais_proxima(v):
+        return min(cores_validas, key=lambda c: abs(c - int(v)))
+
+    y_np = y.numpy()
+    y_mapeado = np.vectorize(encontrar_mais_proxima)(y_np)
+    return tf.expand_dims(tf.expand_dims(tf.convert_to_tensor(y_mapeado, dtype=tf.int64), axis=0), axis=-1)
 
 
 

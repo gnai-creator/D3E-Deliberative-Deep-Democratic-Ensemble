@@ -67,7 +67,7 @@ Simulate deliberation, conflict, and consensus among multiple neural models on t
 
 ## 🧪 Application: ARC Challenge
 
-* Input: symbolic grid from ARC (e.g., `(1, 30, 30, 1, 4)`)
+* Input: symbolic grid from ARC (e.g., `(1, 30, 30, 1, 1)`)
 * Output: per-pixel class prediction
 * Final consensus is defined by the Supreme Judge
 * Metrics for divergence, entropy, and trust are recorded at each iteration

@@ -49,6 +49,8 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
         output_grid = add_judge_channel(output_grid, juizo_value=1, confidence_value=1)
         test_input_grid = add_judge_channel(test_input_grid, juizo_value=0, confidence_value=1)
 
+        # output_grid = output_grid / 9.0  # Normaliza para range [0, 1]
+
         X.append(input_grid)
         Y.append(output_grid)
         X_test.append(test_input_grid)

@@ -20,10 +20,10 @@ sns.set(style="whitegrid", font_scale=1.2)
 def ensure_numpy(x):
     return x.numpy() if hasattr(x, "numpy") else x
 
-def extrair_matriz_simbolica(grid_3d, pad_value=0):
+def extrair_matriz_simbolica(grid_3d, pad_value=-1):
     return grid_3d[:, :, 0].astype(np.int32)
 
-def extrair_matriz_simbolica_test(grid_3d, pad_value=0):
+def extrair_matriz_simbolica_test(grid_3d, pad_value=-1):
     if grid_3d.shape[-1] == 1:
         return np.argmax(grid_3d, axis=-1).astype(np.int32)
     return grid_3d[:, :, 0].astype(np.int32)
@@ -107,31 +107,37 @@ def plot_prediction_test(predicted_output, raw_input, pad_value, save_path):
 
 def ensure_numpy(tensor):
     return tensor.numpy() if hasattr(tensor, "numpy") else tensor
+
 def preparar_voto_para_visualizacao(voto):
     try:
         voto = tf.convert_to_tensor(voto)
+        log(f"[DEBUG] PREPARAR VOTO PARA VIZUALIZAÇÃO VOTO SHAPE {voto.shape}")
 
-        # Caso o voto venha com shape (1, 30, 30, 1, 10), extrai a classe
+        # Caso (1, 30, 30, 1, 10): aplicar argmax no último eixo
         if voto.shape.rank == 5 and voto.shape[-1] == 10:
             voto = tf.argmax(voto, axis=-1)  # (1, 30, 30, 1)
-        elif voto.shape.rank == 4 and voto.shape[-1] == 10:
-            voto = tf.argmax(voto, axis=-1)  # (1, 30, 30)
-            voto = tf.expand_dims(voto, axis=-1)  # (1, 30, 30, 1)
 
-        # Garante shape (1, 30, 30, 1)
+        # Caso (1, 30, 30, 1, 1): remover última dimensão
+        elif voto.shape.rank == 5 and voto.shape[-1] == 1:
+            voto = tf.squeeze(voto, axis=-1)  # (1, 30, 30, 1)
+
+        # Se ainda estiver em shape inesperado, tentar normalizar
         if voto.shape.rank == 3:
             voto = tf.expand_dims(voto, axis=-1)  # (1, 30, 30, 1)
         elif voto.shape.rank == 2:
-            voto = tf.reshape(voto, (1, 30, 30, 1))  # (1, 30, 30, 1)
+            voto = tf.reshape(voto, (1, 30, 30, 1))
 
+        # Confirma formato final
         if voto.shape != (1, 30, 30, 1):
             log(f"[VISUAL] ⚠️ Voto visual com shape inesperado: {voto.shape}")
             return None
 
         return voto
+
     except Exception as e:
         log(f"[VISUAL] Erro ao preparar voto: {e}")
         return None
+
 
 
 
@@ -273,7 +279,7 @@ def ensure_numpy(x):
         return np.array(x)
 
 
-def compute_pixelwise_accuracy(expected, predicted, pad_value=0):
+def compute_pixelwise_accuracy(expected, predicted, pad_value=-1):
     expected = np.asarray(expected)
     predicted = np.asarray(predicted)
 
@@ -297,7 +303,7 @@ def plot_prediction_debug(
     expected_output,
     predicted_output,
     model_index="",
-    pad_value=0,
+    pad_value=-1,
     index=0,
     task_id=None,
     saida_dir="debug_plots"

@@ -22,7 +22,7 @@ pesos = {
     "modelo_3": 1.5,
     "modelo_4": 2.0,
     "modelo_5": 3.0,
-    "modelo_6": -2.0
+    "modelo_6": -3.5
 }
 
 def verificar_votos_models(votos_models):
@@ -42,17 +42,19 @@ def safe_total_squeeze(t):
 
 def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, block_idx=None,
                       max_cycles=10, tol=9.0, epochs=10, confidence_threshold=0.5,
-                      confidence_manager=[], idx=0, pad_value=0, Y_val=None):
+                      confidence_manager=[], idx=0, pad_value=-1, Y_val=None):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
 
     modelos = models.copy()
 
 
     votos_iniciais = {}
-    for i in range(4):
-        votos_iniciais[f"modelo_{i}"] = modelos[i](X_train, training=False)
-
-    votos_iniciais[f"modelo_{4}"] = modelos[i](X_train, training=False)
+    
+    votos_iniciais[f"modelo_{0}"] = modelos[0](X_train, training=False)
+    votos_iniciais[f"modelo_{1}"] = modelos[1](X_train, training=False)
+    votos_iniciais[f"modelo_{2}"] = modelos[2](X_train, training=False)
+    votos_iniciais[f"modelo_{3}"] = modelos[3](X_train, training=False)
+    votos_iniciais[f"modelo_{4}"] = modelos[4](X_train, training=False)
     classes_validas = extrair_todas_classes_validas(X_test, X_train, pad_value=pad_value)
     classes_objetivo = extrair_classes_validas(X_test, pad_value=pad_value)
 
@@ -84,14 +86,17 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
 
     while iter_count < max_cycles:
         log(f"[DEBUG] iter_count={iter_count}, block_idx={block_idx}, idx={idx}, task_id={task_id}")
-        # Todos votam sempre
-        for i in range(7):
-            votos_models[f"modelo_{i}"] = modelos[i](X_test, training=False)
+        
+        votos_models[f"modelo_{1}"] = modelos[1](X_test, training=False)
+        votos_models[f"modelo_{2}"] = modelos[2](X_test, training=False)
+        votos_models[f"modelo_{3}"] = modelos[3](X_test, training=False)
+        votos_models[f"modelo_{4}"] = modelos[4](X_test, training=False)
+        votos_models[f"modelo_{5}"] = modelos[5](X_test, training=False)
+        votos_models[f"modelo_{6}"] = modelos[6](X_test, training=False)
 
         # Após 7 iterações, os jurados atualizam seu voto com base no X_train (por exemplo)
         if iter_count >= max_cycles/2:
-            for i in range(4):
-                votos_models[f"modelo_{i}"] = modelos[i](X_train, training=False)
+            votos_models[f"modelo_{0}"] = modelos[0](X_train, training=False)
 
 
         votos_models = garantir_dict_votos_models(votos_models)
@@ -112,19 +117,21 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         )
 
         y_sup = pixelwise_mode(preds_stack)
-        y_sup = filtrar_classes_respeitando_valores(y_sup, classes_validas, pad_value=pad_value)
-        y_antitese = inverter_classes_respeitando_valores(y_sup, classes_validas, pad_value=pad_value)
+        y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
+        y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_objetivo, pad_value=pad_value)
+        treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup_recolorido, epochs=epochs * 3)
+        treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese, epochs=epochs * 3)
 
-        treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup, epochs=epochs)
-        treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese, epochs=epochs)
-
-        for i in range(4):
-            if iter_count >= max_cycles / 2:
-                y_pred = tf.argmax(modelos[i](X_test, training=False), axis=-1)
-                y_target = tf.argmax(y_sup, axis=-1)
-                match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_target), tf.float32)).numpy()
-                if match < 0.999:
-                    treinar_modelo_com_y_sparse(modelos[i], X_test, y_sup, epochs=epochs)
+       
+        if iter_count >= max_cycles / 2:
+            y_pred = tf.argmax(modelos[0](X_test, training=False), axis=-1)
+            y_target = tf.argmax(y_sup, axis=-1)
+            match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_target), tf.float32)).numpy()
+            log(f"[MATCH] MATCH {match}")
+            if match < 0.97:
+                y_sup = pixelwise_mode(preds_stack)
+                y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
+                treinar_modelo_com_y_sparse(modelos[0], X_test, y_sup_recolorido, epochs=epochs)
 
         votos_models = garantir_dict_votos_models(votos_models)
         resultado, consenso = avaliar_consenso_ponderado(

@@ -45,7 +45,7 @@ def save_debug_result(data, filepath):
         json.dump(serializable_data, f, indent=2)
 
 
-def pad_to_shape(tensor, target_shape=(30, 30), pad_value=0):
+def pad_to_shape(tensor, target_shape=(30, 30), pad_value=-1):
     import tensorflow as tf
 
     tensor = tf.convert_to_tensor(tensor)

@@ -9,6 +9,7 @@ import random
 import json
 import traceback
 from court_logic import arc_court_supreme
+from court_utils import extrair_classes_validas, extrair_todas_classes_validas
 from confidence_system import ConfidenceManager
 from metrics_utils import plot_prediction_test, gerar_video_time_lapse, embutir_trilha_sonora
 from runtime_utils import save_debug_result
@@ -129,7 +130,7 @@ class GrampyX:
             if y_pred_simbolico is not None:
                 try:
                     y_pred_tensor = tf.convert_to_tensor(y_pred_simbolico)
-                    classes_validas = extrair_classes_validas(x_input, pad_value=0)
+                    classes_validas = extrair_todas_classes_validas(x_input, x_train, pad_value=-1)
 
                     valores_preditos = tf.unique(tf.reshape(y_pred_tensor, [-1])).y
                     set_preditos = set(valores_preditos.numpy().tolist())
@@ -182,24 +183,7 @@ class GrampyX:
 
 # Global cache para manter batches entre chamadas
 todos_os_batches = {}
-def extrair_classes_validas(y_real, pad_value=0):
-    y_real = tf.convert_to_tensor(y_real)
-    log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
 
-    # Se a forma for (H, W, 1, 1) ou (30, 30, 1, 1), extrai canal de cor
-    if y_real.shape.rank == 4 and y_real.shape[-1] == 1:
-        y_real = y_real[..., 0]  # Pega apenas o canal da classe
-
-    if y_real.shape.rank >= 4 and y_real.shape[-1] != 1:
-        log(f"[WARN] Tentativa de squeeze em shape incompatível: {y_real.shape}")
-
-    valores = tf.unique(tf.reshape(y_real, [-1]))[0]
-    valores = tf.cast(valores, tf.int32)
-    valores_validos = tf.boolean_mask(valores, valores != pad_value)
-
-    log(f"[DEBUG] Valores únicos: {valores.numpy().tolist()}")
-    log(f"[DEBUG] Classes extraídas: {valores_validos.numpy().tolist()}")
-    return valores_validos
 
 def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=9.5, idx=0, grampyx=None):
     grampy = grampyx
@@ -240,13 +224,13 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             block_size=1,
             max_training_time=14400,
             cycles=150,
-            epochs=60,
+            epochs=150,
             batch_size=8,
             patience=20,
-            rl_lr=2e-3,
+            rl_lr=3e-3,
             factor=0.65,
             len_trainig=1,
-            pad_value=0,
+            pad_value=-1,
         )
         todos_os_batches[idx].extend(batches)
 
@@ -281,7 +265,7 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
         if y_pred is not None:
             try:
                 y_pred_tensor = tf.convert_to_tensor(y_pred)
-                classes_validas = extrair_classes_validas(X_test, pad_value=0)
+                classes_validas = extrair_todas_classes_validas(X_test, X_train, pad_value=-1)
 
                 # Extrai valores únicos previstos
                 valores_preditos = tf.unique(tf.reshape(y_pred_tensor, [-1])).y

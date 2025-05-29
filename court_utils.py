@@ -181,7 +181,7 @@ def safe_total_squeeze(t):
 def safe_squeeze_last_dim(t):
     return tf.squeeze(t, axis=-1) if t.shape.rank is not None and t.shape[-1] == 1 else t
 
-def extrair_classes_validas(y_real, pad_value=0):
+def extrair_classes_validas(y_real, pad_value=-1):
     log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
     y_real = safe_total_squeeze(y_real)
     y_real = tf.convert_to_tensor(y_real)
@@ -205,7 +205,7 @@ def extrair_classes_validas(y_real, pad_value=0):
     log(f"[DEBUG] Classes extraídas: {valores_validos.numpy().tolist()}")
     return valores_validos
 
-def extrair_todas_classes_validas(X_train, X_test, pad_value=0):
+def extrair_todas_classes_validas(X_train, X_test, pad_value=-1):
     """
     Extrai as classes válidas presentes tanto no X_train quanto no X_test,
     considerando apenas o canal de cor (canal 0).
@@ -234,7 +234,7 @@ def extrair_todas_classes_validas(X_train, X_test, pad_value=0):
     return classes_unicas
 
 
-def inverter_classes_respeitando_valores(y, classes_validas, pad_value=0):
+def inverter_classes_respeitando_valores(y, classes_validas, pad_value=-1):
     """
     Recebe y com shape (1, 30, 30, 1, 1)
     Retorna o mesmo shape (1, 30, 30, 1, 1), invertendo os dois valores mais comuns presentes em `classes_validas`.
@@ -277,7 +277,7 @@ def inverter_classes_respeitando_valores(y, classes_validas, pad_value=0):
 
 
 
-def filtrar_classes_respeitando_valores(y, classes_validas, pad_value=0, preserve_invalids=False):
+def filtrar_classes_respeitando_valores(y, classes_validas, pad_value=-1, preserve_invalids=False):
     y = tf.convert_to_tensor(y)
     log(f"[DEBUG] filtrando classes — y.shape={y.shape}")
 
@@ -326,7 +326,7 @@ def filtrar_classes_respeitando_valores(y, classes_validas, pad_value=0, preserv
 
 
 
-def gerar_padrao_simbolico(x_input, pad_value=0):
+def gerar_padrao_simbolico(x_input, pad_value=-1):
     """
     Gera uma previsão simbólica baseada em alternância pura entre valores presentes no input.
     Ideal para inicialização de y_sup quando há colapso de classe.
@@ -351,44 +351,48 @@ def gerar_padrao_simbolico(x_input, pad_value=0):
 
     return tf.convert_to_tensor(padrao[None, ...], dtype=tf.int32)
 
-
-
 def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
     """
     Treina o modelo com:
     - x_input: (1, 30, 30, 1, 1)
-    - y_input: (1, 30, 30, 1) com inteiros
+    - y_input: (1, 30, 30, 1) com inteiros (onde pad_value é -1)
     """
+    pad_value = -1  # Valor que será ignorado no treinamento
+
     log(f"[DEBUG] x_input shape inicial: {x_input.shape}")
     log(f"[DEBUG] y_input shape inicial: {y_input.shape}")
 
-    # ============ x_input ============
+    # ============ Conversão para tensor ============
     if isinstance(x_input, np.ndarray):
         x_input = tf.convert_to_tensor(x_input)
-    if x_input.shape != (1, 30, 30, 1, 1):
-        raise ValueError(f"[ERRO] x_input esperado com shape (1, 30, 30, 1, 1), mas recebeu {x_input.shape}")
-
-    # ============ y_input ============
     if isinstance(y_input, np.ndarray):
         y_input = tf.convert_to_tensor(y_input)
 
-    if y_input.shape[-1] == 1:
-        y_input = tf.squeeze(y_input, axis=-1)
-    # Ajusta y_input caso venha com shape (1, 30, 30)
-    if y_input.shape == (1, 30, 30):
-        y_input = tf.tile(tf.expand_dims(y_input, axis=-1), [1, 1, 1, 1])  # vira (1, 30, 30, 1)
+    # ============ Verificação de shapes ============
+    if x_input.shape != (1, 30, 30, 1, 1):
+        raise ValueError(f"[ERRO] x_input esperado com shape (1, 30, 30, 1, 1), mas recebeu {x_input.shape}")
+    if y_input.shape.rank == 5 and y_input.shape[-1] == 1:
+        y_input = tf.squeeze(y_input, axis=-1)  # (1, 30, 30, 1)
+    if y_input.shape.rank == 4 and y_input.shape[-1] != 1:
+        y_input = tf.expand_dims(y_input, axis=-1)  # (1, 30, 30, 1)
 
-    if y_input.shape[-1] != 1:
-        y_input = tf.squeeze(y_input, axis=-1)
-    
-    if y_input.shape[-1] != 1:
+    if y_input.shape != (1, 30, 30, 1):
         raise ValueError(f"[ERRO] y_input esperado com shape (1, 30, 30, 1), mas recebeu {y_input.shape}")
 
-    # ============ Treinamento ============
-    log(f"[DEBUG] x_input shape final: {x_input.shape}")
-    log(f"[DEBUG] y_input shape final: {y_input.shape}")
+    # ============ Aplicar máscara ============
+    mask = tf.not_equal(y_input, pad_value)  # shape (1, 30, 30, 1)
+    x_input_masked = tf.boolean_mask(x_input, mask)
+    y_input_masked = tf.boolean_mask(y_input, mask)
 
-    modelo.fit(x=x_input, y=y_input, epochs=epochs, verbose=0)
+    # Remove dimensões extras se necessário
+    if y_input_masked.shape.rank > 1:
+        y_input_masked = tf.squeeze(y_input_masked, axis=-1)
+
+    log(f"[DEBUG] x_input shape final: {x_input_masked.shape}")
+    log(f"[DEBUG] y_input shape final: {y_input_masked.shape}")
+
+    modelo.fit(x=x_input_masked, y=y_input_masked, epochs=epochs, verbose=0)
+
 
 
 

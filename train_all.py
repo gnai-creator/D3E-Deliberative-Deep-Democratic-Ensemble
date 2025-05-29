@@ -6,7 +6,7 @@ import traceback
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-
+import matplotlib.pyplot as plt
 from metrics_utils import plot_prediction_debug
 from runtime_utils import log, to_numpy_safe
 from data_loader import load_data
@@ -14,6 +14,41 @@ from models_loader import load_model
 
 def corte_esta_completa(models):
     return isinstance(models, list) and len(models) == 5 and all(m is not None for m in models)
+
+
+def prepare_validation_data(X_val, Y_val, pad_value=-1):
+    # Garante tipos
+    X_val = tf.cast(X_val, tf.float32)
+    Y_val = tf.cast(Y_val, tf.int32)
+
+    # Remove eixos desnecessários
+    if X_val.shape.rank == 5 and X_val.shape[0] == 1:
+        X_val = tf.squeeze(X_val, axis=0)  # (30, 30, 1, 1)
+    if Y_val.shape.rank == 4 and Y_val.shape[0] == 1:
+        Y_val = tf.squeeze(Y_val, axis=0)  # (30, 30, 1)
+
+    if X_val.shape.rank == 4 and X_val.shape[-1] == 1 and X_val.shape[-2] == 1:
+        X_val = tf.squeeze(X_val, axis=-1)  # (30, 30, 1)
+        X_val = tf.squeeze(X_val, axis=-1)  # (30, 30)
+
+    if Y_val.shape.rank == 3 and Y_val.shape[-1] == 1:
+        Y_val = tf.squeeze(Y_val, axis=-1)  # (30, 30)
+
+    # Máscara válida
+    mask = tf.not_equal(Y_val, pad_value)  # (30, 30)
+
+    # Flatten
+    X_val_flat = tf.reshape(X_val, [-1, 1, 1, 1, 1])  # (900, 1, 1, 1, 1)
+    Y_val_flat = tf.reshape(Y_val, [-1])              # (900,)
+    mask_flat = tf.reshape(mask, [-1])                # (900,)
+
+    # Aplica a máscara
+    X_val_masked = tf.boolean_mask(X_val_flat, mask_flat)
+    Y_val_masked = tf.boolean_mask(Y_val_flat, mask_flat)
+
+    return X_val_masked, Y_val_masked
+
+
 
 def training_process(
     batches=[],
@@ -24,13 +59,13 @@ def training_process(
     block_size=1,
     max_training_time=14400,
     cycles=150,
-    epochs=60,
-    batch_size=8,
+    epochs=100,
+    batch_size=4,
     patience=20,
     rl_lr=2e-3,
     factor=0.65,
     len_trainig=1,
-    pad_value=0,
+    pad_value=-1,
 ):
     start_time = time.time()
     blacklist_blocks = [73, 124]
@@ -66,6 +101,22 @@ def training_process(
     log(f"[INFO] SHAPE X TRAIN : {X_train.shape}")
     log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")
 
+    # X_train = tf.cast(X_train, tf.float32)
+    # X_train = tf.where(tf.less(X_train, 0), 0.0, X_train)  # substitui -1 por 0
+    Y_train = tf.cast(Y_train, tf.int32)  # Sem tf.where
+
+    X_val_masked, Y_val_masked = prepare_validation_data(X_val, Y_val)
+
+    visual_grid = tf.squeeze(Y_train)  # reduz todas as dimensões de tamanho 1
+
+    # Se ainda tiver mais de 2 dimensões, selecione o canal 0
+    if visual_grid.shape.rank > 2:
+        visual_grid = visual_grid[..., 0]  # garante shape (30, 30)
+
+    plt.imshow(visual_grid.numpy(), cmap="viridis")
+    plt.title("Input Visual")
+    plt.colorbar()
+    plt.savefig("a.png")
     _ = model(X_train, training=False)
 
     for cycle in range(cycles):
@@ -73,13 +124,14 @@ def training_process(
         model.fit(
             x=X_train,
             y=Y_train,
-            validation_data=(X_val, Y_val),
+            validation_data=(X_val_masked, Y_val_masked),
             batch_size=batch_size,
             epochs=epochs,
             callbacks=[
                 ReduceLROnPlateau(monitor="val_loss", factor=factor, patience=2, min_lr=rl_lr),
+                # EarlyStopping(monitor="val_loss", patience=patience, restore_best_weights=True)
             ],
-            verbose=0,
+            verbose=1,
         )
 
         try:

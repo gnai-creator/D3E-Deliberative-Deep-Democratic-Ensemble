@@ -68,7 +68,7 @@ def prepare_data(X, Y):
     return X, Y
 
 
-def pad_to_30x30_top_left(X, Y, pad_value=0):
+def pad_to_30x30_top_left(X, Y, pad_value=-1):
     """
     Pad X e Y para shape (30, 30, C, J) no canto superior esquerdo.
     """
@@ -91,7 +91,7 @@ def pad_to_30x30_top_left(X, Y, pad_value=0):
 
 
 
-def pad_to_30x30_top_left_single(X, pad_value=0):
+def pad_to_30x30_top_left_single(X, pad_value=-1):
     """
     Pad uma lista de arrays X para shape (30, 30, C, J).
     """
@@ -106,10 +106,10 @@ def pad_to_30x30_top_left_single(X, pad_value=0):
     return np.array(padded_X)
 
 
-def expand_grid_to_30x30x1(grid_2d, pad_value=0):
+def expand_grid_to_30x30x1(grid_2d, pad_value=-1):
     """
     Recebe um grid 2D (H, W) com valores de cor 0-9 e transforma em (30, 30, 1),
-    preenchendo o restante com pad_value (padrão = 0).
+    preenchendo o restante com pad_value (padrão = -1).
     """
     if grid_2d.ndim != 2:
         raise ValueError(f"Esperado grid 2D, mas recebeu shape {grid_2d.shape}")

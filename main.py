@@ -1,11 +1,15 @@
   
 import os
 import tensorflow as tf
+from tensorflow.keras import mixed_precision
 import numpy as np
 import random
 from GrampyX import rodar_deliberacao_com_condicoes, GrampyX
 from models_loader import load_model
 from runtime_utils import log
+
+mixed_precision.set_global_policy("mixed_float16")
+
 if __name__ == "__main__":
     tf.random.set_seed(42)
     np.random.seed(42)

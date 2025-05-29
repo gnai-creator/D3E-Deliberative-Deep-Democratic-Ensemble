@@ -12,7 +12,7 @@ def load_data_batches(challenges="", task_ids="", num_models=5, model_idx=0, blo
         block_index=block_idx,
         task_ids=task_ids,
         block_size=1,
-        pad_value=0,
+        pad_value=-1,
         vocab_size=10,
         model_idx=model_idx,
         block_idx=block_idx

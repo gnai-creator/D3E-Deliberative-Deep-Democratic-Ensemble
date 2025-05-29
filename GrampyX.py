@@ -172,20 +172,25 @@ def extrair_classes_validas(y_real, pad_value=0):
 
 def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=0.9, idx=0, grampyx=None):
     import json
+    import tensorflow as tf
+    from data_pipeline import load_data_batches
+    from train_all import training_process
+    from court_utils import extrair_classes_validas
+    from runtime_utils import log
+
     grampy = grampyx
-    BATCH_SIZE = 10
+    BATCH_SIZE = 1
 
     with open("arc-agi_test_challenges.json") as f:
         test_challenges = json.load(f)
 
     task_ids = list(test_challenges.keys())
-    task_batches = [task_ids[i:i + BATCH_SIZE] for i in range(0, len(task_ids), BATCH_SIZE)]
 
-    if idx >= len(task_batches):
-        log(f"[ERRO] Índice idx={idx} excede número de blocos disponíveis ({len(task_batches)}). Abortando.")
+    if idx >= len(task_ids):
+        log(f"[ERRO] Índice idx={idx} excede número de tarefas disponíveis ({len(task_ids)}). Abortando.")
         return False
 
-    task_batch = task_batches[idx]
+    task_batch = [task_ids[idx]]
 
     if idx not in todos_os_batches:
         todos_os_batches[idx] = []
@@ -195,13 +200,17 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
                 num_models=grampy.num_modelos,
                 task_ids=task_batch,
                 model_idx=model_idx,
-                block_idx=idx
+                block_idx=0  # Corrigido: load_data_batches espera block_idx referente ao batch, não ao idx global
             )
+            if not batches:
+                log(f"[ERRO] Nenhum batch retornado para model_idx={model_idx}, task={task_batch}")
+                continue
+
             training_process(
                 models=grampy.models,
                 batches=batches,
                 n_model=model_idx,
-                batch_index=idx,
+                batch_index=0,
                 max_blocks=1,
                 block_size=1,
                 max_training_time=14400,
@@ -231,6 +240,7 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             log(f"[GrampyX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
             y_val_test = extrair_classes_validas(X_test, 0)
             log(f"[GRAMPYX] y_val_test: {y_val_test}")
+
             resultado = grampy.julgar(
                 x_train=X_train,
                 y_train=Y_train,
@@ -245,6 +255,19 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             )
 
             consenso = resultado.get("consenso", 0)
+
+            y_pred = resultado.get("y_pred_simbolico")
+            if y_pred is not None:
+                try:
+                    y_val_tensor = tf.convert_to_tensor(y_val_test)
+                    y_pred_tensor = tf.convert_to_tensor(y_pred)
+                    acuracia_objetiva = tf.reduce_mean(tf.cast(tf.equal(y_pred_tensor, y_val_tensor), tf.float32)).numpy()
+                    log(f"[AVALIAÇÃO] Acurácia objetiva contra gabarito: {acuracia_objetiva:.2f}")
+                    if acuracia_objetiva < 0.95:
+                        log("[ALERTA] Consenso alcançado, mas com baixa precisão em relação ao gabarito.")
+                except Exception as e:
+                    log(f"[AVALIAÇÃO] Erro ao comparar com gabarito: {e}")
+
             if consenso >= consenso_minimo:
                 log(f"[GrampyX] Consenso alcançado ({consenso:.2f}), encerrando iteração.")
                 sucesso = True
@@ -259,3 +282,4 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
 
     log("[GrampyX] Deliberação encerrada.")
     return sucesso_global
+

@@ -217,13 +217,17 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         if consenso >= tol:
             return {
                 "class_logits": votos_models["modelo_5"],
-                "consenso": float(consenso)
+                "consenso": float(consenso),
+                "y_pred_simbolico": tf.squeeze(tf.argmax(votos_models["modelo_5"], axis=-1)).numpy()
             }
+
 
         iter_count += 1
 
     return {
         "class_logits": votos_models["modelo_5"],
-        "consenso": float(consenso)
+        "consenso": float(consenso),
+        "y_pred_simbolico": tf.squeeze(tf.argmax(votos_models["modelo_5"], axis=-1)).numpy()
     }
+
 

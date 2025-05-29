@@ -1,4 +1,3 @@
-
 import os
 import json
 import time
@@ -13,11 +12,8 @@ from runtime_utils import log, to_numpy_safe
 from data_loader import load_data
 from models_loader import load_model
 
-
-
 def corte_esta_completa(models):
     return isinstance(models, list) and len(models) == 5 and all(m is not None for m in models)
-
 
 def training_process(
     batches=[],
@@ -41,6 +37,10 @@ def training_process(
 
     if batch_index in blacklist_blocks:
         log(f"[SKIP] Bloco {batch_index} na blacklist.")
+        return
+
+    if not batches or batch_index >= len(batches):
+        log(f"[ERRO] Nenhum batch carregado no índice {batch_index}.")
         return
 
     (
@@ -68,7 +68,6 @@ def training_process(
 
     _ = model(X_train, training=False)
 
-   
     for cycle in range(cycles):
         log(f"Cycle {cycle} — Modelo {n_model}")
         model.fit(
@@ -78,7 +77,6 @@ def training_process(
             batch_size=batch_size,
             epochs=epochs,
             callbacks=[
-                # EarlyStopping(monitor="val_shape_acc", patience=patience, restore_best_weights=True),
                 ReduceLROnPlateau(monitor="val_loss", factor=factor, patience=2, min_lr=rl_lr),
             ],
             verbose=0,
@@ -87,16 +85,10 @@ def training_process(
         try:
             preds = model.predict(X_val)
 
-
             log(f"[DEBUG] preds shape: {preds.shape}")
             log(f"[DEBUG] y_val shape: {Y_val.shape}")
-            # Se for logits de 10 classes, aplica argmax
             if preds.shape[-1] == 10:
-                preds = np.argmax(preds, axis=-1)  # shape → (1, 30, 30, 1)
-            # Remove batch e dimensão do canal se necessário
-
-            log(f"[DEBUG] preds shape: {preds.shape}")
-            log(f"[DEBUG] y_val shape: {Y_val.shape}")
+                preds = np.argmax(preds, axis=-1)
 
             pixel_color_perfect, pixel_shape_perfect = plot_prediction_debug(
                 raw_input=X_train,

@@ -1,7 +1,6 @@
 # D3D: Deliberative Deep Democratic Ensemble
 
-**ARC Court Logic** is a symbolic multi-agent deliberation framework designed for solving ARC-style visual reasoning tasks. It simulates a hierarchical judicial system using deep learning agents with cooperative and adversarial roles.
-
+*A symbolic court-inspired AI ensemble for reasoning via consensus.*
 ## 🌐 Overview
 
 ARC Court Logic uses an ensemble of models acting as jurors, lawyers, judges, and a prosecutor. Each model has a defined hierarchical weight and confidence level, contributing to a symbolic voting system. Deliberation is conducted in iterative cycles until consensus is reached or a maximum number of iterations is exceeded.

@@ -92,7 +92,7 @@ def compile_model(model, lr=0.001):
     optimizer = Adam(learning_rate=lr, clipnorm=1.0)
     model.compile(
         optimizer=optimizer,
-        loss=tf.keras.losses.MeanSquaredError(),
+        loss=tf.keras.losses.Huber(),
         # loss=masked_loss(
         #     blur_penalty_weight=0.3,
         #     pad_value=-1,
@@ -100,6 +100,6 @@ def compile_model(model, lr=0.001):
         #     ssim_weight=0.7,
         #     com_weight=0.2
         # ),
-        metrics=[tf.keras.metrics.MeanSquaredError()]
+        metrics=[tf.keras.metrics.MeanAbsoluteError()]
     )
     return model

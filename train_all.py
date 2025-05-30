@@ -5,6 +5,8 @@ import random
 import traceback
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras import backend as K
+import gc
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 import matplotlib.pyplot as plt
 from metrics_utils import plot_prediction_debug
@@ -111,6 +113,7 @@ def training_process(
                 ],
                 verbose=0,
             )
+            
         except Exception as e:
             log(f"[ERROR DETECTADO] {e}")
             traceback.print_exc()
@@ -145,6 +148,9 @@ def training_process(
 
             if pixel_color_perfect >= 0.999 and pixel_shape_perfect >= 0.999:
                 log(f"[✓] Modelo {n_model} treinado com sucesso no exemplo {batch_index}.")
+                model.save_weights(f"weights_model_{n_model}_block_{batch_index}.h5")
+                K.clear_session()
+                gc.collect()
                 return
 
         except Exception as e:
@@ -152,3 +158,4 @@ def training_process(
             traceback.print_exc()
 
         cycle +=1
+    

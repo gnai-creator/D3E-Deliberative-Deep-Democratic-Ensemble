@@ -46,7 +46,7 @@ class GrampyX:
         os.makedirs(PERSIST_DIR, exist_ok=True)
         self.num_blocos = contar_blocos(challenges_path)  # nova função
         self.num_modelos = num_modelos
-        self.models = [load_model(i, 0.0005) for i in range(num_modelos)]
+        self.models = [load_model(i, 0.00015) for i in range(num_modelos)]
         self.manager = ConfidenceManager(self.models)
         self.submission_dict = []
         self.history_X = []
@@ -93,6 +93,8 @@ class GrampyX:
             log(f"[GrampyX] X_TESTE SHAPE FINAL : {x_input.shape}")
             if x_input.shape.rank != 5 or x_input.shape != (1, 30, 30, 1, 1):
                 x_input, _ = self.preparar_inputs(x_input)
+
+            
 
             resultados = arc_court_supreme(
                 models=self.models,
@@ -225,8 +227,8 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             max_training_time=14400,
             batch_size=8,          # ou até 4 se estiver lento demais
             epochs=40,             # mantém
-            patience=8,            # para early stopping
-            rl_lr=1e-3,            # ok
+            patience=10,            # para early stopping
+            rl_lr=1.5e-3,            # ok
             factor=0.65,           # ok
             len_trainig=1,
             pad_value=-1,
@@ -238,7 +240,10 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
     X_train, X_val, Y_train, Y_val, X_test, raw_input, block_idx, task_id = batches[0]
     iteracao = 0
     sucesso = False
-
+    
+    for model_idx in range(grampy.num_modelos):
+        grampy.models[model_idx].load_weights(f"weights_model_{idx}_block_{block_idx}.h5")
+        
     while not sucesso and iteracao < max_iteracoes:
         log(f"[GrampyX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
         y_val_test = extrair_classes_validas(X_test, 0)

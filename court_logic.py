@@ -150,6 +150,9 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
 
 
         iter_count += 1
+    
+    for model_idx in range(len(models)):
+        models[model_idx].save_weights(f"weights_model_{model_idx}_block_{block_idx}.h5")
 
     return {
         "class_logits": votos_models["modelo_5"],

@@ -11,7 +11,7 @@ from court_utils import gerar_padrao_simbolico, gerar_visualizacao_votos
 from court_utils import inverter_classes_respeitando_valores, pixelwise_mode
 from court_utils import treinar_modelo_com_y_sparse, mapear_cores_para_x_test
 from court_utils import extrair_todas_classes_validas
-
+from court_utils import extrair_canal_cor, expandir_para_3_canais
 # Ativa modo eager para debug detalhado de train_function
 tf.config.run_functions_eagerly(True)
 
@@ -67,18 +67,21 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
     
 
     preds_stack = tf.stack(
-        [tf.squeeze(tf.argmax(p, axis=-1, output_type=tf.int64), axis=0) for p in votos_models.values()],
+        [tf.argmax(extrair_canal_cor(p), axis=-1, output_type=tf.int64) for p in votos_models.values()],
         axis=0
     )
+
 
     # ⬇️ Usa a verdade objetiva (Y_val) como alvo para Suprema e Promotor
     y_sup = pixelwise_mode(preds_stack)
     y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_validas)
     y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_validas, pad_value=pad_value)
 
+    y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
+    y_antitese_redi = expandir_para_3_canais(y_antitese)
     # Agora treina os modelos com rótulos que respeitam as cores do X_test
-    treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup_recolorido, epochs=epochs * 3)
-    treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese, epochs=epochs * 3)
+    treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup_redi, epochs=epochs * 3)
+    treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese_redi, epochs=epochs * 3)
 
 
     iter_count = 0
@@ -117,10 +120,14 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         )
 
         y_sup = pixelwise_mode(preds_stack)
-        y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
-        y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_objetivo, pad_value=pad_value)
-        treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup_recolorido, epochs=epochs * 3)
-        treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese, epochs=epochs * 3)
+        y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_validas)
+        y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_validas, pad_value=pad_value)
+
+        y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
+        y_antitese_redi = expandir_para_3_canais(y_antitese)
+        # Agora treina os modelos com rótulos que respeitam as cores do X_test
+        treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup_redi, epochs=epochs * 3)
+        treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese_redi, epochs=epochs * 3)
 
        
         if iter_count >= max_cycles / 2:

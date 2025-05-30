@@ -46,7 +46,13 @@ class GrampyX:
         os.makedirs(PERSIST_DIR, exist_ok=True)
         self.num_blocos = contar_blocos(challenges_path)  # nova função
         self.num_modelos = num_modelos
-        self.models = [load_model(i, 0.00015) for i in range(num_modelos)]
+        self.models = []
+        for model_index in range(num_modelos):
+            tf.keras.utils.set_random_seed(42 + model_index)
+            model = load_model(model_index, 0.0015)
+            self.models.append(model)
+
+     
         self.manager = ConfidenceManager(self.models)
         self.submission_dict = []
         self.history_X = []
@@ -192,6 +198,16 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
     BATCH_SIZE = 1
     block_idx = idx % grampy.num_blocos
 
+    import os
+
+    for model_idx in range(grampy.num_modelos):
+        weights_path = f"weights_model_{model_idx}_block_{idx}.h5"
+        if os.path.exists(weights_path):
+            grampy.models[model_idx].load_weights(weights_path)
+            log(f"[INFO] Pesos carregados: {weights_path}")
+        else:
+            log(f"[AVISO] Pesos não encontrados: {weights_path} — pulando carregamento.")
+
     with open("arc-agi_test_challenges.json") as f:
         test_challenges = json.load(f)
 
@@ -242,8 +258,13 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
     sucesso = False
     
     for model_idx in range(grampy.num_modelos):
-        grampy.models[model_idx].load_weights(f"weights_model_{idx}_block_{block_idx}.h5")
-        
+        weights_path = f"weights_model_{model_idx}_block_{idx}.h5"
+        if os.path.exists(weights_path):
+            grampy.models[model_idx].load_weights(weights_path)
+            log(f"[INFO] Pesos carregados: {weights_path}")
+        else:
+            log(f"[AVISO] Pesos não encontrados: {weights_path} — pulando carregamento.")
+
     while not sucesso and iteracao < max_iteracoes:
         log(f"[GrampyX] Deliberação iter {iteracao} — Task {task_id} — Bloco {block_idx}")
         y_val_test = extrair_classes_validas(X_test, 0)

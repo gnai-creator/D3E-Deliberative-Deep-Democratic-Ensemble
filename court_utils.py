@@ -1,10 +1,11 @@
 # court_logic.py — Sistema de julgamento simbólico com modelos cooperativos e adversariais
 import numpy as np
 import tensorflow as tf
-from metrics_utils import salvar_voto_visual, preparar_voto_para_visualizacao
+from metrics_utils import preparar_voto_para_visualizacao
 from runtime_utils import log
 from metrics_utils import ensure_numpy, garantir_dict_votos_models
 from models_loader import load_model
+from graphics_utils import salvar_voto_visual
 import sys
 # Converte logits para rótulos se necessário
 def normalizar_y_para_sparse(y):
@@ -157,6 +158,22 @@ def treinar_promotor_inicial(models, input_tensor_outros, votos_models, epochs):
     log("[PROMOTOR] Treinando promotor com antítese da moda das juradas.")
     models[6].fit(x=x_promotor, y=y_antitese, epochs=epochs, verbose=0)
 
+
+def extrair_canal_cor(tensor_5d):
+    """
+    Recebe um tensor (1, 30, 30, 3, 1) e retorna apenas o canal da cor: (1, 30, 30, 1)
+    """
+    return tf.expand_dims(tensor_5d[:, :, :, 0, 0], axis=-1)  # (1, 30, 30, 1)
+
+def expandir_para_3_canais(y_input):
+    y_input = tf.cast(y_input, tf.float32)
+    if y_input.shape[-1] != 1:
+        raise ValueError(f"Esperado último canal = 1, recebeu {y_input.shape}")
+    y_3c = tf.repeat(y_input, repeats=3, axis=3)  # (1, 30, 30, 3)
+    y_3c = tf.expand_dims(y_3c, axis=-1)         # (1, 30, 30, 3, 1)
+    return y_3c
+
+
 def instanciar_promotor_e_supremo(models):
     model = load_model(6, 0.0005)
     models.append(model)
@@ -180,22 +197,20 @@ def safe_total_squeeze(t):
 
 def safe_squeeze_last_dim(t):
     return tf.squeeze(t, axis=-1) if t.shape.rank is not None and t.shape[-1] == 1 else t
-
 def extrair_classes_validas(y_real, pad_value=-1):
     log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
-    y_real = safe_total_squeeze(y_real)
     y_real = tf.convert_to_tensor(y_real)
 
+    # Extrai o canal de cor (canal 0 do eixo -2) se estiver em formato (1, 30, 30, 3, 1)
+    if y_real.shape.rank == 5 and y_real.shape[-2] == 3:
+        y_real = y_real[:, :, :, 0, :]  # Mantém o shape (1, 30, 30, 1)
+
+    y_real = safe_total_squeeze(y_real)
+
     try:
-        log(f"[DEBUG] y_real preview: {y_real.numpy()[0, 0, 0]}")
+        log(f"[DEBUG] y_real preview: {y_real.numpy()[0, 0]}")
     except:
         pass
-
-    # Se for (H, W, 1, 4), extrai apenas o canal 0 (cor da classe)
-    if y_real.shape.rank == 4 and y_real.shape[-1] == 4:
-        y_real = y_real[..., 0]  # Extrai canal da classe
-
-    y_real = tf.squeeze(y_real)
 
     valores = tf.unique(tf.reshape(y_real, [-1]))[0]
     valores = tf.cast(valores, tf.int32)
@@ -208,17 +223,16 @@ def extrair_classes_validas(y_real, pad_value=-1):
 def extrair_todas_classes_validas(X_train, X_test, pad_value=-1):
     """
     Extrai as classes válidas presentes tanto no X_train quanto no X_test,
-    considerando apenas o canal de cor (canal 0).
+    considerando apenas o canal de cor (canal 0 do eixo -2).
     """
     def extrair_classes(x):
-        x = safe_total_squeeze(x)
         x = tf.convert_to_tensor(x)
 
-        # Extrai canal de cor se for RGB ou RGBA
-        if x.shape.rank == 4 and x.shape[-1] >= 1:
-            x = x[..., 0]  # Canal 0 é a classe (cor)
+        # Extrai canal de cor se for (1, 30, 30, 3, 1)
+        if x.shape.rank == 5 and x.shape[-2] == 3:
+            x = x[:, :, :, 0, :]  # (1, 30, 30, 1)
 
-        x = tf.squeeze(x)
+        x = safe_total_squeeze(x)
         valores = tf.unique(tf.reshape(x, [-1]))[0]
         valores = tf.cast(valores, tf.int32)
         return tf.boolean_mask(valores, valores != pad_value)
@@ -232,6 +246,7 @@ def extrair_todas_classes_validas(X_train, X_test, pad_value=-1):
 
     log(f"[DEBUG] Classes extraídas combinadas: {classes_unicas.numpy().tolist()}")
     return classes_unicas
+
 
 
 def inverter_classes_respeitando_valores(y, classes_validas, pad_value=-1):
@@ -350,48 +365,47 @@ def gerar_padrao_simbolico(x_input, pad_value=-1):
             padrao[i, j] = a.numpy() if (i + j) % 2 == 0 else b.numpy()
 
     return tf.convert_to_tensor(padrao[None, ...], dtype=tf.int32)
-
 def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
     """
     Treina o modelo com:
-    - x_input: (1, 30, 30, 1, 1)
-    - y_input: (1, 30, 30, 1) com inteiros (onde pad_value é -1)
+    - x_input: (1, 30, 30, 3, 1)
+    - y_input: (1, 30, 30, 3)
     """
-    pad_value = -1  # Valor que será ignorado no treinamento
+    pad_value = -1
 
     log(f"[DEBUG] x_input shape inicial: {x_input.shape}")
     log(f"[DEBUG] y_input shape inicial: {y_input.shape}")
 
-    # ============ Conversão para tensor ============
     if isinstance(x_input, np.ndarray):
-        x_input = tf.convert_to_tensor(x_input)
+        x_input = tf.convert_to_tensor(x_input, dtype=tf.float32)
     if isinstance(y_input, np.ndarray):
-        y_input = tf.convert_to_tensor(y_input)
+        y_input = tf.convert_to_tensor(y_input, dtype=tf.float32)
 
-    # ============ Verificação de shapes ============
-    if x_input.shape != (1, 30, 30, 1, 1):
-        raise ValueError(f"[ERRO] x_input esperado com shape (1, 30, 30, 1, 1), mas recebeu {x_input.shape}")
-    if y_input.shape.rank == 5 and y_input.shape[-1] == 1:
-        y_input = tf.squeeze(y_input, axis=-1)  # (1, 30, 30, 1)
-    if y_input.shape.rank == 4 and y_input.shape[-1] != 1:
-        y_input = tf.expand_dims(y_input, axis=-1)  # (1, 30, 30, 1)
+    if x_input.shape != (1, 30, 30, 3, 1):
+        raise ValueError(f"[ERRO] x_input esperado com shape (1, 30, 30, 3, 1), mas recebeu {x_input.shape}")
 
-    if y_input.shape != (1, 30, 30, 1):
-        raise ValueError(f"[ERRO] y_input esperado com shape (1, 30, 30, 1), mas recebeu {y_input.shape}")
+    # Ajustar y_input para shape (1, 30, 30, 3, 1)
+    if y_input.shape.rank == 4:
+        y_input = tf.expand_dims(y_input, axis=-1)
+    elif y_input.shape.rank != 5:
+        raise ValueError(f"[ERRO] y_input com rank inválido: {y_input.shape}")
 
-    # ============ Aplicar máscara ============
-    mask = tf.not_equal(y_input, pad_value)  # shape (1, 30, 30, 1)
-    x_input_masked = tf.boolean_mask(x_input, mask)
-    y_input_masked = tf.boolean_mask(y_input, mask)
+    if y_input.shape != (1, 30, 30, 3, 1):
+        raise ValueError(f"[ERRO] y_input esperado com shape (1, 30, 30, 3, 1), mas recebeu {y_input.shape}")
 
-    # Remove dimensões extras se necessário
-    if y_input_masked.shape.rank > 1:
-        y_input_masked = tf.squeeze(y_input_masked, axis=-1)
+    # Criar sample_weight com 1 para válidos e 0 para pad_value
+    sample_weight = tf.cast(tf.not_equal(y_input, pad_value), tf.float32)
 
-    log(f"[DEBUG] x_input shape final: {x_input_masked.shape}")
-    log(f"[DEBUG] y_input shape final: {y_input_masked.shape}")
+    log(f"[DEBUG] sample_weight shape: {sample_weight.shape}")
 
-    modelo.fit(x=x_input_masked, y=y_input_masked, epochs=epochs, verbose=0)
+    modelo.fit(
+        x=x_input,
+        y=y_input,
+        sample_weight=sample_weight,
+        epochs=epochs,
+        verbose=0
+    )
+
 
 
 

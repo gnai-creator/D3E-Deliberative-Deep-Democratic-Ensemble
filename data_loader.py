@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from runtime_utils import log
-from metrics import expand_grid_to_30x30x1, add_judge_channel
+from metrics import expand_grid_to_30x30x1, add_judge_channel, expand_grid_to_30x30x1_Y
 
 def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_size, block_idx, model_idx):
     start_idx = block_index * block_size
@@ -41,7 +41,7 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
 
         # Converte para (30, 30, 1)
         input_grid = expand_grid_to_30x30x1(input_grid, pad_value)
-        output_grid = expand_grid_to_30x30x1(output_grid, pad_value)
+        output_grid = expand_grid_to_30x30x1_Y(output_grid, pad_value)
         test_input_grid = expand_grid_to_30x30x1(test_input_grid, pad_value)
 
         # Adiciona canal de juízo após expansão

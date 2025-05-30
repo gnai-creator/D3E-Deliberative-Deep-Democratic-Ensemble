@@ -11,42 +11,9 @@ from metrics_utils import plot_prediction_debug
 from runtime_utils import log, to_numpy_safe
 from data_loader import load_data
 from models_loader import load_model
-
+from metrics import prepare_validation_data
 def corte_esta_completa(models):
     return isinstance(models, list) and len(models) == 5 and all(m is not None for m in models)
-
-
-def prepare_validation_data(X_val, Y_val, pad_value=-1):
-    # Garante tipos
-    X_val = tf.cast(X_val, tf.float32)
-    Y_val = tf.cast(Y_val, tf.int32)
-
-    # Remove eixos desnecessários
-    if X_val.shape.rank == 5 and X_val.shape[0] == 1:
-        X_val = tf.squeeze(X_val, axis=0)  # (30, 30, 1, 1)
-    if Y_val.shape.rank == 4 and Y_val.shape[0] == 1:
-        Y_val = tf.squeeze(Y_val, axis=0)  # (30, 30, 1)
-
-    if X_val.shape.rank == 4 and X_val.shape[-1] == 1 and X_val.shape[-2] == 1:
-        X_val = tf.squeeze(X_val, axis=-1)  # (30, 30, 1)
-        X_val = tf.squeeze(X_val, axis=-1)  # (30, 30)
-
-    if Y_val.shape.rank == 3 and Y_val.shape[-1] == 1:
-        Y_val = tf.squeeze(Y_val, axis=-1)  # (30, 30)
-
-    # Máscara válida
-    mask = tf.not_equal(Y_val, pad_value)  # (30, 30)
-
-    # Flatten
-    X_val_flat = tf.reshape(X_val, [-1, 1, 1, 1, 1])  # (900, 1, 1, 1, 1)
-    Y_val_flat = tf.reshape(Y_val, [-1])              # (900,)
-    mask_flat = tf.reshape(mask, [-1])                # (900,)
-
-    # Aplica a máscara
-    X_val_masked = tf.boolean_mask(X_val_flat, mask_flat)
-    Y_val_masked = tf.boolean_mask(Y_val_flat, mask_flat)
-
-    return X_val_masked, Y_val_masked
 
 
 
@@ -130,11 +97,10 @@ def training_process(
                 save_weights_only=True,
                 verbose=1
             )
-            
             model.fit(
                 x=X_train,
                 y=Y_train,
-                validation_data=(X_val_masked, Y_val_masked),
+                validation_data=(X_val, Y_val),
                 batch_size=batch_size,
                 epochs=epochs,
                 callbacks=[
@@ -142,7 +108,7 @@ def training_process(
                     EarlyStopping(monitor="val_loss", patience=patience, restore_best_weights=True),
                     checkpoint_callback,
                 ],
-                verbose=1,
+                verbose=0,
             )
         except Exception as e:
             log(f"[ERROR DETECTADO] {e}")

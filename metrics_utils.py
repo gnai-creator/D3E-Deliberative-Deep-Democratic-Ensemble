@@ -350,7 +350,7 @@ def plot_prediction_debug(
     total = np.sum(mask)
     correct = np.sum((expected_2d == predicted_2d) & mask)
     pixel_color_perfect = correct / total if total > 0 else 0.0
-    pixel_shape_perfect = (expected_2d == predicted_2d).mean()
+    pixel_shape_perfect = np.sum((expected_2d == predicted_2d) & mask) / np.sum(mask) if np.sum(mask) > 0 else 0.0
 
     # Plots
     fig, ax = plt.subplots(1, 2, figsize=(12, 6))

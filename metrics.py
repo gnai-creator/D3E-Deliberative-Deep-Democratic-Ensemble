@@ -145,3 +145,65 @@ def expand_grid_to_30x30x1(grid_2d, pad_value=-1):
     # Empilha em canais: (30, 30, 3)
     stacked = np.stack([cor, pos_x, pos_y], axis=-1)
     return stacked  # shape (30, 30, 3)
+
+def expand_grid_to_30x30x1_Y(grid_2d, pad_value=-1):
+    """
+    Recebe um grid 2D (H, W) com valores de cor 0-9 e transforma em (30, 30, 1),
+    preenchendo o restante com pad_value (padrão = -1).
+    """
+    if grid_2d.ndim != 2:
+        raise ValueError(f"Esperado grid 2D, mas recebeu shape {grid_2d.shape}")
+    
+    h, w = grid_2d.shape
+    if h > 30 or w > 30:
+        raise ValueError("Grid maior que 30x30 não suportado")
+
+    padded = np.full((30, 30), pad_value, dtype=np.int32)
+    padded[:h, :w] = grid_2d
+    return np.expand_dims(padded, axis=-1)  # shape (30, 30, 1)
+
+
+import tensorflow as tf
+
+def prepare_validation_data(X_val, Y_val, pad_value=-1):
+    """
+    Prepara X_val e Y_val para validação, aplicando máscara de pad_value
+    e garantindo que apenas o canal de cor seja considerado.
+    """
+    # Garante tipo
+    X_val = tf.cast(X_val, tf.float32)
+    Y_val = tf.cast(Y_val, tf.int32)
+
+    # Remove batch se batch=1
+    if X_val.shape.rank == 5 and X_val.shape[0] == 1:
+        X_val = tf.squeeze(X_val, axis=0)  # (H, W, C, J)
+    if Y_val.shape.rank == 4 and Y_val.shape[0] == 1:
+        Y_val = tf.squeeze(Y_val, axis=0)  # (H, W, C)
+
+    # Garante que Y_val seja (H, W)
+    if Y_val.shape.rank == 3 and Y_val.shape[-1] == 1:
+        Y_val = tf.squeeze(Y_val, axis=-1)
+
+    # Extrai apenas o canal de cor (canal 0 de C)
+    if X_val.shape.rank == 4 and X_val.shape[2] > 1:
+        X_val = X_val[:, :, 0:1, :]  # (H, W, 1, J)
+
+    # Remove eixo de confiança se presente
+    if X_val.shape.rank == 4 and X_val.shape[-1] == 1:
+        X_val = tf.squeeze(X_val, axis=-1)  # (H, W, 1)
+    if X_val.shape.rank == 3 and X_val.shape[-1] == 1:
+        X_val = tf.squeeze(X_val, axis=-1)  # (H, W)
+
+    # Gera máscara de pontos válidos (sem pad)
+    mask = tf.not_equal(Y_val, pad_value)  # (H, W)
+
+    # Flatten para aplicar boolean_mask
+    X_val_flat = tf.reshape(X_val, [-1])       # (H*W,)
+    Y_val_flat = tf.reshape(Y_val, [-1])       # (H*W,)
+    mask_flat = tf.reshape(mask, [-1])         # (H*W,)
+
+    # Aplica máscara
+    X_val_masked = tf.boolean_mask(X_val_flat, mask_flat)
+    Y_val_masked = tf.boolean_mask(Y_val_flat, mask_flat)
+
+    return X_val_masked, Y_val_masked

@@ -226,7 +226,6 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             batch_size=8,          # ou até 4 se estiver lento demais
             epochs=40,             # mantém
             patience=8,            # para early stopping
-            cycles=500,             # menos ciclos se estiver muito lento
             rl_lr=1e-3,            # ok
             factor=0.65,           # ok
             len_trainig=1,

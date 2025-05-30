@@ -25,7 +25,6 @@ def training_process(
     max_blocks=1,
     block_size=1,
     max_training_time=14400,
-    cycles=150,
     epochs=100,
     batch_size=4,
     patience=20,
@@ -85,8 +84,10 @@ def training_process(
     plt.colorbar()
     plt.savefig("a.png")
     _ = model(X_train, training=False)
-
-    for cycle in range(cycles):
+    pixel_color_perfect = 0.0
+    pixel_shape_perfect = 0.0
+    cycle = 0
+    while  pixel_color_perfect <= 0.999 and pixel_shape_perfect <= 0.999:
         log(f"Cycle {cycle} — Modelo {n_model}")
         try:
 
@@ -149,3 +150,5 @@ def training_process(
         except Exception as e:
             log(f"[ERROR] Erro ao avaliar bloco {batch_index}: {e}")
             traceback.print_exc()
+
+        cycle +=1

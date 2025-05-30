@@ -166,12 +166,27 @@ def extrair_canal_cor(tensor_5d):
     return tf.expand_dims(tensor_5d[:, :, :, 0, 0], axis=-1)  # (1, 30, 30, 1)
 
 def expandir_para_3_canais(y_input):
-    y_input = tf.cast(y_input, tf.float32)
-    if y_input.shape[-1] != 1:
-        raise ValueError(f"Esperado último canal = 1, recebeu {y_input.shape}")
-    y_3c = tf.repeat(y_input, repeats=3, axis=3)  # (1, 30, 30, 3)
-    y_3c = tf.expand_dims(y_3c, axis=-1)         # (1, 30, 30, 3, 1)
-    return y_3c
+    """
+    Garante que y_input tenha shape (1, 30, 30, 3, 1), com valores int32.
+    """
+    if not isinstance(y_input, tf.Tensor):
+        y_input = tf.convert_to_tensor(y_input)
+
+    y_input = tf.cast(y_input, tf.int32)
+
+    if y_input.shape.rank == 4:
+        # (1, 30, 30, 1) → (1, 30, 30, 3)
+        y_input = tf.repeat(y_input, repeats=3, axis=3)
+        y_input = tf.expand_dims(y_input, axis=-1)
+    elif y_input.shape.rank == 5 and y_input.shape[3] == 1:
+        # (1, 30, 30, 1, 1) → (1, 30, 30, 3, 1)
+        y_input = tf.repeat(y_input, repeats=3, axis=3)
+    elif y_input.shape.rank == 5 and y_input.shape[3] == 3:
+        pass  # já está no formato certo
+    else:
+        raise ValueError(f"[expandir_para_3_canais] Shape inválido: {y_input.shape}")
+
+    return y_input
 
 
 def instanciar_promotor_e_supremo(models):

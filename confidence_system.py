@@ -39,7 +39,6 @@ class ConfidenceManager:
         else:
             log(linha)
 
-
 def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5.0, voto_reverso_ok=None):
     """
     Avalia consenso ponderado usando pesos hierárquicos definidos para cada modelo.
@@ -52,20 +51,33 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
         try:
             v = tf.convert_to_tensor(voto)
 
-            if v.shape.rank >= 4 and v.shape[-1] > 1:
-                v = tf.argmax(v, axis=-1)
+            # Reduz de (1, H, W, C, 1) para (H, W, C)
+            while v.shape.rank > 3:
+                v = tf.squeeze(v, axis=0 if v.shape[0] == 1 else -1)
 
-            if v.shape.rank == 4 and v.shape[-1] == 1:
-                v = tf.squeeze(v, axis=-1)
+            if v.shape.rank == 3 and v.shape[-1] == 3:
+                v = v[..., 0]  # Usa canal 0 como classe
+
+            if v.shape.rank == 3:
+                v = tf.squeeze(v, axis=-1) if v.shape[-1] == 1 else v
+
+            v = tf.cast(v, tf.float32)
+
+            if voto_reverso_ok and name in voto_reverso_ok:
+                v = 9.0 - v
+
+            if tf.reduce_any(tf.math.is_nan(v)):
+                log(f"[CONSENSO] ⚠️ Voto {name} contém NaN. Ignorado.")
+                continue
 
             v = tf.cast(v, tf.int64)
 
-            if voto_reverso_ok and name in voto_reverso_ok:
-                v = 9 - v
+            if v.shape.rank != 2:
+                log(f"[CONSENSO] ⚠️ Voto {name} com shape inválido {v.shape}. Ignorado.")
+                continue
 
-            expected_size = tf.reduce_prod(tf.shape(v)[-2:]).numpy().item()
-            if tf.size(v).numpy().item() != expected_size:
-                log(f"[CONSENSO] ⚠️ Voto {name} tem {tf.size(v).numpy().item()} elementos. Ignorado.")
+            if v.shape[0] != 30 or v.shape[1] != 30:
+                log(f"[CONSENSO] ⚠️ Voto {name} com shape inválido {v.shape}. Ignorado.")
                 continue
 
             votos_stacked.append(v)
@@ -100,7 +112,7 @@ def avaliar_consenso_ponderado(votos_models: dict, pesos: dict, required_score=5
                 peso_total = 0.0
                 for model_name, voto_tensor in votos_dict.items():
                     try:
-                        v_val = voto_tensor[i, j, 0]
+                        v_val = voto_tensor[i, j]
                         v_numpy = int(v_val.numpy())
                         if v_numpy == classe_numpy:
                             peso = pesos.get(model_name, 1.0)

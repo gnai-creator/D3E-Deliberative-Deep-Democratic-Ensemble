@@ -33,23 +33,25 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, classes_
 
             if voto.ndim == 4 and voto.shape[-1] == 10:
                 v_soft = tf.nn.softmax(voto.astype(np.float32), axis=-1).numpy()
-                v_cls = np.argmax(v_soft, axis=-1)
+                v_cls = np.argmax(v_soft, axis=-1).astype(np.int32)
                 softmax_maxes.append(np.max(v_soft, axis=-1))
 
             elif voto.ndim == 3:
                 if voto.shape[-1] == 1:
                     v_cls = np.squeeze(voto, axis=-1).astype(np.int32)
+                    v_cls[v_cls == -1] = 0  # evita classe -1
                     softmax_maxes.append(np.zeros_like(v_cls))
                     log(f"[VISUAL DEBUG] Voto {i} interpretado como simbólico com shape (30,30,1).")
                 elif voto.shape[-1] == 10 and np.any(voto > 1):
                     v_soft = tf.nn.softmax(voto.astype(np.float32), axis=-1).numpy()
-                    v_cls = np.argmax(v_soft, axis=-1)
+                    v_cls = np.argmax(v_soft, axis=-1).astype(np.int32)
                     softmax_maxes.append(np.max(v_soft, axis=-1))
                 elif voto.shape[-1] == 3:
-                    v_cls = voto[:, :, 0]  # extrai canal da cor
+                    v_cls = voto[:, :, 0].astype(np.int32)
+                    v_cls[v_cls == -1] = 0  # evita classe -1
                     softmax_maxes.append(np.zeros_like(v_cls))
                 else:
-                    v_cls = np.argmax(voto, axis=-1)
+                    v_cls = np.argmax(voto, axis=-1).astype(np.int32)
                     softmax_maxes.append(np.zeros_like(v_cls))
 
             elif voto.ndim == 2:
@@ -77,20 +79,20 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, classes_
     if input_vis.ndim == 5:
         input_vis = input_vis[0]
     if input_vis.ndim == 4 and input_vis.shape[-1] == 10:
-        input_vis = extrair_matriz_simbolica_test(input_vis)
+        input_vis = np.argmax(input_vis, axis=-1).astype(np.int32)
     elif input_vis.ndim == 3:
         if input_vis.shape[-1] == 10:
-            input_vis = extrair_matriz_simbolica_test(input_vis)
+            input_vis = np.argmax(input_vis, axis=-1).astype(np.int32)
         elif input_vis.shape[-1] == 3:
-            input_vis = input_vis[:, :, 0]  # extrai canal da cor
+            input_vis = input_vis[:, :, 0].astype(np.int32)
         elif input_vis.shape[-1] == 1:
-            input_vis = input_vis[:, :, 0]
+            input_vis = input_vis[:, :, 0].astype(np.int32)
         elif input_vis.shape[-1] > 1:
-            input_vis = extrair_matriz_simbolica_test(input_vis)
+            input_vis = np.argmax(input_vis, axis=-1).astype(np.int32)
     elif input_vis.ndim == 2:
         input_vis = input_vis.astype(np.int32)
     else:
-        input_vis = np.zeros((30, 30))
+        input_vis = np.zeros((30, 30), dtype=np.int32)
 
     votos_stack = np.stack(votos_classes, axis=0)
     h, w = votos_stack.shape[1:3]
@@ -114,8 +116,10 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, classes_
         smap = softmax_maxes[i]
         classes_int = classes_resumidas[i].astype(np.int32)
 
+        classes_formatadas = ", ".join(map(str, classes_int.tolist()))
+
         axes[0, i].imshow(voto, cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
-        axes[0, i].set_title(f"{nome}\nClasses: {classes_int.tolist()}")
+        axes[0, i].set_title(f"{nome}\nClasses: [{classes_formatadas}]")
         axes[0, i].axis("off")
 
         axes[1, i].imshow(smap, cmap="Blues", interpolation="nearest", vmin=0, vmax=1)

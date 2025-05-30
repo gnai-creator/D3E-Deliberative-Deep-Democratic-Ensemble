@@ -41,7 +41,7 @@ def safe_total_squeeze(t):
     return tf.squeeze(t, axis=axes)
 
 def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, block_idx=None,
-                      max_cycles=30, tol=9.0, epochs=10, confidence_threshold=0.5,
+                      max_cycles=60, tol=9.0, epochs=10, confidence_threshold=0.5,
                       confidence_manager=[], idx=0, pad_value=-1, Y_val=None):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
 
@@ -92,12 +92,14 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         
         if iter_count >= max_cycles/3:
             votos_models[f"modelo_{0}"] = modelos[0](X_test, training=False)
-        else:
+        elif iter_count == 0:
             votos_models[f"modelo_{0}"] = modelos[0](X_train, training=False)
-        votos_models[f"modelo_{1}"] = modelos[1](X_train, training=False)
-        votos_models[f"modelo_{2}"] = modelos[2](X_train, training=False)
-        votos_models[f"modelo_{3}"] = modelos[3](X_train, training=False)
-        votos_models[f"modelo_{4}"] = modelos[4](X_train, training=False)
+        # else:
+        #     votos_models[f"modelo_{0}"] = modelos[0](X_train, training=False)
+            votos_models[f"modelo_{1}"] = modelos[1](X_train, training=False)
+            votos_models[f"modelo_{2}"] = modelos[2](X_train, training=False)
+            votos_models[f"modelo_{3}"] = modelos[3](X_train, training=False)
+            votos_models[f"modelo_{4}"] = modelos[4](X_train, training=False)
         votos_models[f"modelo_{5}"] = modelos[5](X_test, training=False)
         votos_models[f"modelo_{6}"] = modelos[6](X_test, training=False)
 

@@ -118,7 +118,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, classes_
 
         classes_formatadas = ", ".join(map(str, classes_int.tolist()))
 
-        axes[0, i].imshow(voto, cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
+        axes[0, i].imshow(voto.astype(np.int32), cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
         axes[0, i].set_title(f"{nome}\nClasses: [{classes_formatadas}]")
         axes[0, i].axis("off")
 
@@ -126,7 +126,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, classes_
         axes[1, i].set_title("Confiança Máx.")
         axes[1, i].axis("off")
 
-    axes[0, -1].imshow(input_vis, cmap="viridis", vmin=0, vmax=9)
+    axes[0, -1].imshow(input_vis.astype(np.int32), cmap="viridis", vmin=0, vmax=9)
     axes[0, -1].set_title("Input")
     axes[0, -1].axis("off")
 
@@ -140,4 +140,5 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, classes_
     plt.savefig(filepath)
     plt.close()
     print(f"[VISUAL DEBUG] ✅ Voto visual detalhado salvo em {filepath}")
+
 

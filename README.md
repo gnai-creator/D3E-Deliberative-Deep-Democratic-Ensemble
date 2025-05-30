@@ -3,7 +3,7 @@
 *A symbolic court-inspired AI ensemble for reasoning via consensus.*
 ## 🌐 Overview
 
-ARC Court Logic uses an ensemble of models acting as jurors, lawyers, judges, and a prosecutor. Each model has a defined hierarchical weight and confidence level, contributing to a symbolic voting system. Deliberation is conducted in iterative cycles until consensus is reached or a maximum number of iterations is exceeded.
+D3E uses an ensemble of models acting as jurors, lawyers, judges, and a prosecutor. Each model has a defined hierarchical weight and confidence level, contributing to a symbolic voting system. Deliberation is conducted in iterative cycles until consensus is reached or a maximum number of iterations is exceeded.
 
 ## 🧑‍🏫 Roles and Responsibilities
 

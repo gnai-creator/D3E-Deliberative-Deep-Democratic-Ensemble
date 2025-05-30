@@ -41,7 +41,7 @@ def safe_total_squeeze(t):
     return tf.squeeze(t, axis=axes)
 
 def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, block_idx=None,
-                      max_cycles=10, tol=9.0, epochs=10, confidence_threshold=0.5,
+                      max_cycles=30, tol=9.0, epochs=10, confidence_threshold=0.5,
                       confidence_manager=[], idx=0, pad_value=-1, Y_val=None):
     log(f"[SUPREMA] Iniciando deliberação para o bloco {block_idx} — task {task_id}")
 
@@ -90,7 +90,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
     while iter_count < max_cycles:
         log(f"[DEBUG] iter_count={iter_count}, block_idx={block_idx}, idx={idx}, task_id={task_id}")
         
-        if iter_count >= max_cycles/2:
+        if iter_count >= max_cycles/3:
             votos_models[f"modelo_{0}"] = modelos[0](X_test, training=False)
         else:
             votos_models[f"modelo_{0}"] = modelos[0](X_train, training=False)
@@ -132,7 +132,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese_redi, epochs=epochs * 3)
 
        
-        if iter_count >= max_cycles / 2:
+        if iter_count >= max_cycles / 3:
             y_pred = tf.argmax(modelos[0](X_test, training=False), axis=-1)
             y_target = tf.argmax(y_sup, axis=-1)
             match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_target), tf.float32)).numpy()

@@ -1,99 +1,109 @@
-# 🧠 ClippyX Architecture – Neural Deliberation with Symbolic Hierarchy
+# D3D System Architecture
 
-ClippyX is an architecture inspired by judicial institutions, where neural models assume distinct social roles, engaging in hierarchical learning, deliberative cycles, and adaptive trust mechanisms.
-
----
-
-## ⚖️ Overview
-
-The architecture simulates a judicial system with six neural agents:
-
-- 3 **Jurors**
-- 1 **Advocate**
-- 1 **Judge**
-- 1 **Supreme Judge**
-
-Each agent is a neural model trained with role-specific data during the deliberative cycle. Agents are not independent: they share context, interact through predictions and feedback, and adapt behavior based on authority and disagreement.
+The **D3D (Deliberative Deep Democratic Ensemble)** architecture is a symbolic and neural hybrid framework that models a judicial-like decision system using deep learning agents with distinct roles, weights, and consensus mechanisms.
 
 ---
 
-## 🧩 Institutional Roles
+## 🔄 High-Level Flow
 
-| Agent          | Role                                       | Initial Training                 | Adaptation                            |
-|----------------|---------------------------------------------|----------------------------------|----------------------------------------|
-| Juror 0        | Juror with behavioral noise                | Learns from Advocate + noise     | Does not adapt                         |
-| Juror 1        | Loyal juror                                | Learns from Advocate             | Does not adapt                         |
-| Juror 2        | Juror with Theory of Mind                  | Learns from Advocate             | Adapts to Supreme if divergent         |
-| Advocate       | Starts the legal thesis                    | Learns from Judge's feedback     | Continuously adapts                    |
-| Judge          | Weighs jurors and advocate                 | Learns from Supreme              | Re-evaluates based on Supreme's ruling |
-| Supreme Judge  | Final authority                            | Learns from all others           | Defines final consensus                |
-
----
-
-## 🔁 Deliberation Cycle
-
-1. **Initial predictions (iteration 0)**:
-   - All models (except the Supreme) predict based on symbolic input.
-   - **All agents always receive the same raw symbolic input (`X`)**.
-   - This `X` represents the raw state of the problem and remains constant across iterations.
-
-2. **Training phase**:
-   - Jurors learn from the Advocate.
-     - Juror 0 applies spatial noise (DropBlock).
-     - Juror 2 may be retrained based on the Supreme if divergence is detected.
-   - The Supreme learns from all (jurors, advocate, judge).
-   - The Judge is updated with the Supreme's feedback.
-   - The Advocate refines their thesis with the Judge's feedback.
-
-3. **Visualization and consensus analysis**:
-   - Votes are visualized.
-   - Entropy maps highlight pixel-level disagreement.
-   - Trust system evaluates each model based on agreement with the Supreme.
-
-4. **Repeat until consensus**:
-   - If the Supreme achieves full accuracy on the Judge's output, the cycle ends.
-   - Otherwise, a new iteration begins with updated votes.
-
----
-
-## 📐 Symbolic Interaction Diagram
-
-```text
-Raw Input
-   │
-   ├──▶ Advocate
-   │       │
-   │       ├──▶ Juror 0 (noisy)
-   │       ├──▶ Juror 1 (loyal)
-   │       └──▶ Juror 2 (with ToM)
-   │
-   └──▶ Judge ◀── Supreme Judge
-                     ▲
-           ┌─────────┴──────────┐
-           │                   │
-     Jurors, Judge, Advocate ──┘
+```
+           +---------------------+
+           |   Input Task (X)   |
+           +---------------------+
+                      |
+        +-------------+-------------+
+        |                           |
++----------------+       +---------------------+
+|  Jurors (0-2)  | ...   |   Lawyer (Model 3)   |
++----------------+       +---------------------+
+        |                           |
+        +-------------+-------------+
+                      |
+                +-----------+
+                |   Judge   | (Model 4)
+                +-----------+
+                      |
+          +-----------+-----------+
+          |                       |
++---------------------+  +---------------------+
+| Supreme Judge (5)   |  |  Prosecutor (6)     |
+| (Retrains per round)|  | (Creates antithesis)|
++---------------------+  +---------------------+
+          |                       |
+          +-----------+-----------+
+                      |
+                +------------+
+                | Consensus  |
+                | Evaluation |
+                +------------+
+                      |
+                +------------+
+                |   Output   |
+                +------------+
 ```
 
 ---
 
-## 🎯 Advanced Features
+## 🪧 Component Roles
 
-- Modeling of **localized cognitive noise** (Juror 0)
-- Simulation of **symbolic authority** (Supreme)
-- Implementation of **adaptive Theory of Mind** (Juror 2)
-- **Evolving symbolic trust system** with penalties
-- Visualization of divergence using **symbolic entropy maps**
-
----
-
-## 💡 Applications
-
-- ARC Challenge benchmark
-- Simulation of adaptive judgment
-- Study of distributed trust in ensembles
-- Symbolic metaphor for explainable AI
+| Role              | Model Index | Description                                               |
+| ----------------- | ----------- | --------------------------------------------------------- |
+| **Jurors**        | 0-2         | Provide diverse initial predictions                       |
+| **Lawyer**        | 3           | Intermediate mediator, higher influence                   |
+| **Judge**         | 4           | Core decider with more authority                          |
+| **Supreme Judge** | 5           | Retrains iteratively using provisional consensus as label |
+| **Prosecutor**    | 6           | Challenges the consensus with an antithesis               |
 
 ---
 
-## 📜 License and Ownership
-This system is protected against unauthorized commercial use. Royalties are required as described in the main license.
+## 🧳️ Deliberation Cycle
+
+1. **Prediction**: Each model produces a symbolic prediction on `X_test`.
+2. **Filtering**: Predictions are filtered to keep only valid class values.
+3. **Aggregation**: Pixel-wise mode of predictions is used to form a provisional consensus.
+4. **Training**: Supreme Judge is retrained with this consensus as supervision.
+5. **Antithesis**: Prosecutor generates opposing prediction to force refinement.
+6. **Confidence Voting**: Weighted consensus is computed using the confidence system.
+7. **Exit Condition**: If consensus exceeds tolerance threshold, exit loop; otherwise continue.
+
+---
+
+## 🚀 Consensus and Confidence System
+
+* Each model has a **weight** and **confidence level**.
+* A **confidence manager** tracks performance and adjusts voting influence.
+* **Consensus** is computed as a weighted agreement score.
+
+---
+
+## 📁 Files Overview
+
+| File                   | Responsibility                                        |
+| ---------------------- | ----------------------------------------------------- |
+| `GrampyX.py`           | Main class managing training, inference, saving state |
+| `court_logic.py`       | Core of the deliberation loop and symbolic consensus  |
+| `confidence_system.py` | Manages weights and trust/confidence of each model    |
+| `model_compile.py`     | Compilation and definition of models                  |
+| `metrics.py`           | Custom symbolic loss and metrics for evaluation       |
+| `data_pipeline.py`     | Loads, normalizes, and structures task data           |
+
+---
+
+## 🚫 Key Principles
+
+* No single model dominates: balance between cooperation (Supreme Judge) and adversariality (Prosecutor)
+* Symbolic reasoning is prioritized over raw accuracy
+* Models evolve dynamically with exposure to consensus vs antithesis tension
+
+---
+
+## 🌍 Applications Beyond ARC
+
+* Ethical AI alignment
+* Symbolic planning
+* Ensemble-based anomaly detection
+* Adversarial robustness research
+
+---
+
+> D3D reimagines learning as a symbolic court — deliberative, democratic, and dynamic.

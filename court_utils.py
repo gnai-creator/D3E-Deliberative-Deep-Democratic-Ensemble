@@ -212,6 +212,8 @@ def safe_total_squeeze(t):
 
 def safe_squeeze_last_dim(t):
     return tf.squeeze(t, axis=-1) if t.shape.rank is not None and t.shape[-1] == 1 else t
+
+
 def extrair_classes_validas(y_real, pad_value=-1):
     log(f"[DEBUG] extrair_classes_validas — y_real.shape={y_real.shape}")
     y_real = tf.convert_to_tensor(y_real)

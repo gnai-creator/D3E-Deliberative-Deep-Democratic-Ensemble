@@ -47,7 +47,10 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, classes_
                     v_cls = np.argmax(v_soft, axis=-1).astype(np.int32)
                     softmax_maxes.append(np.max(v_soft, axis=-1))
                 elif voto.shape[-1] == 3:
-                    v_cls = voto[:, :, 0].astype(np.int32)
+                    float_block = voto[:, :, 0].astype(np.float32)
+                    rounded = np.floor(float_block + 0.5)
+                    clipped = np.clip(rounded, 0, 9)
+                    v_cls = clipped.astype(np.int32)
                     v_cls[v_cls == -1] = 0  # evita classe -1
                     softmax_maxes.append(np.zeros_like(v_cls))
                 else:
@@ -84,7 +87,10 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, classes_
         if input_vis.shape[-1] == 10:
             input_vis = np.argmax(input_vis, axis=-1).astype(np.int32)
         elif input_vis.shape[-1] == 3:
-            input_vis = input_vis[:, :, 0].astype(np.int32)
+            float_block = input_vis[:, :, 0].astype(np.float32)
+            rounded = np.floor(float_block + 0.5)
+            clipped = np.clip(rounded, 0, 9)
+            input_vis = clipped.astype(np.int32)
         elif input_vis.shape[-1] == 1:
             input_vis = input_vis[:, :, 0].astype(np.int32)
         elif input_vis.shape[-1] > 1:

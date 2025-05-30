@@ -90,110 +90,110 @@ class GrampyX:
             x = tf.concat([x, pad], axis=-1)
         return x, x
 
-def julgar(self, x_train, y_train, y_val, x_input, raw_input, block_index, task_id, idx, iteracao, Y_val):
-    try:
-        log(f"[GrampyX] Julgando bloco {block_index} — Task {task_id}")
-        log(f"[GrampyX] X_TRAIN SHAPE FINAL : {x_train.shape}")
-        log(f"[GrampyX] Y_TRAIN SHAPE FINAL : {y_train.shape}")
-        log(f"[GrampyX] Y_VAL SHAPE FINAL : {y_val.shape}")
-        log(f"[GrampyX] X_TESTE SHAPE FINAL : {x_input.shape}")
+    def julgar(self, x_train, y_train, y_val, x_input, raw_input, block_index, task_id, idx, iteracao, Y_val):
+        try:
+            log(f"[GrampyX] Julgando bloco {block_index} — Task {task_id}")
+            log(f"[GrampyX] X_TRAIN SHAPE FINAL : {x_train.shape}")
+            log(f"[GrampyX] Y_TRAIN SHAPE FINAL : {y_train.shape}")
+            log(f"[GrampyX] Y_VAL SHAPE FINAL : {y_val.shape}")
+            log(f"[GrampyX] X_TESTE SHAPE FINAL : {x_input.shape}")
 
-        if x_input.shape.rank != 5 or x_input.shape != (1, 30, 30, 1, 1):
-            x_input, _ = self.preparar_inputs(x_input)
+            if x_input.shape.rank != 5 or x_input.shape != (1, 30, 30, 1, 1):
+                x_input, _ = self.preparar_inputs(x_input)
 
-        resultados = arc_court_supreme(
-            models=self.models,
-            X_train=x_train,
-            y_train=y_train,
-            y_val=y_val,
-            X_test=x_input,
-            task_id=task_id,
-            block_idx=block_index,
-            confidence_manager=self.manager,
-            idx=idx,
-            Y_val=Y_val
-        )
+            resultados = arc_court_supreme(
+                models=self.models,
+                X_train=x_train,
+                y_train=y_train,
+                y_val=y_val,
+                X_test=x_input,
+                task_id=task_id,
+                block_idx=block_index,
+                confidence_manager=self.manager,
+                idx=idx,
+                Y_val=Y_val
+            )
 
-        log(f"[DEBUG] Salvando arquivo com idx={idx}, iteracao={iteracao}, block_index={block_index}")
+            log(f"[DEBUG] Salvando arquivo com idx={idx}, iteracao={iteracao}, block_index={block_index}")
 
-        consenso = float(resultados.get("consenso", 0.0))
-        y_pred = resultados.get("class_logits")
-        y_pred_simbolico = resultados.get("y_pred_simbolico")
+            consenso = float(resultados.get("consenso", 0.0))
+            y_pred = resultados.get("class_logits")
+            y_pred_simbolico = resultados.get("y_pred_simbolico")
 
-        if isinstance(y_pred, tf.Tensor):
-            try:
-                flat = tf.argmax(y_pred, axis=-1).numpy().flatten()
-                if flat.shape[0] != 900:
-                    log(f"[GrampyX ERRO] Previsão descartada: shape inesperado após argmax: {flat.shape}")
-                else:
-                    label = 1.0 if consenso >= 0.9 else 0.0
-                    self.history_X.append(flat)
-                    self.history_y.append(label)
-            except Exception as e:
-                log(f"[GrampyX ERRO] Erro ao preparar histórico: {e}")
-        else:
-            log("[GrampyX WARN] y_pred não é tensor. Histórico não será atualizado.")
+            if isinstance(y_pred, tf.Tensor):
+                try:
+                    flat = tf.argmax(y_pred, axis=-1).numpy().flatten()
+                    if flat.shape[0] != 900:
+                        log(f"[GrampyX ERRO] Previsão descartada: shape inesperado após argmax: {flat.shape}")
+                    else:
+                        label = 1.0 if consenso >= 0.9 else 0.0
+                        self.history_X.append(flat)
+                        self.history_y.append(label)
+                except Exception as e:
+                    log(f"[GrampyX ERRO] Erro ao preparar histórico: {e}")
+            else:
+                log("[GrampyX WARN] y_pred não é tensor. Histórico não será atualizado.")
 
-        # Valida classes previstas
-        if y_pred_simbolico is not None:
-            try:
-                y_pred_tensor = tf.convert_to_tensor(y_pred_simbolico)
-                classes_validas = extrair_todas_classes_validas(x_input, x_train, pad_value=-1)
+            # Valida classes previstas
+            if y_pred_simbolico is not None:
+                try:
+                    y_pred_tensor = tf.convert_to_tensor(y_pred_simbolico)
+                    classes_validas = extrair_todas_classes_validas(x_input, x_train, pad_value=-1)
 
-                valores_preditos = tf.unique(tf.reshape(y_pred_tensor, [-1])).y
-                set_preditos = set(valores_preditos.numpy().tolist())
-                set_validas = set([int(c) for c in classes_validas])
+                    valores_preditos = tf.unique(tf.reshape(y_pred_tensor, [-1])).y
+                    set_preditos = set(valores_preditos.numpy().tolist())
+                    set_validas = set([int(c) for c in classes_validas])
 
-                if set_preditos != set_validas:
-                    extras = set_preditos - set_validas
-                    faltando = set_validas - set_preditos
-                    log(f"[AVALIAÇÃO] Classes previstas não batem.\n  → Extras: {extras}\n  → Faltando: {faltando}")
-                    consenso = 0.0
-                else:
-                    log("[AVALIAÇÃO] Classes previstas batem exatamente com as válidas.")
+                    if set_preditos != set_validas:
+                        extras = set_preditos - set_validas
+                        faltando = set_validas - set_preditos
+                        log(f"[AVALIAÇÃO] Classes previstas não batem.\n  → Extras: {extras}\n  → Faltando: {faltando}")
+                        consenso = 0.0
+                    else:
+                        log("[AVALIAÇÃO] Classes previstas batem exatamente com as válidas.")
 
-            except Exception as e:
-                log(f"[AVALIAÇÃO] Erro ao validar classes previstas: {e}")
+                except Exception as e:
+                    log(f"[AVALIAÇÃO] Erro ao validar classes previstas: {e}")
 
-        self.internal_models.adicionar_voto(y_pred.numpy() if isinstance(y_pred, tf.Tensor) else y_pred, consenso)
-        self.internal_models.treinar_todos()
+            self.internal_models.adicionar_voto(y_pred.numpy() if isinstance(y_pred, tf.Tensor) else y_pred, consenso)
+            self.internal_models.treinar_todos()
 
-        if len(self.history_X) >= 10:
-            try:
-                tamanhos = set(map(len, self.history_X))
-                if len(tamanhos) == 1:
-                    self.detector.fit(
-                        np.array(self.history_X),
-                        np.array(self.history_y),
-                        epochs=5,
-                        verbose=0
-                    )
-                    log("[GrampyX] Detector interno treinado")
-                else:
-                    log("[GrampyX ERRO] history_X contém vetores com tamanhos diferentes: " + str(tamanhos))
-            except Exception as e:
-                log(f"[GrampyX ERRO] Falha ao treinar detector: {e}")
+            if len(self.history_X) >= 10:
+                try:
+                    tamanhos = set(map(len, self.history_X))
+                    if len(tamanhos) == 1:
+                        self.detector.fit(
+                            np.array(self.history_X),
+                            np.array(self.history_y),
+                            epochs=5,
+                            verbose=0
+                        )
+                        log("[GrampyX] Detector interno treinado")
+                    else:
+                        log("[GrampyX ERRO] history_X contém vetores com tamanhos diferentes: " + str(tamanhos))
+                except Exception as e:
+                    log(f"[GrampyX ERRO] Falha ao treinar detector: {e}")
 
-        self.salvar_estado()
+            self.salvar_estado()
 
-        # Convertendo y_pred para valores inteiros entre 0 e 9 antes do submission
-        if isinstance(y_pred, tf.Tensor):
-            y_pred_np = y_pred.numpy()
-            y_pred_np = y_pred_np.astype(np.float32)
-            y_pred_np = np.floor(y_pred_np + 0.5)
-            y_pred_np = np.clip(y_pred_np, 0, 9).astype(np.int32)
-        else:
-            y_pred_np = y_pred
+            # Convertendo y_pred para valores inteiros entre 0 e 9 antes do submission
+            if isinstance(y_pred, tf.Tensor):
+                y_pred_np = y_pred.numpy()
+                y_pred_np = y_pred_np.astype(np.float32)
+                y_pred_np = np.floor(y_pred_np + 0.5)
+                y_pred_np = np.clip(y_pred_np, 0, 9).astype(np.int32)
+            else:
+                y_pred_np = y_pred
 
-        self.submission_dict.append({"task_id": task_id, "prediction": to_serializable(y_pred_np)})
-        save_debug_result(self.submission_dict, "submission.json")
+            self.submission_dict.append({"task_id": task_id, "prediction": to_serializable(y_pred_np)})
+            save_debug_result(self.submission_dict, "submission.json")
 
-        return {"consenso": consenso, "y_pred_simbolico": y_pred_simbolico}
+            return {"consenso": consenso, "y_pred_simbolico": y_pred_simbolico}
 
-    except Exception as e:
-        log(f"[GrampyX ERRO] Bloco {block_index}: {str(e)}")
-        traceback.print_exc()
-        return {"consenso": 0.0, "y_pred_simbolico": None}
+        except Exception as e:
+            log(f"[GrampyX ERRO] Bloco {block_index}: {str(e)}")
+            traceback.print_exc()
+            return {"consenso": 0.0, "y_pred_simbolico": None}
 
 
 

@@ -95,7 +95,7 @@ def prepare_input_for_model(model_index, base_input):
     return x
 
 
-def gerar_visualizacao_votos(votos_models, input_tensor_outros, input_tensor_train, iteracao, idx, block_idx, task_id, classes_validas, classes_objetivo):
+def gerar_visualizacao_votos(votos_models, input_tensor_outros, input_tensor_train, iteracao, idx, block_idx, task_id, classes_validas, classes_objetivo, consenso):
     votos_models = garantir_dict_votos_models(votos_models)
     votos_visuais = []
 
@@ -137,7 +137,8 @@ def gerar_visualizacao_votos(votos_models, input_tensor_outros, input_tensor_tra
         task_id=task_id,
         filename=f"a.png",
         classes_validas=classes_validas,
-        classes_objetivo=classes_objetivo
+        classes_objetivo=classes_objetivo,
+        consenso=consenso
         # filename=f"voto_visual_idx{idx}_iter{iteracao}_bloco{block_idx}.png"
 
     )
@@ -163,7 +164,7 @@ def extrair_canal_cor(tensor_5d):
     """
     Recebe um tensor (1, 30, 30, 3, 1) e retorna apenas o canal da cor: (1, 30, 30, 1)
     """
-    return tf.expand_dims(tensor_5d[:, :, :, 0, 0], axis=-1)  # (1, 30, 30, 1)
+    return tf.cast(tf.expand_dims(tensor_5d[:, :, :, 0, 0], axis=-1), tf.float32)  # (1, 30, 30, 1)
 
 def expandir_para_3_canais(y_input):
     """

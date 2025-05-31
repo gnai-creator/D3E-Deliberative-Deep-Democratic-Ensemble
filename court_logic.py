@@ -55,6 +55,8 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
     votos_iniciais[f"modelo_{2}"] = modelos[2](X_train, training=False)
     votos_iniciais[f"modelo_{3}"] = modelos[3](X_train, training=False)
     votos_iniciais[f"modelo_{4}"] = modelos[4](X_train, training=False)
+    votos_iniciais[f"modelo_{5}"] = modelos[5](X_test, training=False)
+    votos_iniciais[f"modelo_{6}"] = modelos[6](X_test, training=False)
     classes_validas = extrair_todas_classes_validas(X_test, X_train, pad_value=pad_value)
     classes_objetivo = extrair_classes_validas(X_test, pad_value=pad_value)
 

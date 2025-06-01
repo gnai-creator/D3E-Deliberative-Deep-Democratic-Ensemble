@@ -122,6 +122,36 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
 
 
 
+        # Atualize os votos com base nas previsões dos modelos atualizados
+        for i in range(4):
+            if i != 1:
+                votos_models[f"modelo_{i}"] = modelos[i](X_test, training=False)
+            else:
+                votos_models[f"modelo_{i}"] = modelos[i](X_train, training=False)
+        # Stack com as previsões atualizadas
+        preds_stack = tf.stack(
+            [
+                tf.expand_dims(
+                    tf.cast(
+                        tf.squeeze(tf.argmax(extrair_canal_cor(p), axis=-1, output_type=tf.int64), axis=0),
+                        tf.int32
+                    ),
+                    axis=-1
+                )
+                for k, p in votos_models.items() if isinstance(p, tf.Tensor) and k != "modelo_0"
+            ],
+            axis=0
+        )
+
+
+        # Atualize os labels de acordo com o novo consenso/antítese
+        y_sup = pixelwise_mode(preds_stack)
+        y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
+        y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_objetivo, pad_value=pad_value)
+        y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
+        y_antitese_redi = expandir_para_3_canais(y_antitese)
+
+        # Treine usando os novos rótulos a cada ciclo!
         treinar_modelo_com_y_sparse(modelos[2], X_test, y_sup_redi, epochs=epochs * 3)
         treinar_modelo_com_y_sparse(modelos[3], X_test, y_antitese_redi, epochs=epochs * 3)
 

@@ -122,18 +122,18 @@ def gerar_visualizacao_votos(votos_models, input_tensor_outros, input_tensor_tra
             log(f"[VISUAL] erro ao extrair {nome}: {e}")
             return tf.zeros((30, 30), dtype=tf.int32)
 
-    input_visual_train = extrair_input_visual(input_tensor_train, "input_tensor_train")
-    input_visual_test = extrair_input_visual(input_tensor_outros, "input_tensor_outros")
+    # input_visual_train = extrair_input_visual(input_tensor_train, "input_tensor_train")
+    # input_visual_test = extrair_input_visual(input_tensor_outros, "input_tensor_outros")
 
     # Junta as duas imagens na vertical
-    input_visual = np.vstack([input_visual_train, input_visual_test])
 
     salvar_voto_visual(
         votos=votos_visuais,
         iteracao=iteracao,
         idx=idx,
         block_idx=block_idx,
-        input_tensor_outros=input_visual,
+        input_train=input_tensor_outros,
+        input_test=input_tensor_train,
         task_id=task_id,
         filename=f"a.png",
         classes_validas=classes_validas,

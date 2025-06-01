@@ -57,19 +57,13 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
     votos_iniciais[f"modelo_{4}"] = modelos[4](X_train, training=False)
     votos_iniciais[f"modelo_{5}"] = modelos[5](X_test, training=False)
     votos_iniciais[f"modelo_{6}"] = modelos[6](X_test, training=False)
+
     classes_validas = extrair_todas_classes_validas(X_test, X_train, pad_value=pad_value)
     classes_objetivo = extrair_classes_validas(X_test, pad_value=pad_value)
 
-    # for i in range(5):
-    #     votos_iniciais[f"modelo_{i}"] = filtrar_classes_respeitando_valores(
-    #         votos_iniciais[f"modelo_{i}"], classes_validas, pad_value=pad_value
-    #     )
-
-    # Mantém os votos fixos dos jurados e advogada
-
     votos_models = {}
     
-    for i in range(1, 5):
+    for i in range(0, 5):
         votos_models[f"modelo_{i}"] = votos_iniciais[f"modelo_{i}"]
 
     for nome, voto in votos_models.items():
@@ -106,7 +100,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
     treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup_redi, epochs=epochs * 3)
     treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese_redi, epochs=epochs * 3)
 
-    log(f"[DEBUG] Classes únicas após filtragem modelo_{i}: {np.unique(votos_iniciais[f'modelo_{i}'].numpy())}")
+    # log(f"[DEBUG] Classes únicas após filtragem modelo_{i}: {np.unique(votos_iniciais[f'modelo_{i}'].numpy())}")
 
     iter_count = 0
     consenso = 0.0
@@ -117,7 +111,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         if iter_count >= max_cycles/4:
             votos_models[f"modelo_{0}"] = modelos[0](X_test, training=False)
         # Garante que os votos dos modelos 1–4 sejam mantidos ao longo do loop
-        for i in range(1, 5):
+        for i in range(0, 7):
             votos_models[f"modelo_{i}"] = votos_iniciais[f"modelo_{i}"]
 
         

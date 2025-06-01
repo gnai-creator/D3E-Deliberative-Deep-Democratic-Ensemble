@@ -77,14 +77,8 @@ def training_process(
 
     visual_grid = tf.squeeze(Y_train)  # reduz todas as dimensões de tamanho 1
 
-    # Se ainda tiver mais de 2 dimensões, selecione o canal 0
-    if visual_grid.shape.rank > 2:
-        visual_grid = visual_grid[..., 0]  # garante shape (30, 30)
-
-    plt.imshow(visual_grid.numpy(), cmap="viridis")
-    plt.title("Input Visual")
-    plt.colorbar()
-    plt.savefig("a.png")
+    
+    
     _ = model(X_train, training=False)
     pixel_color_perfect = 0.0
     pixel_shape_perfect = 0.0

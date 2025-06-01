@@ -9,11 +9,11 @@ from metrics_utils import extrair_matriz_simbolica
 from metrics_utils import extrair_matriz_simbolica_test
 import scipy.stats  # Importa o pacote completo para uso robusto
 
-def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, classes_validas, classes_objetivo, consenso, idx=0, task_id=None, saida_dir="debug_plots", filename="a"):
+def salvar_voto_visual(votos, iteracao, block_idx, input_train, input_test, classes_validas, classes_objetivo, consenso, idx=0, task_id=None, saida_dir="debug_plots", filename="a"):
     os.makedirs(saida_dir, exist_ok=True)
     fname = filename
     filepath = os.path.join(saida_dir, fname)
-
+    log(f"[VISUAL DEBUG] INPUT TRAIN SHAPE {input_train.shape} INPUT TEST SHAPE {input_test.shape}")
     votos_classes = []
     softmax_maxes = []
     classes_resumidas = []
@@ -76,29 +76,58 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, classes_
         print("[VISUAL DEBUG] ❌ Nenhuma predição válida para visualização.")
         return
 
-    input_vis = input_tensor_outros
+    input_vis = input_train
     if isinstance(input_vis, tf.Tensor):
         input_vis = input_vis.numpy()
     if input_vis.ndim == 5:
         input_vis = input_vis[0]
-    if input_vis.ndim == 4 and input_vis.shape[-1] == 10:
-        input_vis = np.argmax(input_vis, axis=-1).astype(np.int32)
-    elif input_vis.ndim == 3:
-        if input_vis.shape[-1] == 10:
-            input_vis = np.argmax(input_vis, axis=-1).astype(np.int32)
+    if input_vis.ndim == 4 and input_vis.shape ==  (1, 30, 30, 3):
+        input_vis = input_vis[0]
+    
+    if input_vis.ndim == 4 and input_vis.shape[-1] == 1:
+        input_vis = tf.squeeze(input_vis, axis=-1)
+        log(f"[VISUAL DEBUG] input_vis interpretado como simbólico com shape {input_vis.shape}.")
+
+    if input_vis.ndim == 3:
+        if input_vis.shape[-1] == 1:
+            log(f"[VISUAL DEBUG] input_vis interpretado como simbólico com shape (30,30,1).")
         elif input_vis.shape[-1] == 3:
-            float_block = input_vis[:, :, 0].astype(np.float32)
-            rounded = np.floor(float_block + 0.5)
-            clipped = np.clip(rounded, 0, 9)
-            input_vis = clipped.astype(np.int32)
-        elif input_vis.shape[-1] == 1:
-            input_vis = input_vis[:, :, 0].astype(np.int32)
-        elif input_vis.shape[-1] > 1:
-            input_vis = np.argmax(input_vis, axis=-1).astype(np.int32)
+            input_vis = input_vis[:, :, 0]
+        else:
+            log(f"[VISUAL DEBUG] input_vis interpretado como simbólico com shape {input_vis.shape}.")
+            pass
+
     elif input_vis.ndim == 2:
-        input_vis = input_vis.astype(np.int32)
+        log(f"[VISUAL DEBUG] input_vis interpretado como simbólico com shape {input_vis.shape}.")
     else:
-        input_vis = np.zeros((30, 30), dtype=np.int32)
+        raise ValueError(f"[VISUAL DEBUG] Formato de input_vis não suportado: {input_vis.shape}")
+    
+
+    input_teste = input_test
+    if isinstance(input_teste, tf.Tensor):
+        input_teste = input_teste.numpy()
+    if input_teste.ndim == 5:
+        input_teste = input_teste[0]
+    if input_teste.ndim == 4 and input_teste.shape ==  (1, 30, 30, 3):
+        input_teste = input_teste[0]
+    
+    if input_teste.ndim == 4 and input_teste.shape[-1] == 1:
+        input_teste = tf.squeeze(input_teste, axis=-1)
+        log(f"[VISUAL DEBUG] input_teste interpretado como simbólico com shape {input_teste.shape}.")
+
+    if input_teste.ndim == 3:
+        if input_teste.shape[-1] == 1:
+            log(f"[VISUAL DEBUG] input_teste interpretado como simbólico com shape (30,30,1).")
+        elif input_teste.shape[-1] == 3:
+            input_teste = input_teste[:, :, 0]
+        else:
+            log(f"[VISUAL DEBUG] input_teste interpretado como simbólico com shape {input_teste.shape}.")
+            pass
+
+    elif input_teste.ndim == 2:
+        log(f"[VISUAL DEBUG] input_teste interpretado como simbólico com shape {input_teste.shape}.")
+    else:
+        raise ValueError(f"[VISUAL DEBUG] Formato de input_teste não suportado: {input_teste.shape}")
 
     votos_stack = np.stack(votos_classes, axis=0)
     h, w = votos_stack.shape[1:3]
@@ -110,35 +139,51 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_tensor_outros, classes_
             entropia_map[i, j] = scipy.stats.entropy(probs, base=2)
 
     num_modelos = len(votos_classes)
-    fig, axes = plt.subplots(2, num_modelos + 1, figsize=(4 * (num_modelos + 1), 8))
+    fig, axes = plt.subplots(2, 5, figsize=(3 * (num_modelos + 1), 8))
     cargos = {
         0: "Jurada 1", 1: "Jurada 2", 2: "Jurada 3",
         3: "Advogada", 4: "Juíza", 5: "Suprema Juíza", 6: "Promotor"
     }
 
-    for i in range(num_modelos):
+    for i in range(len(cargos)):
         nome = cargos.get(i, f"Modelo {i}")
-        voto = votos_classes[i]
-        smap = softmax_maxes[i]
-        classes_int = classes_resumidas[i].astype(np.int32)
-
+        voto = votos_classes[i] if i < len(votos_classes) else None
+        classes_int = classes_resumidas[i] if i < len(classes_resumidas) else np.array([])
         classes_formatadas = ", ".join(map(str, classes_int.tolist()))
 
-        axes[0, i].imshow(voto.astype(np.int32), cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
-        axes[0, i].set_title(f"{nome}\nClasses: [{classes_formatadas}]")
-        axes[0, i].axis("off")
+        if voto is not None:
+            if i < 4:
+                axes[0, i].imshow(voto.astype(np.int32), cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
+                axes[0, i].set_title(f"{nome}\nClasses: [{classes_formatadas}]")
+                axes[0, i].axis("off")
+            elif i < 7:
+                axes[1, i - 4].imshow(voto.astype(np.int32), cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
+                axes[1, i - 4].set_title(f"{nome}\nClasses: [{classes_formatadas}]")
+                axes[1, i - 4].axis("off")
+        else:
+            placeholder = np.zeros((30, 30))
+            if i < 4:
+                axes[0, i].imshow(placeholder, cmap="viridis", vmin=0, vmax=9)
+                axes[0, i].set_title(f"{nome}\n(Sem voto)")
+                axes[0, i].axis("off")
+            elif i < 7:
+                axes[1, i - 4].imshow(placeholder, cmap="viridis", vmin=0, vmax=9)
+                axes[1, i - 4].set_title(f"{nome}\n(Sem voto)")
+                axes[1, i - 4].axis("off")
 
-        axes[1, i].imshow(smap, cmap="Blues", interpolation="nearest", vmin=0, vmax=1)
-        axes[1, i].set_title("Confiança Máx.")
-        axes[1, i].axis("off")
 
-    axes[0, -1].imshow(input_vis.astype(np.int32), cmap="viridis", vmin=0, vmax=9)
-    axes[0, -1].set_title("Input")
+
+
+    axes[0, -1].imshow(input_vis, cmap="viridis", vmin=0, vmax=9)
+    axes[0, -1].set_title("Input Train")
     axes[0, -1].axis("off")
-
-    axes[1, -1].imshow(entropia_map, cmap="inferno", vmin=0, vmax=np.log2(num_modelos))
-    axes[1, -1].set_title("Entropia")
+    axes[1, -1].imshow(input_teste, cmap="viridis", vmin=0, vmax=9)
+    axes[1, -1].set_title("Input Test")
     axes[1, -1].axis("off")
+
+    axes[1, -2].imshow(entropia_map, cmap="inferno", vmin=0, vmax=np.log2(num_modelos))
+    axes[1, -2].set_title("Entropia")
+    axes[1, -2].axis("off")
 
     plt.suptitle(f"Task {task_id} — Iteração {iteracao} — Bloco {block_idx}\n Classes Válidas — {classes_validas} — Classes Objetivo — {classes_objetivo}\n Consenso: {consenso} ", fontsize=14)
     plt.tight_layout()

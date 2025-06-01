@@ -150,7 +150,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
        
         if iter_count >= max_cycles / 4:
             y_pred = tf.argmax(modelos[0](X_test, training=False), axis=-1)
-            y_target = tf.argmax(y_sup, axis=-1)
+            y_target = tf.argmax(y_sup_redi, axis=-1)
             match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_target), tf.float32)).numpy()
             log(f"[MATCH] MATCH {match}")
             if match < 0.97:

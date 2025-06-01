@@ -53,7 +53,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         [tf.squeeze(extrair_classe_cor(votos_models[f"modelo_{i}"]), axis=0) for i in [0, 1]],
         axis=0
     )  # shape (2, 30, 30)
-    y_sup = pixelwise_mode(preds_stack)
+    y_sup = pixelwise_mode(preds_stack, pad_value=-1)
     y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
     y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_objetivo, pad_value=pad_value)
     y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
@@ -63,8 +63,8 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
 
     iter_count = 0
     consenso = 0.0
-
-    while consenso <= tol and iter_count < max_cycles:
+    match = 0.0
+    while consenso <= tol : #and iter_count < max_cycles:
         log(f"[DEBUG] iter_count={iter_count}, block_idx={block_idx}, idx={idx}, task_id={task_id}")
 
         # Atualiza votos: modelo_0 e modelo_1 usam X_test/X_train
@@ -81,14 +81,18 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
                 log(f"[DEBUG] {k} unique: {np.unique(pred.numpy())} shape: {pred.shape}")
 
         # Stack para consenso
+        # Durante as primeiras iterações (ou até um critério de diversidade ser atingido), só inclua 0 e 1:
+        modelos_consenso = [0, 1] if match < 0.6 else [0, 1, 2, 3]
         preds_stack = tf.stack(
-            [tf.squeeze(extrair_classe_cor(votos_models[f"modelo_{i}"]), axis=0) for i in [0, 1]],
+            [tf.squeeze(extrair_classe_cor(votos_models[f"modelo_{i}"]), axis=0) for i in modelos_consenso],
             axis=0
-        )  
+        )
+
+
         log(f"[DEBUG] preds_stack shape: {preds_stack.shape}")
         log(f"[DEBUG] preds_stack unique: {np.unique(preds_stack.numpy())}")
 
-        y_sup = pixelwise_mode(preds_stack)
+        y_sup = pixelwise_mode(preds_stack, pad_value=-1)
         y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
         y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_objetivo, pad_value=pad_value)
         log(f"[DEBUG] classes_validas: {classes_validas}")
@@ -109,7 +113,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
             preds_stack_others = tf.stack(
                 [tf.squeeze(extrair_classe_cor(p), axis=0) for k, p in votos_models.items() if k != "modelo_0"], axis=0
             )
-            y_sup_others = pixelwise_mode(preds_stack_others)
+            y_sup_others = pixelwise_mode(preds_stack_others, pad_value=-1)
             y_pred = tf.squeeze(extrair_classe_cor(modelos[0](X_test, training=False)), axis=0)
             y_target = y_sup_others
 

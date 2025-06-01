@@ -91,8 +91,8 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
 
     # ⬇️ Usa a verdade objetiva (Y_val) como alvo para Suprema e Promotor
     y_sup = pixelwise_mode(preds_stack)
-    y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_validas)
-    y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_validas, pad_value=pad_value)
+    y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
+    y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_objetivo, pad_value=pad_value)
 
     y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
     y_antitese_redi = expandir_para_3_canais(y_antitese)
@@ -108,11 +108,11 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
     while iter_count < max_cycles:
         log(f"[DEBUG] iter_count={iter_count}, block_idx={block_idx}, idx={idx}, task_id={task_id}")
         
-        if iter_count >= max_cycles/4:
-            votos_models[f"modelo_{0}"] = modelos[0](X_test, training=False)
         # Garante que os votos dos modelos 1–4 sejam mantidos ao longo do loop
         for i in range(0, 7):
             votos_models[f"modelo_{i}"] = votos_iniciais[f"modelo_{i}"]
+        if iter_count >= max_cycles/4:
+            votos_models[f"modelo_{0}"] = modelos[0](X_test, training=False)
 
         
         votos_models[f"modelo_{5}"] = modelos[5](X_test, training=False)
@@ -138,8 +138,8 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         )
 
         y_sup = pixelwise_mode(preds_stack)
-        y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_validas)
-        y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_validas, pad_value=pad_value)
+        y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
+        y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_objetivo, pad_value=pad_value)
 
         y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
         y_antitese_redi = expandir_para_3_canais(y_antitese)
@@ -150,12 +150,13 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
        
         if iter_count >= max_cycles / 4:
             y_pred = tf.argmax(modelos[0](X_test, training=False), axis=-1)
-            y_target = tf.argmax(y_sup_redi, axis=-1)
+            y_target = tf.argmax(y_sup, axis=-1)
             match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_target), tf.float32)).numpy()
             log(f"[MATCH] MATCH {match}")
-            if match < 0.97:
-                y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
-                treinar_modelo_com_y_sparse(modelos[0], X_test, y_sup_recolorido, epochs=epochs)
+            if match <= 1.00:
+                    y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
+                    y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
+                    treinar_modelo_com_y_sparse(modelos[0], X_test, y_sup_redi, epochs=epochs)
         
 
         votos_models = garantir_dict_votos_models(votos_models)

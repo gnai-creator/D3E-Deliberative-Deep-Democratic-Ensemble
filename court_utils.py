@@ -16,39 +16,31 @@ def normalizar_y_para_sparse(y):
     return y
 
 
-
-@tf.function
-def pixelwise_mode(stack):
+def pixelwise_mode(stack, pad_value=-1):
     """
-    Calcula a moda (valor mais frequente) por pixel ao longo do eixo 0.
-    Espera entrada com shape (N, H, W, C).
-    Retorna tensor com shape (1, H, W, C, 1)
+    Calcula a moda por pixel, ignorando o pad_value.
+    stack: (N, H, W) ou (N, H, W, 1)
+    Retorna: (1, H, W, 1)
     """
-    log(f"[DEBUG] pixelwise_mode - shape de entrada original: {stack.shape}")
-
+    if tf.rank(stack) == 3:
+        stack = tf.expand_dims(stack, -1)
     if tf.rank(stack) != 4:
-        raise ValueError(f"[pixelwise_mode] Tensor esperado com rank=4, mas recebeu shape={stack.shape}")
+        raise ValueError(f"[pixelwise_mode] Esperado rank 3/4, shape={stack.shape}")
 
-    # Transpõe para (H, W, C, N)
-    transposed = tf.transpose(stack, [1, 2, 3, 0])  # (H, W, C, N)
-    flat = tf.reshape(transposed, [-1, tf.shape(transposed)[-1]])  # (H * W * C, N)
+    stack_np = stack.numpy()  # safer for per-pixel filtering
+    N, H, W, C = stack_np.shape
+    moda = np.full((H, W, C), pad_value, dtype=np.int32)
 
-    # Força a operação de bincount e argmax na CPU
-    @tf.function
-    def bincount_mode(x):
-        with tf.device('/CPU:0'):
-            return tf.math.argmax(tf.math.bincount(tf.cast(x, tf.int32), minlength=10))
-
-    moda_pixel = tf.map_fn(
-        bincount_mode,
-        flat,
-        fn_output_signature=tf.int64
-    )
-
-    # Restaura shape: (1, H, W, C, 1)
-    moda_reshaped = tf.reshape(moda_pixel, [1, tf.shape(stack)[1], tf.shape(stack)[2], tf.shape(stack)[3], 1])
-    return tf.cast(moda_reshaped, tf.float32)
-
+    for h in range(H):
+        for w in range(W):
+            for c in range(C):
+                vals = stack_np[:, h, w, c]
+                vals = vals[vals != pad_value]  # filtra o pad_value
+                if len(vals) > 0:
+                    moda[h, w, c] = np.bincount(vals.astype(np.int32)).argmax()
+    moda = np.expand_dims(moda, axis=0)  # batch
+    moda = np.expand_dims(moda, axis=-1) if moda.ndim == 3 else moda  # channel
+    return tf.convert_to_tensor(moda, dtype=tf.float32)
 
 
 
@@ -160,11 +152,17 @@ def treinar_promotor_inicial(models, input_tensor_outros, votos_models, epochs):
     models[6].fit(x=x_promotor, y=y_antitese, epochs=epochs, verbose=0)
 
 
-def extrair_canal_cor(tensor_5d):
+def extrair_classe_cor(tensor_5d, canal=0, n_classes=10):
     """
-    Recebe um tensor (1, 30, 30, 3, 1) e retorna apenas o canal da cor: (1, 30, 30, 1)
+    Extrai o canal de cor contínuo e converte para classe discreta.
     """
-    return tf.cast(tf.expand_dims(tensor_5d[:, :, :, 0, 0], axis=-1), tf.float32)  # (1, 30, 30, 1)
+    canal_vals = tensor_5d[:, :, :, canal, 0]
+    # Arredonde e limpe
+    classe = tf.clip_by_value(tf.round(canal_vals), 0, n_classes-1)
+    classe = tf.cast(classe, tf.int32)
+    return classe  # shape: (1, 30, 30)
+
+
 
 def expandir_para_3_canais(y_input):
     """

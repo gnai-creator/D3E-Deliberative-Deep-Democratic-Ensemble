@@ -141,8 +141,8 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_train, input_test, clas
     num_modelos = len(votos_classes)
     fig, axes = plt.subplots(2, 4, figsize=(4 * (num_modelos + 1), 8))
     cargos = {
-        0: "Jurada",
-        1: "Advogada", 2: "Juíza", 3: "Promotor"
+        0: "Jurada\nModelo_0",
+        1: "Advogada\nModelo_1", 2: "Juíza\nModelo_2", 3: "Promotor\nModelo_3"
     }
 
     for i in range(len(cargos)):
@@ -190,7 +190,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_train, input_test, clas
     ax_vazio.cla()  # limpa o conteúdo do subplot
     ax_vazio.text(
         0.5, 0.5, 
-        "Ais Court", 
+        "Ais Court\nSystem", 
         fontsize=28, fontweight='bold', color="gray",
         ha="center", va="center", transform=ax_vazio.transAxes
     )

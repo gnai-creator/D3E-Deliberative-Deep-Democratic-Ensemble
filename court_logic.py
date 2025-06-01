@@ -17,13 +17,25 @@ tf.config.run_functions_eagerly(True)
 
 pesos = {
     "modelo_0": 1.0,
-    "modelo_1": 1.0,
-    "modelo_2": 1.0,
-    "modelo_3": 1.5,
-    "modelo_4": 2.0,
-    "modelo_5": 3.0,
-    "modelo_6": -3.5
+    "modelo_1": 1.5,
+    "modelo_2": 2.0,
+    "modelo_3": -1.2,
+
 }
+
+def mutar_label(y, p=0.03):
+    # y é um tensor (H, W) ou (B, H, W, ...)
+    y_np = y.numpy().copy()
+    mask = np.random.rand(*y_np.shape) < p
+    classes = np.unique(y_np)
+    if len(classes) > 1:
+        for c in classes:
+            idxs = np.where(mask & (y_np == c))
+            outras = [v for v in classes if v != c]
+            if outras:
+                y_np[idxs] = np.random.choice(outras, size=len(idxs[0]))
+    return tf.convert_to_tensor(y_np)
+
 
 def verificar_votos_models(votos_models):
     for nome, voto in votos_models.items():
@@ -54,10 +66,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
     votos_iniciais[f"modelo_{1}"] = modelos[1](X_train, training=False)
     votos_iniciais[f"modelo_{2}"] = modelos[2](X_train, training=False)
     votos_iniciais[f"modelo_{3}"] = modelos[3](X_train, training=False)
-    # votos_iniciais[f"modelo_{4}"] = modelos[4](X_train, training=False)
-    # votos_iniciais[f"modelo_{5}"] = modelos[5](X_test, training=False)
-    # votos_iniciais[f"modelo_{6}"] = modelos[6](X_test, training=False)
-
+    
     classes_validas = extrair_todas_classes_validas(X_test, X_train, pad_value=pad_value)
     classes_objetivo = extrair_classes_validas(X_test, pad_value=pad_value)
 
@@ -144,17 +153,15 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         )
 
 
-        # Atualize os labels de acordo com o novo consenso/antítese
         y_sup = pixelwise_mode(preds_stack)
         y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
         y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_objetivo, pad_value=pad_value)
-        y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
-        y_antitese_redi = expandir_para_3_canais(y_antitese)
 
-        # Treine usando os novos rótulos a cada ciclo!
+        y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
+        y_antitese_redi = expandir_para_3_canais(mutar_label(y_antitese, p=0.03))
+
         treinar_modelo_com_y_sparse(modelos[2], X_test, y_sup_redi, epochs=epochs * 3)
         treinar_modelo_com_y_sparse(modelos[3], X_test, y_antitese_redi, epochs=epochs * 3)
-
        
         if iter_count >= max_cycles / 4:
             # Stack sem modelo_0:
@@ -181,10 +188,12 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
             match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_target), tf.float32)).numpy()
 
             log(f"[MATCH] MATCH {match}")
-            if match <= 0.97:
+            if iter_count % 3 == 0:
+                treinar_modelo_com_y_sparse(modelos[0], X_test, y_sup_redi, epochs=epochs *3)
+            elif match <= 0.97:
                     y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
                     y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
-                    treinar_modelo_com_y_sparse(modelos[0], X_test, y_sup_redi, epochs=epochs)
+                    treinar_modelo_com_y_sparse(modelos[0], X_test, y_sup_redi, epochs=epochs *3)
         
 
         votos_models = garantir_dict_votos_models(votos_models)

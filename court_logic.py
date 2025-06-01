@@ -105,7 +105,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
     iter_count = 0
     consenso = 0.0
 
-    while iter_count < max_cycles:
+    while consenso <= tol:
         log(f"[DEBUG] iter_count={iter_count}, block_idx={block_idx}, idx={idx}, task_id={task_id}")
         
         # Garante que os votos dos modelos 1–4 sejam mantidos ao longo do loop
@@ -121,39 +121,37 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         votos_models = garantir_dict_votos_models(votos_models)
 
 
-        iter_count += 1
 
-        preds_stack = tf.stack(
-            [
-                tf.expand_dims(
-                    tf.cast(
-                        tf.squeeze(tf.argmax(extrair_canal_cor(p), axis=-1, output_type=tf.int64), axis=0),
-                        tf.int32
-                    ),
-                    axis=-1
-                )
-                for p in votos_models.values() if isinstance(p, tf.Tensor)
-            ],
-            axis=0
-        )
-
-        y_sup = pixelwise_mode(preds_stack)
-        y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
-        y_antitese = inverter_classes_respeitando_valores(y_sup_recolorido, classes_objetivo, pad_value=pad_value)
-
-        y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
-        y_antitese_redi = expandir_para_3_canais(y_antitese)
-        # Agora treina os modelos com rótulos que respeitam as cores do X_test
         treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup_redi, epochs=epochs * 3)
         treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese_redi, epochs=epochs * 3)
 
        
         if iter_count >= max_cycles / 4:
+            # Stack sem modelo_0:
+            preds_stack_others = tf.stack(
+                [
+                    tf.expand_dims(
+                        tf.cast(
+                            tf.squeeze(tf.argmax(extrair_canal_cor(p), axis=-1, output_type=tf.int64), axis=0),
+                            tf.int32
+                        ),
+                        axis=-1
+                    )
+                    for i, p in enumerate(votos_models.values()) if isinstance(p, tf.Tensor) and i != 0
+                ],
+                axis=0
+            )
+
+            # Moda sem a influência de modelo_0
+            y_sup_others = pixelwise_mode(preds_stack_others)
+
+            # Avaliação do match
             y_pred = tf.argmax(modelos[0](X_test, training=False), axis=-1)
-            y_target = tf.argmax(y_sup, axis=-1)
+            y_target = tf.argmax(y_sup_others, axis=-1)
             match = tf.reduce_mean(tf.cast(tf.equal(y_pred, y_target), tf.float32)).numpy()
+
             log(f"[MATCH] MATCH {match}")
-            if match <= 1.00:
+            if match <= 0.97:
                     y_sup_recolorido = mapear_cores_para_x_test(y_sup, classes_objetivo)
                     y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
                     treinar_modelo_com_y_sparse(modelos[0], X_test, y_sup_redi, epochs=epochs)
@@ -188,6 +186,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
                 "y_pred_simbolico": tf.squeeze(tf.argmax(votos_models["modelo_5"], axis=-1)).numpy()
             }
 
+        iter_count += 1
 
     
     for model_idx in range(len(models)):

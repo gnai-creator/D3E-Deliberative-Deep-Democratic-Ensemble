@@ -42,7 +42,7 @@ def contar_blocos(challenges_path):
 
 
 class GrampyX:
-    def __init__(self, num_modelos=7, challenges_path="arc-agi_test_challenges.json"):
+    def __init__(self, num_modelos=4, challenges_path="arc-agi_test_challenges.json"):
         os.makedirs(PERSIST_DIR, exist_ok=True)
         self.num_blocos = contar_blocos(challenges_path)  # nova função
         self.num_modelos = num_modelos
@@ -93,12 +93,12 @@ class GrampyX:
     def julgar(self, x_train, y_train, y_val, x_input, raw_input, block_index, task_id, idx, iteracao, Y_val):
         try:
             log(f"[GrampyX] Julgando bloco {block_index} — Task {task_id}")
-            log(f"[GrampyX] X_TRAIN SHAPE FINAL : {x_train.shape}")
-            log(f"[GrampyX] Y_TRAIN SHAPE FINAL : {y_train.shape}")
-            log(f"[GrampyX] Y_VAL SHAPE FINAL : {y_val.shape}")
-            log(f"[GrampyX] X_TESTE SHAPE FINAL : {x_input.shape}")
+            # log(f"[GrampyX] X_TRAIN SHAPE FINAL : {x_train.shape}")
+            # log(f"[GrampyX] Y_TRAIN SHAPE FINAL : {y_train.shape}")
+            # log(f"[GrampyX] Y_VAL SHAPE FINAL : {y_val.shape}")
+            # log(f"[GrampyX] X_TESTE SHAPE FINAL : {x_input.shape}")
 
-            if x_input.shape.rank != 5 or x_input.shape != (1, 30, 30, 1, 1):
+            if x_input.shape.rank != 5 or x_input.shape != (1, 30, 30, 3, 1):
                 x_input, _ = self.preparar_inputs(x_input)
 
             resultados = arc_court_supreme(
@@ -203,7 +203,8 @@ class GrampyX:
 todos_os_batches = {}
 
 
-def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=9.5, idx=0, grampyx=None):
+def rodar_deliberacao_com_condicoes(
+        parar_se_sucesso=True, max_iteracoes=100, consenso_minimo=9.5, idx=0, grampyx=None):
     grampy = grampyx
     BATCH_SIZE = 1
     block_idx = idx % grampy.num_blocos
@@ -289,7 +290,7 @@ def rodar_deliberacao_com_condicoes(parar_se_sucesso=True, max_iteracoes=100, co
             raw_input=raw_input,
             block_index=block_idx,
             task_id=task_id,
-            idx=iteracao,
+            idx=idx,
             iteracao=iteracao,
             Y_val=y_val_test
         )

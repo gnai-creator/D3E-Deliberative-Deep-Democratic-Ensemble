@@ -78,11 +78,11 @@ def load_data(block_index, task_ids, challenges, block_size, pad_value, vocab_si
 
     # sw_train = np.ones_like(Y_train[..., 0], dtype=np.float32)
     # sw_val = np.ones_like(Y_val[..., 0], dtype=np.float32)
-    log(f"[DEBUG] X_TRAIN SHAPE FINAL : {X_train.shape}")
-    log(f"[DEBUG] X_VAL SHAPE FINAL : {X_val.shape}")
-    log(f"[DEBUG] Y_TRAIN SHAPE FINAL : {Y_train.shape}")
-    log(f"[DEBUG] Y_VAL SHAPE FINAL : {Y_val.shape}")
-    log(f"[DEBUG] X_TESTE SHAPE FINAL : {X_test.shape}")
+    # log(f"[DEBUG] X_TRAIN SHAPE FINAL : {X_train.shape}")
+    # log(f"[DEBUG] X_VAL SHAPE FINAL : {X_val.shape}")
+    # log(f"[DEBUG] Y_TRAIN SHAPE FINAL : {Y_train.shape}")
+    # log(f"[DEBUG] Y_VAL SHAPE FINAL : {Y_val.shape}")
+    # log(f"[DEBUG] X_TESTE SHAPE FINAL : {X_test.shape}")
 
     return (
         tf.convert_to_tensor(X_train, dtype=tf.float32),

@@ -54,16 +54,16 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
     votos_iniciais[f"modelo_{1}"] = modelos[1](X_train, training=False)
     votos_iniciais[f"modelo_{2}"] = modelos[2](X_train, training=False)
     votos_iniciais[f"modelo_{3}"] = modelos[3](X_train, training=False)
-    votos_iniciais[f"modelo_{4}"] = modelos[4](X_train, training=False)
-    votos_iniciais[f"modelo_{5}"] = modelos[5](X_test, training=False)
-    votos_iniciais[f"modelo_{6}"] = modelos[6](X_test, training=False)
+    # votos_iniciais[f"modelo_{4}"] = modelos[4](X_train, training=False)
+    # votos_iniciais[f"modelo_{5}"] = modelos[5](X_test, training=False)
+    # votos_iniciais[f"modelo_{6}"] = modelos[6](X_test, training=False)
 
     classes_validas = extrair_todas_classes_validas(X_test, X_train, pad_value=pad_value)
     classes_objetivo = extrair_classes_validas(X_test, pad_value=pad_value)
 
     votos_models = {}
     
-    for i in range(0, 5):
+    for i in range(2):
         votos_models[f"modelo_{i}"] = votos_iniciais[f"modelo_{i}"]
 
     for nome, voto in votos_models.items():
@@ -97,8 +97,8 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
     y_sup_redi = expandir_para_3_canais(y_sup_recolorido)
     y_antitese_redi = expandir_para_3_canais(y_antitese)
     # Agora treina os modelos com rótulos que respeitam as cores do X_test
-    treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup_redi, epochs=epochs * 3)
-    treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese_redi, epochs=epochs * 3)
+    treinar_modelo_com_y_sparse(modelos[2], X_test, y_sup_redi, epochs=epochs * 3)
+    treinar_modelo_com_y_sparse(modelos[3], X_test, y_antitese_redi, epochs=epochs * 3)
 
     # log(f"[DEBUG] Classes únicas após filtragem modelo_{i}: {np.unique(votos_iniciais[f'modelo_{i}'].numpy())}")
 
@@ -109,21 +109,21 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         log(f"[DEBUG] iter_count={iter_count}, block_idx={block_idx}, idx={idx}, task_id={task_id}")
         
         # Garante que os votos dos modelos 1–4 sejam mantidos ao longo do loop
-        for i in range(0, 7):
+        for i in range(4):
             votos_models[f"modelo_{i}"] = votos_iniciais[f"modelo_{i}"]
         if iter_count >= max_cycles/4:
             votos_models[f"modelo_{0}"] = modelos[0](X_test, training=False)
 
         
-        votos_models[f"modelo_{5}"] = modelos[5](X_test, training=False)
-        votos_models[f"modelo_{6}"] = modelos[6](X_test, training=False)
+        votos_models[f"modelo_{2}"] = modelos[2](X_test, training=False)
+        votos_models[f"modelo_{3}"] = modelos[3](X_test, training=False)
 
         votos_models = garantir_dict_votos_models(votos_models)
 
 
 
-        treinar_modelo_com_y_sparse(modelos[5], X_test, y_sup_redi, epochs=epochs * 3)
-        treinar_modelo_com_y_sparse(modelos[6], X_test, y_antitese_redi, epochs=epochs * 3)
+        treinar_modelo_com_y_sparse(modelos[2], X_test, y_sup_redi, epochs=epochs * 3)
+        treinar_modelo_com_y_sparse(modelos[3], X_test, y_antitese_redi, epochs=epochs * 3)
 
        
         if iter_count >= max_cycles / 4:
@@ -162,7 +162,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
             votos_models,
             pesos,
             required_score=5.0,
-            voto_reverso_ok=["modelo_6"]
+            voto_reverso_ok=["modelo_3"]
         )
 
         gerar_visualizacao_votos(
@@ -181,9 +181,9 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         log(f"[CONSENSO] : CONSENSO {consenso}")
         if consenso >= tol:
             return {
-                "class_logits": votos_models["modelo_5"],
+                "class_logits": votos_models["modelo_2"],
                 "consenso": float(consenso),
-                "y_pred_simbolico": tf.squeeze(tf.argmax(votos_models["modelo_5"], axis=-1)).numpy()
+                "y_pred_simbolico": tf.squeeze(tf.argmax(votos_models["modelo_2"], axis=-1)).numpy()
             }
 
         iter_count += 1
@@ -193,7 +193,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
         models[model_idx].save_weights(f"weights_model_{model_idx}_block_{block_idx}.h5")
 
     return {
-        "class_logits": votos_models["modelo_5"],
+        "class_logits": votos_models["modelo_2"],
         "consenso": float(consenso),
-        "y_pred_simbolico": tf.squeeze(tf.argmax(votos_models["modelo_5"], axis=-1)).numpy()
+        "y_pred_simbolico": tf.squeeze(tf.argmax(votos_models["modelo_2"], axis=-1)).numpy()
     }

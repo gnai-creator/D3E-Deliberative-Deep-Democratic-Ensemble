@@ -63,7 +63,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_train, input_test, clas
             else:
                 raise ValueError(f"[VISUAL DEBUG] Formato de voto não suportado: {voto.shape}")
 
-            if i == 6:
+            if i == 3:
                 v_cls = 9 - v_cls
 
             votos_classes.append(v_cls)
@@ -139,10 +139,10 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_train, input_test, clas
             entropia_map[i, j] = scipy.stats.entropy(probs, base=2)
 
     num_modelos = len(votos_classes)
-    fig, axes = plt.subplots(2, 5, figsize=(3 * (num_modelos + 1), 8))
+    fig, axes = plt.subplots(2, 4, figsize=(4 * (num_modelos + 1), 8))
     cargos = {
-        0: "Jurada 1", 1: "Jurada 2", 2: "Jurada 3",
-        3: "Advogada", 4: "Juíza", 5: "Suprema Juíza", 6: "Promotor"
+        0: "Jurada",
+        1: "Advogada", 2: "Juíza", 3: "Promotor"
     }
 
     for i in range(len(cargos)):
@@ -152,38 +152,51 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_train, input_test, clas
         classes_formatadas = ", ".join(map(str, classes_int.tolist()))
 
         if voto is not None:
-            if i < 4:
+            if i < 2:
                 axes[0, i].imshow(voto.astype(np.int32), cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
                 axes[0, i].set_title(f"{nome}\nClasses: [{classes_formatadas}]")
                 axes[0, i].axis("off")
-            elif i < 7:
-                axes[1, i - 4].imshow(voto.astype(np.int32), cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
-                axes[1, i - 4].set_title(f"{nome}\nClasses: [{classes_formatadas}]")
-                axes[1, i - 4].axis("off")
+            elif i < 4:
+                axes[1, i - 2].imshow(voto.astype(np.int32), cmap="viridis", vmin=0, vmax=9, interpolation="nearest")
+                axes[1, i - 2].set_title(f"{nome}\nClasses: [{classes_formatadas}]")
+                axes[1, i - 2].axis("off")
         else:
             placeholder = np.zeros((30, 30))
-            if i < 4:
+            if i < 2:
                 axes[0, i].imshow(placeholder, cmap="viridis", vmin=0, vmax=9)
                 axes[0, i].set_title(f"{nome}\n(Sem voto)")
                 axes[0, i].axis("off")
-            elif i < 7:
-                axes[1, i - 4].imshow(placeholder, cmap="viridis", vmin=0, vmax=9)
-                axes[1, i - 4].set_title(f"{nome}\n(Sem voto)")
-                axes[1, i - 4].axis("off")
+            elif i < 4:
+                axes[1, i - 2].imshow(placeholder, cmap="viridis", vmin=0, vmax=9)
+                axes[1, i - 2].set_title(f"{nome}\n(Sem voto)")
+                axes[1, i - 2].axis("off")
 
 
 
-
-    axes[0, -1].imshow(input_vis, cmap="viridis", vmin=0, vmax=9)
-    axes[0, -1].set_title("Input Train")
-    axes[0, -1].axis("off")
-    axes[1, -1].imshow(input_teste, cmap="viridis", vmin=0, vmax=9)
-    axes[1, -1].set_title("Input Test")
-    axes[1, -1].axis("off")
 
     axes[1, -2].imshow(entropia_map, cmap="inferno", vmin=0, vmax=np.log2(num_modelos))
     axes[1, -2].set_title("Entropia")
     axes[1, -2].axis("off")
+
+    axes[0, -1].imshow(input_vis, cmap="viridis", vmin=0, vmax=9)
+    axes[0, -1].set_title("Input Train")
+    axes[0, -1].axis("off")
+
+    axes[1, -1].imshow(input_teste, cmap="viridis", vmin=0, vmax=9)
+    axes[1, -1].set_title("Input Test")
+    axes[1, -1].axis("off")
+
+    ax_vazio = axes[0, 2]
+    ax_vazio.cla()  # limpa o conteúdo do subplot
+    ax_vazio.text(
+        0.5, 0.5, 
+        "Ais Court", 
+        fontsize=28, fontweight='bold', color="gray",
+        ha="center", va="center", transform=ax_vazio.transAxes
+    )
+    ax_vazio.set_xticks([])
+    ax_vazio.set_yticks([])
+    ax_vazio.set_frame_on(False)
 
     plt.suptitle(f"Task {task_id} — Iteração {iteracao} — Bloco {block_idx}\n Classes Válidas — {classes_validas} — Classes Objetivo — {classes_objetivo}\n Consenso: {consenso} ", fontsize=14)
     plt.tight_layout()

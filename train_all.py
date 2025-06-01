@@ -57,7 +57,7 @@ def training_process(
         task_id,
     ) = batches[batch_index]
 
-    if n_model >= 5:
+    if n_model >= 2:
         log(f"[SKIP] Índice {n_model} fora da lista de modelos ({len(models)})")
         return
 
@@ -66,8 +66,8 @@ def training_process(
         raise ValueError(f"[FATAL] Modelo {n_model} não foi carregado corretamente.")
 
     log(f"[INFO] Treinando modelo {n_model} no exemplo {batch_index}")
-    log(f"[INFO] SHAPE X TRAIN : {X_train.shape}")
-    log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")
+    # log(f"[INFO] SHAPE X TRAIN : {X_train.shape}")
+    # log(f"[INFO] SHAPE Y TRAIN : {Y_train.shape}")
 
     # X_train = tf.cast(X_train, tf.float32)
     # X_train = tf.where(tf.less(X_train, 0), 0.0, X_train)  # substitui -1 por 0
@@ -115,8 +115,8 @@ def training_process(
         try:
             preds = model.predict(X_val)
 
-            log(f"[DEBUG] preds shape: {preds.shape}")
-            log(f"[DEBUG] y_val shape: {Y_val.shape}")
+            # log(f"[DEBUG] preds shape: {preds.shape}")
+            # log(f"[DEBUG] y_val shape: {Y_val.shape}")
 
             if preds.shape[-1] == 10:
                 preds = np.argmax(preds, axis=-1)

@@ -82,7 +82,7 @@ def arc_court_supreme(models, X_train, y_train, y_val, X_test, task_id=None, blo
 
         # Stack para consenso
         # Durante as primeiras iterações (ou até um critério de diversidade ser atingido), só inclua 0 e 1:
-        modelos_consenso = [0, 1] if match < 0.6 else [0, 1, 2, 3]
+        modelos_consenso = [1] if match < 0.6 else [0, 1, 2, 3]
         preds_stack = tf.stack(
             [tf.squeeze(extrair_classe_cor(votos_models[f"modelo_{i}"]), axis=0) for i in modelos_consenso],
             axis=0

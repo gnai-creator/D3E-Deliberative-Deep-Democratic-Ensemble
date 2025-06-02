@@ -9,7 +9,21 @@ from metrics_utils import extrair_matriz_simbolica
 from metrics_utils import extrair_matriz_simbolica_test
 import scipy.stats  # Importa o pacote completo para uso robusto
 
-def salvar_voto_visual(votos, iteracao, block_idx, input_train, input_test, classes_validas, classes_objetivo, consenso, idx=0, task_id=None, saida_dir="debug_plots", filename="a"):
+def salvar_voto_visual(
+        votos, 
+        iteracao, 
+        block_idx, 
+        input_train, 
+        input_test, 
+        classes_validas, 
+        classes_objetivo, 
+        consenso, 
+        idx=0, 
+        task_id=None, 
+        saida_dir="debug_plots", 
+        filename="a",
+        fase="test"
+        ):
     os.makedirs(saida_dir, exist_ok=True)
     fname = filename
     filepath = os.path.join(saida_dir, fname)
@@ -198,7 +212,7 @@ def salvar_voto_visual(votos, iteracao, block_idx, input_train, input_test, clas
     ax_vazio.set_yticks([])
     ax_vazio.set_frame_on(False)
 
-    plt.suptitle(f"Task {task_id} — Iteração {iteracao} — Bloco {block_idx}\n Classes Válidas — {classes_validas} — Classes Objetivo — {classes_objetivo}\n Consenso: {consenso} ", fontsize=14)
+    plt.suptitle(f"{fase} Fase — Task {task_id} — Iteração {iteracao} — Bloco {block_idx}\n Classes Válidas — {classes_validas} — Classes Objetivo — {classes_objetivo}\n Consenso: {consenso} ", fontsize=14)
     plt.tight_layout()
     print(f"[VISUAL DEBUG] Salvando figura em {filepath} — modelos plotados: {num_modelos}")
     plt.savefig(filepath)

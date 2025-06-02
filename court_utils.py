@@ -6,6 +6,8 @@ from runtime_utils import log
 from metrics_utils import ensure_numpy, garantir_dict_votos_models
 from models_loader import load_model
 from graphics_utils import salvar_voto_visual
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+
 import sys
 # Converte logits para rótulos se necessário
 def normalizar_y_para_sparse(y):
@@ -87,7 +89,19 @@ def prepare_input_for_model(model_index, base_input):
     return x
 
 
-def gerar_visualizacao_votos(votos_models, input_tensor_outros, input_tensor_train, iteracao, idx, block_idx, task_id, classes_validas, classes_objetivo, consenso):
+def gerar_visualizacao_votos(
+        votos_models, 
+        input_tensor_outros, 
+        input_tensor_train, 
+        iteracao, 
+        idx, 
+        block_idx, 
+        task_id, 
+        classes_validas, 
+        classes_objetivo, 
+        consenso,
+        fase,
+        ):
     votos_models = garantir_dict_votos_models(votos_models)
     votos_visuais = []
 
@@ -130,8 +144,9 @@ def gerar_visualizacao_votos(votos_models, input_tensor_outros, input_tensor_tra
         filename=f"a.png",
         classes_validas=classes_validas,
         classes_objetivo=classes_objetivo,
-        consenso=consenso
+        consenso=consenso,
         # filename=f"voto_visual_idx{idx}_iter{iteracao}_bloco{block_idx}.png"
+        fase=fase,
 
     )
 
@@ -381,7 +396,8 @@ def gerar_padrao_simbolico(x_input, pad_value=-1):
             padrao[i, j] = a.numpy() if (i + j) % 2 == 0 else b.numpy()
 
     return tf.convert_to_tensor(padrao[None, ...], dtype=tf.int32)
-def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
+
+def treinar_modelo_com_y_sparse(modelo, x_input, y_input, model_idx, idx, epochs=1):
     """
     Treina o modelo com:
     - x_input: (1, 30, 30, 3, 1)
@@ -414,12 +430,25 @@ def treinar_modelo_com_y_sparse(modelo, x_input, y_input, epochs=1):
 
     log(f"[DEBUG] sample_weight shape: {sample_weight.shape}")
 
+    checkpoint_callback = ModelCheckpoint(
+            filepath=f"checkpoint_model_{model_idx}_block_{idx}.h5",
+            monitor="loss",
+            save_best_only=True,
+            save_weights_only=True,
+            verbose=1
+        )
     modelo.fit(
         x=x_input,
         y=y_input,
         sample_weight=sample_weight,
         epochs=epochs,
-        verbose=0
+        verbose=1,
+        callbacks=[
+                    ReduceLROnPlateau(monitor="loss", factor=0.65, patience=2, min_lr=2e-3),
+                    EarlyStopping(monitor="loss", patience=20, restore_best_weights=True),
+                    checkpoint_callback,
+                ],
+
     )
 
 
